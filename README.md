@@ -117,16 +117,19 @@ bun main.js
 │
 ├── features/             ← 功能模块（每个只做一件事）
 │   ├── loop.js           ← 主循环：LLM → 工具 → LLM → ...
-│   ├── tool.js           ← 工具扫描 + 工具执行
+│   ├── tool.js           ← 工具扫描 + 工具执行（主线程这一半）
+│   ├── tool-worker.js    ← 工具真正跑起来的地方（Worker 那一半）
 │   ├── context.js        ← 把历史消息裁剪成模型上下文
 │   └── compact.js        ← 上下文太长时自动压缩总结
 │
 └── utils/               ← 基础工具
     ├── llm.js            ← 底层 LLM 请求（支持多种协议）
     ├── history.js        ← 创建标准格式的历史消息块
-    ├── retry.js          ← 失败自动重试（指数退避）
-    └── tool-worker.js    ← 工具在隔离 Worker 里运行的代码
+    └── retry.js          ← 失败自动重试（指数退避）
 ```
+
+`tool.js` 和 `tool-worker.js` 是同一件事的两半，所以放在一起：前者在主线程里找工具、管沙箱，
+后者被前者当成文本内联、在 Worker 里加载并执行工具。分成两个文件是平台限制（Worker 必须是独立的一段源码），不是分层。
 
 ### 数据流
 
@@ -255,6 +258,25 @@ const multiply = {
 export default [add, multiply]    // 导出数组
 ```
 
+工具是按**名字**找到的，不是按它在数组里排第几。所以往文件里插入新工具、调换顺序都不会让模型调错工具。
+
+### 工具目录里可以放共享代码
+
+扫描时只把"形状对得上"（有 `name`、有 `execute`）的东西注册成工具，其余文件直接跳过。
+所以下面这些都可以和工具放在同一个目录里，不会影响扫描：
+
+```
+tools/
+├── read.js          ← 工具
+├── write.js         ← 工具
+├── shared.js        ← 共享辅助函数，没有默认导出，自动跳过
+└── read.test.js     ← 测试文件，自动跳过
+```
+
+跳过的前提是这些文件**能被加载**。目录里任何一个 `.js` 有语法错误、或者 import 了装不上的依赖，
+`scan` 会当场抛出来——这是有意的：工具目录是你自己的代码，坏了就该立刻知道，
+静默跳过只会变成"某个工具莫名其妙不见了"。
+
 ### 主动停止 Agent 的工具
 
 如果某个工具代表"任务完成"，可以让它返回 `stop: true`，Agent 循环会立刻停止：
@@ -333,10 +355,18 @@ import Agent from '@kernel4632/agent-core'
 | `protocol` | `'chat'` | 协议：`chat` / `responses` / `anthropic` / `gemini` |
 | `system` | `''` | 系统提示词 |
 | `stream` | `true` | 是否流式输出 |
+| `toolChoice` | `'auto'` | `auto` 让模型自己决定要不要调工具；`required` 强制每轮都调 |
+| `cache` | `false` | 是否发送 OpenAI 的 `prompt_cache_key`。中转站大多不认这个私有字段，默认不发 |
+| `temperature` | `undefined` | 生成温度，不设时用模型默认值 |
 | `maxTokens` | `undefined` | Token 上限，超过触发自动压缩 |
 | `compactThreshold` | `0.8` | 压缩触发比例，0.8 表示到达 80% 时压缩 |
+| `retryMaxDelay` | `60` | 重试退避上限（秒） |
+| `noToolPrompt` | 见源码 | 模型连续 2 轮不调工具时插入的临时提示 |
 | `headers` | `{}` | 额外请求头 |
 | `body` | `{}` | 额外请求体 |
+
+> `toolChoice` 保持 `auto` 时，模型才能在任务做完后正常收尾，`{ reason: 'no-tool' }` 这个结束方式也才有意义。
+> 改成 `required` 会强制模型每轮都调工具，而且部分服务（实测 gpt-oss-120b）在模型不想调工具时会直接返回 `tool_use_failed`。
 
 **`callbacks` 回调：**
 
@@ -414,7 +444,7 @@ Agent 当前的完整历史消息数组，可直接读写。
 
 #### `Agent.tool.scan(directory)`
 
-扫描目录里所有 `.js` 文件，返回工具集合。
+扫描目录（含子目录）里所有 `.js` 文件，把其中形状对得上的注册成工具，其余文件跳过。
 
 ```js
 const tools = await Agent.tool.scan('./tools')
@@ -480,7 +510,14 @@ const { messages, token } = Agent.context.build({
 // token    → 估算的 token 数（用 gpt-tokenizer 计算）
 ```
 
-压缩时自动保留：最初 3 条消息（保留用户目标）+ 最新总结 + 总结前 3 条 + 总结后所有消息。
+裁剪的最小单位是**回合**，不是消息。一个回合 = 模型的一次响应 + 它发起的全部工具调用 + 这些调用的结果，
+永远同进同出。所以裁剪结果里不会出现"有调用没结果"或"有结果没调用"的残缺配对——那种序列会被
+OpenAI 和 Anthropic 直接 400。
+
+压缩时自动保留：用户最初的 3 个回合（保留原始目标）+ 最新总结 + 总结前最近 3 个回合 + 总结后所有回合。
+
+模型的思考内容（`reasoning`）会留在 `history` 里供上层 UI 渲染，但不会回传给模型：
+它是某一次响应的厂商产物，不是持久对话状态，回传还会被一些服务拒绝。
 
 ---
 
@@ -504,10 +541,11 @@ History.compact({ content: '之前的对话总结...' })
 bun test
 ```
 
-测试分两个文件：
+测试分三个文件：
 
 - [`tests/agent.test.js`](tests/agent.test.js) — 测试 Agent 创建和上下文构建（不需要网络）
 - [`tests/modules.test.js`](tests/modules.test.js) — 测试所有模块（内部会启动一个本地 mock 服务器）
+- [`tests/fixes.test.js`](tests/fixes.test.js) — 回归测试，每个用例盯住一个真实踩过的坑，命名就是"它当初错在哪"
 
 查看覆盖率：
 
@@ -517,11 +555,39 @@ bun test --coverage
 
 ---
 
+## 打包成单文件
+
+```bash
+bun run build
+```
+
+产出两份，都能直接 `import`，都不再依赖这个项目的任何其它文件：
+
+| 产物 | 大小 | 说明 |
+|------|------|------|
+| `dist/agent-core.js` | ~33 KB | npm 依赖保持外部引用。放进已经装好 `ai`、`@ai-sdk/*` 等依赖的项目里用这份 |
+| `dist/agent-core.standalone.js` | ~5.3 MB | 依赖也一起打进去。目标项目连 `node_modules` 都没有时用这份 |
+
+```js
+import Agent from './agent-core.js'
+
+const tools = await Agent.tool.scan('./tools')
+const agent = Agent.create({ config: { /* ... */ }, tools })
+```
+
+工具目录不会被打包——它本来就该是运行时扫描的，放文件即加功能这件事在打包后照样成立。
+
+Worker 那一半（`features/tool-worker.js`）在打包时会被当成文本内联进单文件，
+运行时从一个 `blob:` 地址启动，所以产物挪到任何目录都能正常执行工具。
+这也是 `tool-worker.js` 里不能出现任何 `import` 的原因：blob 身份下的相对路径和裸包名会按进程当前目录解析，必然出错。
+
+---
+
 ## 常见问题
 
 **Q：支持 Node.js 吗？**
 
-不支持。工具执行依赖 Bun 的 [`Worker`](utils/tool-worker.js) 和 [`Bun.Glob`](features/tool.js)，必须用 Bun 运行。
+不支持。工具执行依赖 Bun 的 [`Worker`](features/tool-worker.js) 和 [`Bun.Glob`](features/tool.js)，必须用 Bun 运行。
 
 ---
 
@@ -546,7 +612,11 @@ bun test --coverage
 
 **Q：工具执行失败会让 Agent 崩溃吗？**
 
-不会。工具失败会被捕获，错误信息会作为工具结果告诉模型，模型可以自行决定是否重试或换一种方式。只有工具文件本身语法错误导致 Worker 无法启动，才会抛出 Promise rejection。
+不会。工具失败会被捕获，错误信息会作为工具结果告诉模型，模型可以自行决定是否重试或换一种方式。
+
+这条覆盖得相当彻底：工具自己抛错、工具文件语法错误、工具返回了没法序列化的值（循环引用、函数、类实例）、
+`toModelOutput` 自己抛错、甚至工具在沙箱里调 `process.exit` 把整个 Worker 干掉——
+全都会变成一条模型能读的工具结果，而不是让这次调用永远挂着。
 
 ---
 

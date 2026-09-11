@@ -47,7 +47,7 @@ const result = await Agent.llm.chat({ baseURL, apiKey, model, messages })
 // onStart: () => {}，循环开始时调用，无返回值。
 // onLLMStart: ({ messages, tools }) => {}，每次实际请求模型前调用。
 // onLLMFinish: result => {}，模型请求完成时调用，result 是 LLM.chat 返回的完整结果。
-// onPermission: ({ sessionId, callId, toolCallId, toolName, arguments }) => true | false，需要等待时可以返回 Promise。
+// onPermission: ({ sessionId, toolCallId, toolName, arguments }) => true | false，需要等待时可以返回 Promise。
 // onLLMEvent: event => {}，原样收到 AI SDK 流中的每个事件。
 // onRetry: info => {}，模型请求重试时调用，info 是重试信息。
 // onToolCall: call => {}，模型请求调用工具时调用，call 包含 toolCallId、toolName、input。
@@ -73,8 +73,10 @@ const buildLLM = config => ({
     model: config.model,                        // 模型名称
     protocol: config.protocol,                  // 调用协议
     temperature: config.temperature,            // 生成温度
+    toolChoice: config.toolChoice,              // 由模型自己决定是否调工具，还是每轮强制调
+    cache: config.cache,                        // 是否发送 OpenAI 提示词缓存字段
     maxTokens: config.maxTokens,                // 上下文 Token 上限，压缩阈值判断也用它
-    compactThreshold: config.compactThreshold,  // 触发自动压缩的比例，默认 0.8
+    compactThreshold: config.compactThreshold,  // 触发自动压缩的比例
     noToolPrompt: config.noToolPrompt,          // 临时提示文本
     stream: config.stream,                      // 是否流式输出
     options: {
@@ -97,6 +99,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = { schema: {}
             headers: {},            // 额外请求头没有传入时直接交给 LLM 使用空对象。
             body: {},               // 额外请求体没有传入时不覆盖模型请求参数。
             temperature: undefined, // 生成温度，不设时使用模型默认值。
+            toolChoice: 'auto',     // 让模型自己决定要不要调工具。写死 required 会让它永远无法正常收尾，部分模型还直接 400。
+            cache: false,           // prompt_cache_key 是 OpenAI 私有字段，中转站大多不认，默认不发。
             maxTokens: undefined,   // 不设上限时不主动压缩，让模型服务决定是否超限。
             compactThreshold: 0.8,  // 接近上限时提前压缩，默认在 80% 处开始。
             retryMaxDelay: 60,      // 重试退避时间上限（秒），防止单次等待过长。
@@ -111,35 +115,43 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = { schema: {}
     }
 
 
-    // 发送指令：先停止旧任务，再更新本次传入的持久参数，最后启动新任务。
-    agent.send = async ({ input, ...options }) => {
+    // 发送指令：更新本次传入的持久参数，登记运行状态，然后启动新任务。
+    agent.send = ({ input, ...options }) => {
         if (typeof input !== 'string' || !input.trim()) throw new TypeError('input must be a non-empty string') // 没有本次输入就没有可执行指令。
-        await agent.stop() // 每次 send 都先停止旧任务；空闲时 stop() 会直接返回，不影响正常发送。
         if ('history' in options) agent.history = options.history                                           // 传入空数组也代表明确覆盖历史。
         if ('config' in options) agent.config = { ...agent.config, ...options.config }                     // 配置按字段覆盖，未传字段继续保留。
         if ('tools' in options) agent.tools = options.tools                                                 // 工具是整体替换，不在 Agent 内部猜测如何合并。
         if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }         // 回调逐项合并，避免替换一个回调时清掉其他回调。
 
+        const previous = agent.running                              // 同步取走上一次运行，本函数末尾就把它顶替掉。
         const controller = new AbortController()                    // stop() 通过它中断当前模型请求或工具。
-        agent.history.push(History.user({ content: input }))       // 先把用户指令变成标准历史消息。
-        agent.running = { controller }                              // 在启动异步任务前登记运行状态，阻止并发 send。
 
-        // Loop.run 本身就返回 Promise，直接赋值，不需要额外包一层 async 函数。
-        const task = Loop.run({
-            history: agent.history,           // Loop 直接使用这份公开数组，执行结果也会继续写入这里。
-            system: agent.config.system,      // 系统提示词本轮不变，直接取当前配置。
-            tools: agent.tools.schema,        // Loop 只需要给模型看的工具描述。
-            llm: buildLLM(agent.config),      // 统一从配置构建，两处使用完全一致。
-            retry: { maxDelay: agent.config.retryMaxDelay }, // 重试配置传给 Loop。
-            buildContext: Context.build,      // 上下文构建交给 Context 模块。
-            compact: Compact.run,             // 压缩交给 Compact 模块。
-            executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers }), // 执行器需要的处理表由 Agent 补上，Loop 不用知道它。
-            sessionId: agent.id,             // 会话 ID 用于权限询问时区分实例。
-            signal: controller.signal,        // 取消信号，stop() 触发时 Loop 立即响应。
-            ...agent.callbacks,               // 所有回调一次展开，新增回调类型时这里不用改。
-        })
+        // 停旧任务挪进 task 内部，所以 send 从头到尾一个 await 都没有：
+        // 同一个 tick 里连发两次 send，第二次必定看得见第一次登记的运行状态并把它停掉，
+        // 不会出现两个 Loop 同时往同一份 history 里写。
+        const task = (async () => {
+            if (previous) {                                         // 上一次还在跑：先停掉它，再开始这一次。
+                previous.controller.abort()
+                await previous.task.catch(() => {})                 // 旧任务以 AbortError 结束是正常的，不当成新异常。
+            }
+            agent.history.push(History.user({ content: input }))   // 等旧任务把它的收尾消息写完再写新指令，history 的顺序才和实际发生的顺序一致。
+            return Loop.run({
+                history: agent.history,           // Loop 直接使用这份公开数组，执行结果也会继续写入这里。
+                system: agent.config.system,      // 系统提示词本轮不变，直接取当前配置。
+                tools: agent.tools.schema,        // Loop 只需要给模型看的工具描述。
+                llm: buildLLM(agent.config),      // 统一从配置构建，两处使用完全一致。
+                retry: { maxDelay: agent.config.retryMaxDelay }, // 重试配置传给 Loop。
+                buildContext: Context.build,      // 上下文构建交给 Context 模块。
+                compact: Compact.run,             // 压缩交给 Compact 模块。
+                executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers }), // 执行器需要的处理表由 Agent 补上，Loop 不用知道它。
+                sessionId: agent.id,             // 会话 ID 用于权限询问时区分实例。
+                signal: controller.signal,        // 取消信号，stop() 触发时 Loop 立即响应。
+                ...agent.callbacks,               // 所有回调一次展开，新增回调类型时这里不用改。
+            })
+        })()
 
-        agent.running.task = task // 把任务放回公开运行对象，stop() 才能等待它完成。
+        // running 一次构造完整，stop() 拿到的永远是可用的运行对象，不存在"task 还没补上"的中间态。
+        agent.running = { controller, task }
         task.finally(() => {
             if (agent.running?.task === task) agent.running = null // 只清理自己的任务，避免覆盖后续运行状态。
         }).catch(() => {})
@@ -153,32 +165,41 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = { schema: {}
         const running = agent.running                      // 保存当前运行对象，避免等待期间状态被其他逻辑替换。
         running.controller.abort()                         // 让 Loop、LLM 和 Worker 看到取消信号。
         await running.task.catch(() => {})                 // 等待当前任务结束，但不把停止异常变成新的异常。
-        agent.running = null                               // 任务已结束后由 stop 直接清空状态，不依赖 finally 的微任务时序。
+        if (agent.running === running) agent.running = null // 任务已结束后由 stop 直接清空状态，不依赖 finally 的微任务时序；等待期间来了新任务就不动它。
         return { ok: true }
     }
 
 
     // 手动压缩：先停掉当前任务，再立即压缩当前上下文。
-    agent.compact = async ({ onCompact, ...options } = {}) => {
-        await agent.stop()  // 用户主动压缩时，先结束正在进行的 send 或压缩。
-        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.tools.schema })
+    // 登记运行状态的方式和 send 完全一致（同步顶替、停旧任务放进 task 内部），
+    // 所以 compact 和 send 抢跑时，后来的那个必定看得见先来的并把它停掉，不会互相把运行状态覆盖掉。
+    agent.compact = ({ onCompact, ...options } = {}) => {
+        const previous = agent.running            // 同步取走上一次运行。
         const controller = new AbortController()  // stop() 也可以中断手动压缩。
-        const task = Compact.run({
-            ...options,
-            messages: context.messages,         // 把裁剪后的上下文交给 Compact。
-            llm: buildLLM(agent.config),        // 与 send 共用同一个构建函数，保证一致性。
-            stream: agent.config.stream,        // 压缩使用与 Agent 相同的流式配置。
-            onCompact,
-            signal: controller.signal,
-        })
-        agent.running = { controller, task }    // 手动压缩和 send 共用同一个运行状态。
-        try {
-            const content = await task
+
+        const task = (async () => {
+            if (previous) {                       // 用户主动压缩时，先结束正在进行的 send 或压缩。
+                previous.controller.abort()
+                await previous.task.catch(() => {})
+            }
+            const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.tools.schema })
+            const content = await Compact.run({
+                ...options,
+                messages: context.messages,       // 把裁剪后的上下文交给 Compact。
+                llm: buildLLM(agent.config),      // 与 send 共用同一个构建函数，保证一致性。
+                stream: agent.config.stream,      // 压缩使用与 Agent 相同的流式配置。
+                onCompact,
+                signal: controller.signal,
+            })
             agent.history.push(History.compact({ content }))  // 总结文本写回公开历史。
             return content
-        } finally {
-            if (agent.running?.task === task) agent.running = null
-        }
+        })()
+
+        agent.running = { controller, task }      // 手动压缩和 send 共用同一个运行状态。
+        task.finally(() => {
+            if (agent.running?.task === task) agent.running = null // 只清理自己的任务，避免覆盖后续运行状态。
+        }).catch(() => {})
+        return task
     }
 
     return agent

@@ -7,7 +7,8 @@
     ".": "./index.js"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "build": "bun build ./index.js --target=bun --packages=external --outfile dist/agent-core.js && bun build ./index.js --target=bun --outfile dist/agent-core.standalone.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.41",

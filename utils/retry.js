@@ -1,4 +1,4 @@
-/* 
+/*
 目标被调用形式（绝对不可修改）：
 const result = await Retry.run({
     // 要重试的操作（一个返回 Promise 的函数）
@@ -12,17 +12,17 @@ const result = await Retry.run({
 
     // 重试退避时间上限，默认 60 秒
     maxDelay: 60,
-}) 
+})
  */
 
 import pRetry from 'p-retry'
 
-// AI SDK 会标记部分错误能否重试；没有标记时才按 HTTP 状态码和网络错误判断。
+// "这个错误能不能重试"由抛错的人说了算：LLM.chat 抛的是 AI SDK 的原始 APICallError，
+// 它自己带着 isRetryable（429、408、5xx、连接失败都为真）。这里不再照着状态码重新判断一遍，
+// 否则同一件事会有两套标准，而且一旦 AI SDK 换了错误形状，这里就会静默失效。
 const isRetryable = error => {
-    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') return false
-    if (typeof error?.isRetryable === 'boolean') return error.isRetryable
-    if (typeof error?.statusCode === 'number') return error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500
-    return ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND'].includes(error?.code)
+    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') return false // 用户主动取消不是失败，不该重试。
+    return error?.isRetryable === true
 }
 
 const run = async ({ operation, signal, onRetry, maxDelay = 60 }) => {

@@ -18,9 +18,11 @@ const server = Bun.serve({
         const text = lastMessage?.content?.includes('需要压缩') ? '压缩后的内容' : '模型回答'
         if (body.stream) {
             const encoder = new TextEncoder()
+            // 真实的 OpenAI 兼容服务一定会给出 finish_reason；少了它 AI SDK 会发一个 error 事件，
+            // LLM.chat 就会按"供应商报错"抛出来（这正是它该做的），所以假服务器也必须发。
             const chunks = [
                 `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: text } }] })}\n\n`,
-                `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\n`,
+                `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\n`,
                 'data: [DONE]\n\n',
             ]
             return new Response(new ReadableStream({
@@ -51,8 +53,15 @@ describe('History and Context', () => {
         expect(assistant.content[0]).toEqual({ type: 'text', text: '我来处理' })
         expect(assistant.content[1].input).toEqual({ value: 'hello' })
 
+        // 这段历史里的 call-1 没有对应的工具结果（工具还没跑完）。
+        // Context.build 会把这种没人应答的调用摘掉：带着它发请求的话，AI SDK 在本地就抛
+        // MissingToolResultsError，一个字节都发不出去。正文照常保留。
         const context = Context.build({ history: [History.user({ content: '你好' }), assistant], system: '系统' })
-        expect(context.messages).toEqual([{ role: 'system', content: '系统' }, ...[History.user({ id: context.messages[1]?.id, content: '你好' })].map(message => ({ role: message.role, content: message.content })), { role: 'assistant', content: assistant.content }])
+        expect(context.messages).toEqual([
+            { role: 'system', content: '系统' },
+            { role: 'user', content: '你好' },
+            { role: 'assistant', content: [{ type: 'text', text: '我来处理' }] },
+        ])
         expect(context.token).toBeGreaterThan(0)
     })
 })
@@ -74,7 +83,7 @@ describe('Tool and Worker', () => {
     test('scans tools and executes them in parallel with output events', async () => {
         const tools = await Tool.scan('./tests/fixtures/tools')
         expect(tools.schema.echo).toBeDefined()
-        expect(tools.handlers.echo.location).toBeDefined()
+        expect(tools.handlers.echo.url).toBeDefined()
 
         const output = []
         const results = await Promise.all(['a', 'b'].map(value => Tool.execute({
