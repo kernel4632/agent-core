@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@kernel4632/agent-core",
   "version": "0.12.3",
   "description": "轻量的 AI Agent 核心：给它模型地址和工具文件，自动循环「问模型 → 执行工具 → 再问模型」。支持 OpenAI Chat / Responses、Anthropic、Gemini 四种协议，工具、MCP、技能、上下文压缩、提示词缓存，纯对话模型也能用工具。",
@@ -36,12 +36,12 @@
     "publish:npm": "npm publish --registry=https://registry.npmjs.org --access public"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^4.0.41",
-    "@ai-sdk/google": "^4.0.50",
-    "@ai-sdk/mcp": "2.0.40",
-    "@ai-sdk/openai": "^4.0.46",
-    "@ai-sdk/openai-compatible": "^3.0.29",
-    "ai": "^7.0.62",
+    "@ai-sdk/anthropic": "^4.0.68",
+    "@ai-sdk/google": "^4.0.85",
+    "@ai-sdk/mcp": "2.0.62",
+    "@ai-sdk/openai": "^4.0.81",
+    "@ai-sdk/openai-compatible": "^3.0.59",
+    "ai": "^7.0.122",
     "gpt-tokenizer": "^3.4.0",
     "nanoid": "^5.1.5",
     "p-queue": "^9.3.3",
