@@ -29,6 +29,17 @@ export interface Capabilities {
 
 export type CacheOption = boolean | { key?: string; retention?: string; body?: Record<string, unknown> }
 
+// 重试过滤：函数直接对错误下判断（返回 false＝不重试）；
+// 对象命中任一 skip 维度、或 shouldRetry 返回 false 时不重试。
+export type RetryFilter =
+    | ((error: any) => boolean)
+    | {
+        skipCodes?: number[]
+        skipText?: string | RegExp
+        skipKinds?: string[]
+        shouldRetry?: (error: any) => boolean
+    }
+
 export interface Config {
     baseURL?: string
     apiKey?: string
@@ -48,8 +59,10 @@ export interface Config {
     output?: any
     maxSteps?: number
     maxToolConcurrency?: number
+    retryBaseDelay?: number
     retryMaxDelay?: number
     retryMaxElapsed?: number
+    retry?: RetryFilter
     requestTimeout?: number
     noToolPrompt?: string
     noToolRounds?: number

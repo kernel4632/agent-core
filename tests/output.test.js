@@ -68,12 +68,30 @@ for (const stream of [false, true]) {
         } finally { server.stop(true) }
     })
 
-    test(`格式错误会返回错误，不进入无限网络重试（stream=${stream}）`, async () => {
-        const { server, bodies, config } = service('{"total":"not a number"}')
+    test(`格式错误也会重试，模型重新生成后成功（stream=${stream}）`, async () => {
+        // 新规则：格式错误默认也重试（模型重新生成不保证还是坏的）。
+        // 第一次给一段校验不过的 JSON，第二次给正确对象，断言重试真的发生了。
+        const bodies = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                bodies.push(body)
+                const content = bodies.length === 1 ? '{"total":"not a number"}' : '{"total":42}'
+                const message = { role: 'assistant', content }
+                if (!body.stream) return Response.json({ choices: [{ index: 0, message, finish_reason: 'stop' }], usage: {} })
+                return new Response([
+                    `data: ${JSON.stringify({ choices: [{ index: 0, delta: message }] })}\n\n`,
+                    `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: {} })}\n\n`,
+                    'data: [DONE]\n\n',
+                ].join(''), { headers: { 'Content-Type': 'text/event-stream' } })
+            },
+        })
         try {
-            const agent = Agent.create({ config: { ...config, stream, output: total } })
-            await expect(agent.send('计算')).rejects.toThrow()
-            expect(bodies).toHaveLength(1)
+            const agent = Agent.create({ config: { baseURL: `http://127.0.0.1:${server.port}/v1`, model: 'test', stream, output: total, retryBaseDelay: 1 } })
+            const result = await agent.send('计算')
+            expect(result.output).toEqual({ total: 42 })
+            expect(bodies).toHaveLength(2) // 第一份格式不合法，重试一次后成功。
         } finally { server.stop(true) }
     })
 }

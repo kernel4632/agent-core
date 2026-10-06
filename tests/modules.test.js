@@ -93,7 +93,7 @@ describe('Retry', () => {
         const result = await Retry.run({
             operation: async () => { attempts += 1; if (attempts === 1) throw flaky; return 'ok' },
             onRetry: () => { throw new Error('通知回调坏了') }, // 第一次重试前调用它，抛错。
-            minTimeout: 1,
+            baseDelay: 1, // 压到 1ms，测试不等待默认的 5 秒基数。
         })
 
         expect(result).toBe('ok')      // 重试成功，没有被 onRetry 打断。

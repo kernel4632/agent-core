@@ -82,6 +82,14 @@ const inputProblem = (input, limits) => {
     if (!positive(limits.noToolRounds, false)) return new RangeError('noToolRounds must be a positive integer or Infinity')
     if (!positive(limits.maxToolConcurrency, false)) return new RangeError('maxToolConcurrency must be a positive integer or Infinity')
     if (!positive(limits.maxToolOutput, false)) return new RangeError('maxToolOutput must be a positive integer or Infinity') // 0/负数会把工具输出静默截成空。
+    // 重试参数：退避基数和上限是毫秒数（允许 0，等于不等待）；总时长可设 Infinity。
+    // 这里用"非负整数"而不是"正整数"，因为 0 是常用做法（测试和"不想等待"的场景），p-retry 也接受 0。
+    const nonNegative = (value, finite = true) => value === undefined || (finite ? Number.isInteger(value) && value >= 0 : value === Infinity || Number.isInteger(value) && value >= 0)
+    if (!nonNegative(limits.retryBaseDelay)) return new RangeError('retryBaseDelay must be a non-negative integer')
+    if (!nonNegative(limits.retryMaxDelay, false)) return new RangeError('retryMaxDelay must be a non-negative integer or Infinity')
+    if (!nonNegative(limits.retryMaxElapsed, false)) return new RangeError('retryMaxElapsed must be a non-negative integer or Infinity')
+    // retry 是调用方的过滤开关：函数，或 { skipCodes, skipText, skipKinds, shouldRetry } 对象。
+    if (limits.retry !== undefined && typeof limits.retry !== 'function' && (typeof limits.retry !== 'object' || limits.retry === null || Array.isArray(limits.retry))) return new TypeError('retry must be a function or an object')
     // 阈值必须落在 (0, 1]：0 会每轮都压缩，大于 1 则永远触发不了。
     if (!(typeof limits.compactThreshold === 'number' && Number.isFinite(limits.compactThreshold) && limits.compactThreshold > 0 && limits.compactThreshold <= 1)) return new RangeError('compactThreshold must be a number in (0, 1]')
     if (!['native', 'text', 'auto'].includes(limits.toolMode)) return new TypeError("toolMode must be 'native', 'text' or 'auto'") // 拼错的 toolMode 会被默默当成 native。
@@ -89,12 +97,13 @@ const inputProblem = (input, limits) => {
 }
 
 // --- 一次 send 传入的 config 合并进 Agent 当前配置 ---
-// provider 整份替换（调用方给了就整份用它的，凭据类配置不该和历史残留混在一起）；
+// provider 和 retry 整份替换（调用方给了就整份用它的，凭据和过滤规则不该和历史残留混在一起）；
 // capabilities 和 compact 按字段叠加（它们是嵌套配置，只传其中一项不该把另一项丢掉）。其余字段覆盖。
 const mergeConfig = (current, override) => ({
     ...current,
     ...override,
     provider: 'provider' in override ? { ...override.provider } : current.provider,
+    retry: 'retry' in override ? override.retry : current.retry,
     capabilities: 'capabilities' in override ? { ...current.capabilities, ...override.capabilities } : current.capabilities,
     compact: 'compact' in override ? { ...current.compact, ...override.compact } : current.compact,
 })
@@ -153,8 +162,10 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             maxToolOutput: undefined,
             maxToolConcurrency: undefined,
             maxSteps: undefined,
-            retryMaxDelay: undefined,
-            retryMaxElapsed: undefined,
+            retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；照抄 Roo Code 的 5 秒。
+            retryMaxDelay: 600000,      // 单次退避上限（毫秒）；照抄 Roo Code 的 600 秒封顶。
+            retryMaxElapsed: undefined, // 不限重试总时长（Roo 没有总上限）；可设毫秒数收口。
+            retry: undefined,           // 调用方过滤不想重试的错误；不设＝默认全重试。
             requestTimeout: undefined,
             noToolPrompt: DEFAULT_NO_TOOL_PROMPT,
             compact: undefined,

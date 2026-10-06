@@ -34,8 +34,10 @@ const result = await LLM.chat({
     onRetry: info => {},
 
     // --- 重试（毫秒）---
-    retryMaxDelay: undefined,       // 不限制单次退避上限；调用方可主动设置毫秒数
-    retryMaxElapsed: undefined,     // 不限制重试总时长；调用方可主动设置毫秒数
+    retryBaseDelay: 5000,           // 第一次退避的基数；默认 5000，之后每次 ×2 递增（照抄 Roo Code）
+    retryMaxDelay: 600000,          // 单次退避上限；默认 600000（10 分钟封顶，照抄 Roo Code）
+    retryMaxElapsed: undefined,     // 不限重试总时长；调用方可主动设置毫秒数
+    retry: undefined,               // 调用方过滤不想重试的错误：函数，或 { skipCodes, skipText, skipKinds, shouldRetry }
 
     // --- 控制信号 ---
     signal: abortSignal,
@@ -70,12 +72,13 @@ body 和 cache 是本包创建连接时加上的 fetch 行为，无法补进一�
 
 抛出去的模型错误会带一个稳定的 kind：aborted / auth / limit / timeout / server / network / request / unknown。
 unknown 指服务返回了成功状态码，但回答格式对不上（不完全兼容的中转站最常见）。
-上层靠它决定"该重试、该换模型、还是该直接报给用户"，不用去认 AI SDK 的内部错误形状。
-kind 只补充信息，"能不能重试"仍然只由 error.isRetryable 决定，这里不制造第二套判断标准。
+上层靠它决定"该换模型、该等一下还是该直接报给用户"，不用去认 AI SDK 的内部错误形状。
+kind 只补充信息；能不能重试由 Retry 的规则决定：除"取消"和"上下文超长"外，默认任何错误都会重试，
+调用方可以用 retry 过滤掉不想重试的错误。
 
 requestTimeout 是单笔请求的限时，每次重试各自重新计时：
 不设就不限时（默认），卡住的一笔请求会一直等下去，由调用方决定要不要设。
-超时属于传输层瞬时故障，和流被截断同类，因此会补上 isRetryable，让 Retry 决定要不要再来一次。
+超时属于传输层瞬时故障，和流被截断同类，默认会重试。
 */
 
 import { generateText, streamText } from 'ai'                        // 统一使用上游的生成和流式能力。
@@ -180,22 +183,17 @@ const request = async ({ input, stream, requestTimeout, markAttempt, onLLMEvent,
             if (event.type === 'error') failure = event.error // AI SDK 只对"中断流的网络错误"抛异常，供应商自己报的错是一个事件，不接住就会被当成正常回答。
             if (event.type === 'text-delta') text.push(event.textDelta ?? event.text ?? event.delta ?? '') // 收集最终文字。
         }
-        if (failure) throw failure // 带着 statusCode 和 isRetryable，先于 result.finishReason 抛，避免被换成丢了这些字段的 AI_NoOutputGeneratedError。
+        if (failure) throw failure // 带着 statusCode 等字段，先于 result.finishReason 抛，避免被换成丢了这些字段的 AI_NoOutputGeneratedError。
 
         const finishReason = await result.finishReason
         if (finishReason === 'error') throw new Error('模型请求失败：供应商返回了错误但没有给出原因') // 只有 finishReason 报错、没有 error 事件时的兜底，不让失败伪装成成功。
 
     } catch (error) {
-        // 流被截断、SSE 格式坏掉、缺 finish_reason 这类错误，AI SDK 不给 isRetryable 标记，
-        // 但它们全是传输层的瞬时故障——中转站和代理最常见的就是这种，重试一次通常就好了。
-        // 在边界上补标记而不是让 Retry 去认 AI SDK 的内部错误类型：判断"能不能重试"仍然只有一处来源。
-        // 唯独"服务返回成功、但内容对不上格式"（TypeValidation）不能重试：字节已经完整收到了，
-        // 再发一次还是同一份坏内容，只会变成无限重试。
-        const format = error?.name === 'AI_TypeValidationError' || error?.name === 'AI_NoObjectGeneratedError'
-        if (error?.isRetryable === undefined && error?.name !== 'AbortError') error.isRetryable = !format
+        // 流被截断、SSE 格式坏掉、缺 finish_reason 这类错误，AI SDK 不会额外标记。
+        // 这里只把错误原样抛出去：贴上 kind 由出口的 classifyError 负责，
+        // 能不能重试由 Retry 的新规则决定（默认所有错误都重试，格式错误也不例外）。
         throw error
     }
-    // 格式错误属于最终回答错误，放在传输重试之外，避免反复重试一段不符合 schema 的 JSON。
     const toolCalls = await result.toolCalls
     return {
         text: text.join('') || await result.text,
@@ -210,7 +208,7 @@ const request = async ({ input, stream, requestTimeout, markAttempt, onLLMEvent,
 
 
 // --- 给抛出去的错误贴一个稳定的分类 ---
-// 只按错误自己带的证据判断，不改 isRetryable：能重试仍然只有"错误自己说能"这一个来源。
+// 只按错误自己带的证据判断，分类是给上层看的信息；能不能重试由 Retry 的规则决定，不在这里下结论。
 const classifyError = (error, timeout) => {
     if (error?.kind) return error                                // 已经分过类，不重复贴。
     if (timeout?.aborted) error.kind = 'timeout'                 // 我们自己的限时先判，避免被当成用户取消。
@@ -224,7 +222,6 @@ const classifyError = (error, timeout) => {
     else if (error.statusCode >= 500) error.kind = 'server'
     else if (error.statusCode >= 400) error.kind = 'request'     // 4xx 里的参数、格式、鉴权之外的问题。
     else error.kind = 'unknown'                                  // 服务说成功（2xx）但回答对不上格式：不是调用方传错了，不能贴成 request。
-    if (error.kind === 'timeout' && error.isRetryable === undefined) error.isRetryable = true // 超时是瞬时故障，交给 Retry 决定。
     return error
 }
 
@@ -249,8 +246,10 @@ const chat = async ({
     onLLMEvent,           // 流式事件回调。
     onLLMStart,           // 每次真实请求前回调，重试也算一次。
     onRetry,              // 重试通知回调。
+    retryBaseDelay,       // 第一次退避基数（毫秒）。
     retryMaxDelay,        // 重试退避上限（毫秒）。
     retryMaxElapsed,      // 重试总时长上限（毫秒）。
+    retry,                // 调用方过滤不想重试的错误。
     signal,               // 取消信号。
     provider = {},        // AI SDK 生成参数整包，headers / body 单独取出来。
 }) => {
@@ -319,7 +318,8 @@ const chat = async ({
                 try { return await once() }
                 catch (error) { throw classifyError(error, attempt) } // 分类只在这里做一次，流式和非流式共用同一个出口。
             },
-            signal, onRetry, maxDelay: retryMaxDelay, maxElapsed: retryMaxElapsed,
+            signal, onRetry,
+            baseDelay: retryBaseDelay, maxDelay: retryMaxDelay, maxElapsed: retryMaxElapsed, retry,
         })
     } catch (error) { throw classifyError(error, null) } // 退避等待期被取消时，p-retry 直接抛 AbortError，不经过 operation；这里别再拿上一笔的旧限时信号判成 timeout。
 }

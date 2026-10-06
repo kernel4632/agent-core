@@ -184,7 +184,7 @@ describe('三种 toolMode 跑完整的 Agent 循环', () => {
         const { server, requests } = plainChatModel()
         try {
             const tools = await Agent.tool.scan(TOOLS)
-            const agent = Agent.create({ config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'plain-auto', stream: false, toolMode: 'auto', noToolRounds: 1 }, tools }) // 兼容降级是主动打开的开关，不是默认行为。
+            const agent = Agent.create({ config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'plain-auto', stream: false, toolMode: 'auto', noToolRounds: 1, retryBaseDelay: 20, retryMaxElapsed: 300 }, tools }) // 不关重试：默认"全重试"下工具被拒也必须立刻降级；若没把"工具被拒"并进过滤，这里会重试到 300ms 后抛错，断言失败。
             const answer = await agent.send('回显你好')
 
             expect(answer.text).toBe('答案是 done:你好。')

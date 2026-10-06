@@ -3,7 +3,8 @@
 
 这个文件里的测试全都建立在一条契约上：LLM.chat 要么返回一份完整结果，
 要么把供应商给的原始错误原样抛出去。中间不存在"这次回答其实失败了但看起来像成功"的状态。
-"能不能重试"也只有一个来源——错误自己带的 isRetryable，这里不照着状态码再判断一遍。
+"能不能重试"由 Retry 的规则统一决定：除取消和上下文超长外，默认所有错误都重试，
+调用方可以用 retry 过滤掉不想重试的错误。
 */
 
 import { expect, test, describe, afterAll } from 'bun:test'
@@ -36,9 +37,9 @@ describe('LLM 边界', () => {
         expect(LLM.chat(call({ stream: true, ...noRetry }))).rejects.toThrow() // 以前它会返回一个空文本的"成功"结果，上层完全看不出请求失败过。
     })
 
-    test('抛出来的错误带着 AI SDK 的可重试标记，Retry 才认得出', async () => {
+    test('抛出来的错误带着稳定的 kind，上层能按它分支', async () => {
         const error = await LLM.chat(call({ stream: true, ...noRetry })).catch(caught => caught)
-        expect(error.isRetryable).toBe(true) // 503 该重试；以前这里是 AI_NoOutputGeneratedError，没有这个字段，重试从来不会发生。
+        expect(error.kind).toBe('server') // 503 归到 server；重试与否不再看 isRetryable，由 Retry 的规则决定。
     })
 
     test('一直失败也会在时间预算内收手，不会永远重试', async () => {
@@ -131,7 +132,7 @@ describe('请求里到底发了什么', () => {
         // 所以接住它，再看真正发出去的请求体。
         const tools = (await Tool.scan(TOOLS)).schema
         recorded.length = 0
-        await LLM.chat({ baseURL: `http://127.0.0.1:${echo.port}/v1`, apiKey: 'k', model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: false, tools, provider: { toolChoice: 'required' } }).catch(() => {})
+        await LLM.chat({ baseURL: `http://127.0.0.1:${echo.port}/v1`, apiKey: 'k', model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: false, tools, provider: { toolChoice: 'required' }, ...noRetry }).catch(() => {}) // noRetry：假服务不调工具会抛 ToolChoiceViolationError，默认全重试会一直重试。
         expect(recorded[0].tool_choice).toBe('required')
     })
 
@@ -373,8 +374,7 @@ describe('单笔请求限时与错误分类', () => {
         const started = Date.now()
         const error = await LLM.chat(hang({ stream: false, ...timeout })).catch(caught => caught)
 
-        expect(error.kind).toBe('timeout')
-        expect(error.isRetryable).toBe(true)                 // 超时是瞬时故障，交给 Retry 决定要不要再来一次。
+        expect(error.kind).toBe('timeout') // 超时是瞬时故障，默认会重试；能不能重试由 Retry 的规则决定，不在这里断言。
         expect(Date.now() - started).toBeLessThan(3000)
     })
 
@@ -433,7 +433,7 @@ describe('单笔请求限时与错误分类', () => {
             const result = await LLM.chat({
                 baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm',
                 messages: [{ role: 'user', content: 'hi' }], stream: false,
-                requestTimeout: 500, retryMaxElapsed: 20000,
+                requestTimeout: 500, retryMaxElapsed: 20000, retryBaseDelay: 1000,
             })
 
             expect(result.text).toBe('成功') // 第二轮没有被上一轮的旧定时器掐断。
@@ -466,11 +466,106 @@ describe('单笔请求限时与错误分类', () => {
         } finally { server.stop(true) }
     })
 
-    test('分类只加信息，不改"能不能重试"的唯一来源', async () => {
+    test('分类只加信息，不影响重试规则', async () => {
         const server = Bun.serve({ port: 0, fetch: () => Response.json({ error: { message: 'x' } }, { status: 400 }) })
         try {
             const error = await LLM.chat({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: false, ...noRetry }).catch(caught => caught)
-            expect(error.isRetryable).toBe(false) // 参数错误本来就不该重试，分类之后也不能变成可重试。
+            expect(error.kind).toBe('request') // 分类照旧；能不能重试改由 Retry 的新规则决定，这里不再断言 isRetryable。
+        } finally { server.stop(true) }
+    })
+})
+
+
+/*
+重试规则照抄 Roo Code：除"取消"和"上下文超长"外，默认任何错误都重试；调用方可用 retry 过滤。
+时间压到毫秒级（retryBaseDelay: 0/50）让这些用例可测，不断言默认 5 秒基数本身的墙钟时间。
+*/
+describe('重试规则', () => {
+    // 一直报同一个错的假服务，count() 看它被打了多少次。
+    const repeat = (status, message = 'x') => {
+        let calls = 0
+        const server = Bun.serve({ port: 0, fetch: () => { calls += 1; return Response.json({ error: { message } }, { status }) } })
+        return { server, count: () => calls }
+    }
+    // 第一次失败、第二次成功的假服务，用来证明"4xx 现在也会重试"。
+    const okAfter = (status, message = 'x') => {
+        let calls = 0
+        const server = Bun.serve({
+            port: 0,
+            fetch() {
+                calls += 1
+                if (calls === 1) return Response.json({ error: { message } }, { status })
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '好了' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        return { server, count: () => calls }
+    }
+    const req = (port, extra) => ({ baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: false, retryBaseDelay: 0, ...extra })
+
+    test('默认会重试 4xx：第一次 400、第二次成功', async () => {
+        const { server, count } = okAfter(400)
+        try {
+            const result = await LLM.chat(req(server.port, {}))
+            expect(result.text).toBe('好了')
+            expect(count()).toBe(2) // 400 属于永久错误，但新规则默认也重试。
+        } finally { server.stop(true) }
+    })
+
+    test('retry 传函数：返回 false 的错误不重试', async () => {
+        const { server, count } = repeat(400)
+        try {
+            const error = await LLM.chat(req(server.port, { retry: caught => caught.statusCode !== 400 })).catch(caught => caught)
+            expect(error.statusCode).toBe(400)
+            expect(count()).toBe(1)
+        } finally { server.stop(true) }
+    })
+
+    test('retry.skipCodes 命中时不重试', async () => {
+        const { server, count } = repeat(400)
+        try {
+            const error = await LLM.chat(req(server.port, { retry: { skipCodes: [400] } })).catch(caught => caught)
+            expect(error.statusCode).toBe(400)
+            expect(count()).toBe(1)
+        } finally { server.stop(true) }
+    })
+
+    test('retry.skipText 正则命中时不重试', async () => {
+        const { server, count } = repeat(400, '上游说 forbidden')
+        try {
+            const error = await LLM.chat(req(server.port, { retry: { skipText: /forbidden/ } })).catch(caught => caught)
+            expect(error.statusCode).toBe(400)
+            expect(count()).toBe(1)
+        } finally { server.stop(true) }
+    })
+
+    test('retry.skipKinds 命中时不重试（401 归到 auth）', async () => {
+        const { server, count } = repeat(401)
+        try {
+            const error = await LLM.chat(req(server.port, { retry: { skipKinds: ['auth'] } })).catch(caught => caught)
+            expect(error.kind).toBe('auth')
+            expect(count()).toBe(1)
+        } finally { server.stop(true) }
+    })
+
+    test('取消永不重试（即使默认全重试）', async () => {
+        const { server, count } = repeat(503)
+        const controller = new AbortController()
+        setTimeout(() => controller.abort(), 50)
+        try {
+            const error = await LLM.chat(req(server.port, { retryBaseDelay: 300, signal: controller.signal })).catch(caught => caught)
+            expect(error.kind).toBe('aborted')
+            expect(count()).toBe(1) // 第一次失败后在退避等待期被取消，没有发出第二次请求。
+        } finally { server.stop(true) }
+    })
+
+    test('退避基数由 retryBaseDelay 透传（压到毫秒级验证）', async () => {
+        const { server, count } = okAfter(503)
+        const started = Date.now()
+        try {
+            const result = await LLM.chat(req(server.port, { retryBaseDelay: 50 }))
+            expect(result.text).toBe('好了')
+            expect(count()).toBe(2)
+            expect(Date.now() - started).toBeGreaterThanOrEqual(40) // 确实等过一次退避，而不是立刻重发。
         } finally { server.stop(true) }
     })
 })

@@ -647,11 +647,39 @@ import Agent from '@kernel4632/agent-core'
 | `output` | `undefined` | 结构化输出格式，例如 `Agent.output.object({ schema })`；不写就返回普通文字 |
 | `maxSteps` | `undefined` | 默认不限制模型轮数；主动设置正整数后，到上限先保存这一轮的工具结果，再返回 `step-limit` |
 | `maxToolConcurrency` | `undefined` | 默认不限制**文件工具**的并发；主动设置后超出的排队。内存工具（`Agent.tool.adopt` / MCP）在主进程直接跑，不受这个上限约束 |
-| `retryMaxDelay` | `undefined` | 默认不限制单次退避时间；主动设置后限制毫秒数 |
-| `retryMaxElapsed` | `undefined` | 默认不限制重试总时长；主动设置后到点把错误交给上层（毫秒） |
+| `retryBaseDelay` | `5000` | 第一次退避的基数（毫秒），之后每次 ×2：5s、10s、20s…（照抄 Roo Code） |
+| `retryMaxDelay` | `600000` | 单次退避上限（毫秒），到顶就按这个值等待、不再增长（默认 10 分钟，照抄 Roo Code） |
+| `retryMaxElapsed` | `undefined` | 默认不限重试总时长；主动设置毫秒数后，到点把错误交给上层 |
+| `retry` | `undefined` | 调用方过滤不想重试的错误，见下方「重试规则」。不设＝默认全重试 |
 | `requestTimeout` | `undefined` | 默认不限制单笔请求时长；主动设置毫秒数后，卡住的一笔会被中断 |
 | `noToolPrompt` | 一条"请继续使用工具"的提醒 | 有工具但模型连续不调时，在结束前一轮临时发给模型；只挂在那一次请求上，不写进 `history`。设成 `''` 就不提醒 |
 | `noToolRounds` | `3` | 有工具时，连续多少轮不调工具就结束一次 `send`；设成 `1` 就是模型不调工具即结束，设成 `Infinity` 就永不因不调工具结束。没注册工具时一轮就结束，不受它影响 |
+
+### 重试规则
+
+失败的重试由底层统一处理，默认行为照抄 Roo Code：**除"取消"和"上下文超长"外，任何错误都会重试**（401、400、格式错误都算），次数不限，也不设总时长上限；退避按 `retryBaseDelay × 2` 增长，单次最长到 `retryMaxDelay` 封顶。上下文超长不走重试，而是先压缩上下文再重发这笔请求，最多 3 次。取消（`agent.stop()` 或传 `signal`）永远不重试。
+
+想收口或过滤，用三个配置：
+
+```js
+const agent = Agent.create({
+    config: {
+        retryBaseDelay: 5000,      // 第一次等待 5s，之后 10s、20s…（默认）
+        retryMaxDelay: 600000,     // 单次等待最多 10 分钟（默认）
+        retryMaxElapsed: 120000,   // 一直失败最多再试 2 分钟，到点把错误交给上层（默认不限）
+        // 只对"不想重试的错误"下手，命中即不重试：
+        retry: {
+            skipCodes: [400, 401],       // 按状态码
+            skipKinds: ['auth'],         // 按 error.kind：aborted/auth/limit/timeout/server/network/request/unknown
+            skipText: /invalid api key/i, // 按报错文字（字符串或正则）
+            shouldRetry: error => error.statusCode !== 422, // 自定义判断，返回 false＝不重试
+        },
+        // retry 也可以直接传一个函数：(error) => boolean，返回 false＝不重试
+    },
+})
+```
+
+`retry` 属于 **整份替换**（和 `provider` 一样，本次传了就用本次的整份，不与上次合并）。
 
 陌生中转站建议先使用默认能力。遇到只支持文字、但接口声称兼容 OpenAI 的模型，可以按能力关闭：
 
@@ -688,7 +716,7 @@ const agent = Agent.create({
 })
 ```
 
-在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的 send 继续生效。合并规则分三种：`provider` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxTokens` 是上下文预算，和 `provider.maxOutputTokens`（单次生成量）不是一回事。
+在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的 send 继续生效。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxTokens` 是上下文预算，和 `provider.maxOutputTokens`（单次生成量）不是一回事。
 
 `cache` 默认开启。四种协议各按自己的方式让服务端复用固定的开头（system、工具描述、历史），命中后那部分不再重新计算，长会话能明显变快、变便宜：
 
@@ -885,7 +913,7 @@ app.get('/chat', async request => {
 
 要取消某次运行，给 `send` 传 `signal`（如 `request.signal`）或调用 `agent.stop()`，两者都能终止。
 
-模型请求失败时抛出的错误带一个稳定的 `kind`：`aborted`（用户取消）、`auth`（密钥或权限，401/403）、`limit`（限流，429）、`timeout`（单笔超时或 408）、`server`（5xx）、`network`（没连上）、`request`（其余 4xx）、`unknown`（服务返回成功状态码，但回答格式对不上，常见于不完全兼容的中转站）。上层靠它决定该换模型、该等一下还是该直接报错，不用去认 AI SDK 的内部错误形状。`kind` 只补充信息，能不能重试仍然只由错误自己的 `isRetryable` 决定。
+模型请求失败时抛出的错误带一个稳定的 `kind`：`aborted`（用户取消）、`auth`（密钥或权限，401/403）、`limit`（限流，429）、`timeout`（单笔超时或 408）、`server`（5xx）、`network`（没连上）、`request`（其余 4xx）、`unknown`（服务返回成功状态码，但回答格式对不上，常见于不完全兼容的中转站）。上层靠它决定该换模型、该等一下还是该直接报错，不用去认 AI SDK 的内部错误形状。`kind` 只补充信息；能不能重试由 Retry 的规则统一决定（见上方「重试规则」），默认除取消和上下文超长外都重试，调用方可用 `retry` 过滤。
 
 #### `agent.compact(options?)`
 
@@ -1012,7 +1040,7 @@ console.log(output.total)
 
 `Agent.output` 是包内 AI SDK 的 Output，`Agent.schema` 是包内 Zod，无需另装一套。数组可用 `Agent.output.array({ element: Agent.schema.string() })`，普通 JSON 可用 `Agent.output.json()`。所选模型服务须支持对应输出格式。
 
-有工具时先完成工具调用，再读取最终对象。工具轮、`tool-stop` 或轮数用尽不会凭空产生 `output`。最终对象校验成功立即结束；格式错误直接抛出，不当成网络故障无限重试。手动及自动压缩只生成文本总结，不继承任务的对象格式。流式和非流式都在最终结果上提供 `output`；流中仍会有生成时的文字片段。
+有工具时先完成工具调用，再读取最终对象。工具轮、`tool-stop` 或轮数用尽不会凭空产生 `output`。最终对象校验成功立即结束；格式错误默认也会重试（重新生成不保证还是坏的），想让它立刻失败可用 `retry` 过滤或收紧 `retryMaxElapsed`。手动及自动压缩只生成文本总结，不继承任务的对象格式。流式和非流式都在最终结果上提供 `output`；流中仍会有生成时的文字片段。
 
 直接使用底层 LLM，绕过 Agent 循环。
 
@@ -1111,7 +1139,7 @@ History.turns(agent.history)   // 折成回合：[[user], [assistant, tool], [us
 | `maxToolOutput` | 不截断 | 工具输出不截断有 31 万 token 风险：一个 1MB 的文本（`cat` 一个日志文件）就够，超过多数模型的整个窗口，还会永久留在历史里，压缩也救不回来。设个字符数，比如 `32000`。 |
 | `maxToolConcurrency` | 不限制 | 默认不限文件工具并发：模型偶尔一轮返回几十个工具调用，会瞬间起几十个进程。设个上限，比如 `8`。 |
 | `requestTimeout` | 不限制 | 默认不限单笔时长：卡住的请求会一直等下去。设毫秒数，到点中断这一笔。 |
-| `retryMaxElapsed` | 不限制 | 默认不限重试总时长，等于无限重试。设毫秒数，到点把错误交给上层。 |
+| `retryMaxElapsed` | 不限制 | 默认重试所有错误且无总上限，等于无限重试。生产建议设毫秒数收口，或用 `retry` 过滤掉不该重试的错误（如 `auth`、`request`）。 |
 | `maxTokens` | `128000` | 上下文预算，要按你模型的窗口调。比窗口大会撑爆，比需求小会频繁压缩。 |
 
 ## 可观测性

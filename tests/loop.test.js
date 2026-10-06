@@ -278,6 +278,32 @@ describe('压缩这条路径', () => {
         expect(calls).toBeLessThan(20) // 修之前这里 3 秒能跑出 5500 次真实模型请求。
         compacting.stop(true)
     })
+
+    test('上下文超长：强制压缩一次后重发这笔请求（照抄 Roo Code）', async () => {
+        let calls = 0
+        const compacts = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                calls += 1
+                if (JSON.stringify(body.messages).includes('压缩成一段总结')) {
+                    return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '这是总结' }, finish_reason: 'stop' }], usage: {} })
+                }
+                if (calls === 1) return Response.json({ error: { message: 'context length exceeded' } }, { status: 400 }) // 第一次说窗口放不下。
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '最终回答' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        try {
+            const agent = Agent.create({
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, retryMaxElapsed: 0 }, // 超长不靠重试，靠 Loop 压缩。
+                callbacks: { onCompact: event => compacts.push(event.type) },
+            })
+            const answer = await agent.send('你好')
+            expect(answer.text).toBe('最终回答')                                      // 压缩后重发这笔请求成功。
+            expect(compacts.filter(type => type === 'compact-finish')).toHaveLength(1) // 压缩确实被调用过一次。
+        } finally { server.stop(true) }
+    })
 })
 
 

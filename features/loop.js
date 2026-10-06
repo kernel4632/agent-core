@@ -25,7 +25,8 @@ const result = await Loop.run({
         stream: true,              // 主请求和压缩都流式输出
         noToolPrompt: "请继续使用工具", // 示例；Agent 默认会传一段更长的提醒（见 index.js）
         noToolRounds: 3,           // 有工具时连续多少轮不调工具就结束；Infinity 表示永不因此结束
-        retryMaxDelay: undefined,   // 重试退避上限（毫秒）。重试是 LLM.chat 自带的，压缩那次请求也走同一套。
+        retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；压缩那次请求也走同一套。
+        retryMaxDelay: 600000,      // 重试退避上限（毫秒）；压缩那次请求也走同一套。
     },
     // --- 功能模块（必填，平齐的功能模块作为参数传）---
     buildContext: Context.build,       // 上下文构建模块
@@ -56,7 +57,12 @@ import History from './history.js'
 import LLM from './llm.js'
 import TextTools from './text-tools.js'
 import Notify from '../utils/notify.js'
+import Retry from '../utils/retry.js'                                          // 复用它的重试过滤判据，auto 降级用同一份。
+import isContextWindowError from '../utils/context-error.js' // 上下文超长的判据，Retry 用同一份。
 import { createMeter, modelKey } from '../utils/tokens.js'
+
+// 上下文超长时最多"压缩后重发"几次（照抄 Roo Code 的 MAX_CONTEXT_WINDOW_RETRIES）。
+const CONTEXT_WINDOW_RETRIES = 3
 
 const aborted = () => Object.assign(new DOMException('Agent loop aborted', 'AbortError'), { kind: 'aborted' }) // 取消错误也带 kind，调用方能和模型错误一样按 error.kind 分支。
 
@@ -95,8 +101,15 @@ const ask = async (request, llm) => {
     const byText = async () => TextTools.read(await LLM.chat({ ...request, messages: TextTools.wrap(messages, spec), tools: undefined }), spec, { loose: true })
 
     if (textual) return byText()
+
+    // auto 模式要能在"接口拒收工具字段"时降级成文字协议。但默认是"除取消和上下文超长外全重试"，
+    // 那个 400 会被一直重试、永远轮不到下面的 catch。所以把"工具被拒"并进调用方的重试过滤：
+    // 命中就立刻抛出，交给 catch 改用文字协议；user 自己的过滤也一起保留。
+    const native = llm.toolMode === 'auto' && spec
+        ? { ...request, retry: error => !TextTools.refused(error) && !Retry.declines(llm.retry, error) }
+        : request
     try {
-        const result = await LLM.chat(request)
+        const result = await LLM.chat(native)
         return spec ? TextTools.read(result, spec) : result // auto 下原生没给调用时，模型可能把调用写成了文字。
     } catch (error) {
         if (llm.toolMode !== 'auto' || !spec || request.signal?.aborted || !TextTools.refused(error)) throw error
@@ -142,11 +155,26 @@ const run = async ({
         // --- 请求模型 ---
         // 重试不在这里：它是 LLM.chat 自带的，压缩那次请求走的是同一条路、同一套退避。
         if (signal?.aborted) throw aborted()
-        const request = { ...llm, messages: temporaryPrompt ? [...context.messages, History.user({ content: temporaryPrompt })] : context.messages, tools, signal, onLLMEvent, onLLMStart, onRetry } // 临时提示只挂在本次请求上。
-        const result = await ask(request, llm)
+        // 上下文超长专项（照抄 Roo Code）：模型说"窗口放不下"时，先强制压缩一次再把这一笔请求重发，
+        // 最多重试 CONTEXT_WINDOW_RETRIES 次；超过就按普通错误抛出。这是每轮自动压缩之外的兜底。
+        const buildRequest = () => ({ ...llm, messages: temporaryPrompt ? [...context.messages, History.user({ content: temporaryPrompt })] : context.messages, tools, signal, onLLMEvent, onLLMStart, onRetry }) // 临时提示只挂在本次请求上。
+        let result
+        let sent
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                sent = buildRequest()                        // 每次重发都用最新重建的 messages。
+                result = await ask(sent, llm)
+                break
+            } catch (error) {
+                if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
+                const content = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 强制压缩一次。
+                history.push(History.compact({ content }))   // 总结写回 history（只增不删）。
+                context = buildContext({ history, system, tools, budget: llm.maxTokens, ratio: meter.ratio(key) }) // 用压缩后的历史重建上下文。
+            }
+        }
         steps += 1            // 模型完整回答后才算这一轮，失败重试由 LLM.chat 自己处理。
         add(usage, result.usage)
-        meter.observe(key, { messages: request.messages, tools }, result.usage?.inputTokens) // 用这个模型刚回的真实输入 token 数校准"每字符 token 比"，越用越准。
+        meter.observe(key, { messages: sent.messages, tools }, result.usage?.inputTokens) // 用这个模型刚回的真实输入 token 数校准"每字符 token 比"，越用越准。
         await Notify.tell(onLLMFinish, result) // 上层拿到完整 result，自行选择 usage 或其他字段。
         const answer = { text: result.text, ...('output' in result ? { output: result.output } : {}), steps, usage: { ...usage } } // 最终对象和文字来自同一轮，不能从旧历史猜结果。用量是到这一轮为止的合计。
         temporaryPrompt = null      // 提示已经用过，下一轮默认不再携带。

@@ -10,42 +10,71 @@ const result = await Retry.run({
     // 重试通知回调，UI 靠它显示"正在重试"
     onRetry: (info) => {},
 
-    // 重试退避时间上限（毫秒），不设就不限制单次等待
-    maxDelay: 60000,
+    // 第一次退避基数（毫秒），默认 5000（照抄 Roo Code 的 5 秒），后续按 ×2 递增
+    baseDelay: 5000,
 
-    // 一直失败最多再试多久（毫秒），不设就不限时
-    maxElapsed: 300000,
+    // 单次退避上限（毫秒），默认 600000（照抄 Roo Code 的 600 秒封顶）
+    maxDelay: 600000,
+
+    // 一直失败最多再试多久（毫秒），默认不限（Roo 没有总上限）
+    maxElapsed: Infinity,
+
+    // 调用方过滤不想重试的错误；函数或 { skipCodes, skipText, skipKinds, shouldRetry }
+    retry: undefined,
 })
- */
+*/
 
 import pRetry from 'p-retry'
-import Notify from './notify.js' // 重试通知统一从这里调用，出错不影响重试。
+import Notify from './notify.js'                 // 重试通知统一从这里调用，出错不影响重试。
+import isContextWindowError from './context-error.js' // 上下文超长不在这一层重试，交给 Loop 压缩后重发。
 
-// "这个错误能不能重试"由抛错的人说了算：LLM.chat 抛的是 AI SDK 的原始 APICallError，
-// 它自己带着 isRetryable（429、408、5xx、连接失败都为真）。这里不再照着状态码重新判断一遍，
-// 否则同一件事会有两套标准，而且一旦 AI SDK 换了错误形状，这里就会静默失效。
-const isRetryable = error => {
-    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') return false // 用户主动取消不是失败，不该重试。
-    return error?.isRetryable === true
+// 取消不是失败，永远不重试。三种形状都认，和项目其它地方的取消标记保持一致。
+const isAbort = error => error?.name === 'AbortError' || error?.code === 'ABORT_ERR' || error?.kind === 'aborted'
+
+// 调用方过滤：返回 true 表示"这个错误不要重试"。
+// 支持两种写法——函数直接对错误下判断；对象则命中任一 skip 维度、或 shouldRetry 返回 false 即停手。
+// 导出给 Loop 用：auto 降级要把"工具被接口拒收"并进这套过滤，判据只写一处。
+const declines = (retry, error) => {
+    if (!retry) return false
+    if (typeof retry === 'function') return retry(error) === false
+    if (typeof retry.shouldRetry === 'function' && retry.shouldRetry(error) === false) return true
+    if (Array.isArray(retry.skipCodes) && retry.skipCodes.includes(error?.statusCode)) return true
+    if (Array.isArray(retry.skipKinds) && retry.skipKinds.includes(error?.kind)) return true
+    if (retry.skipText) {
+        const text = `${error?.message ?? ''} ${error?.responseBody ?? ''}`                 // 过滤只在这两处文字上找，够常用。
+        const hit = retry.skipText instanceof RegExp ? retry.skipText.test(text) : text.includes(String(retry.skipText))
+        if (hit) return true
+    }
+    return false
 }
 
-const run = async ({ operation, signal, onRetry, maxDelay = Infinity, maxElapsed = Infinity }) => {
-    // 上界是时间，不是次数。常驻 agent 遇到瞬时故障应该一直试下去，但"服务挂了一整天"也得有个头——
-    // 不设头的话调用方既不 resolve 也不 reject，上层连"出事了"都不知道，没法退避、告警或换模型。
-    // 时间预算直接用 p-retry 的 maxRetryTime（它内部走单调时钟，不受系统改时间影响），不再自己算截止时刻。
+// --- 决策顺序照抄 Roo Code ---
+// 1. 取消 → 不重试；2. 上下文超长 → 不在这里重试（抛上去由 Loop 压缩后重发）；
+// 3. 调用方过滤说停 → 不重试；4. 其余一律重试（没有 isRetryable 这套分类，也没有总次数上限）。
+const shouldRetry = (error, retry) => {
+    if (isAbort(error)) return false
+    if (isContextWindowError(error)) return false
+    if (declines(retry, error)) return false
+    return true
+}
+
+const run = async ({ operation, signal, onRetry, baseDelay = 5000, maxDelay = 600000, maxElapsed = Infinity, retry }) => {
+    // 次数不设限，上界交给 maxElapsed（Roo 就是"一直重试直到被取消或上下文超长"）。
+    // 退避用 p-retry 的指数公式：min(round(base × 2^(n-1)), maxDelay)，正好是 5、10、20…直到封顶。
     const options = {
-        retries: Infinity,                        // 次数不设限，由 maxRetryTime 收口。
+        retries: Infinity,                        // 次数不设限，由 maxElapsed 收口（默认 Infinity＝不限）。
         signal,                                   // p-retry 会在请求之间和等待期间响应用户取消。
-        minTimeout: 1000,                         // 第一次等待一秒，后续自动按指数增长。
-        maxRetryTime: maxElapsed,                 // 一直失败最多再试多久（毫秒）。
+        minTimeout: baseDelay,                    // 第一次等待的基数（默认 5000ms）。
+        factor: 2,                                // 后续每次等待翻倍。
+        maxRetryTime: maxElapsed,                 // 一直失败最多再试多久；Infinity 表示不限。
         shouldRetry: async ({ error, attemptNumber, retryDelay }) => {
-            if (!isRetryable(error)) return false  // 不能重试的错误立刻收手，把原始错误交给上层。
+            if (!shouldRetry(error, retry)) return false // 取消、上下文超长、调用方过滤都立刻收手，把原始错误交给上层。
             await Notify.tell(onRetry, { attempt: attemptNumber, error, delay: retryDelay }) // 让上层能显示"正在重试第几次"。
             return true
         },
     }
-    if (Number.isFinite(maxDelay)) options.maxTimeout = maxDelay // 只有调用方明确设了上限才限制单次等待（毫秒）。
+    if (Number.isFinite(maxDelay)) options.maxTimeout = maxDelay // 只有给出有限上限时才封顶单次等待（毫秒）。
     return pRetry(operation, options) // 交回重试库执行，结果或错误原样向上传。
 }
 
-export default { run }
+export default { run, declines }
