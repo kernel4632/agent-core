@@ -28,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0            # 取全历史：发布说明要按"上一个标签..本标签"列出这次的提交
+          fetch-tags: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -48,6 +51,7 @@ jobs:
 
       # 建 Release；万一这个标签已经建过（重复触发），改成补传附件，不报错。
       # 幂等是这个任务该有的性质：同样一个标签跑几次，结果都一样。
+      # 发布说明按"上一个标签..本标签"的提交自动生成，每个版本写自己的更新，不再是一段固定介绍。
       - name: 建 Release（已存在就补传附件）
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,9 +60,13 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else
+            prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+            if [ -n "$prev" ]; then range="$prev..$GITHUB_REF_NAME"; else range="$GITHUB_REF_NAME"; fi
+            notes="$(git log --no-merges --pretty=format:'- %s' "$range")"   # 本次从上一个标签到现在的提交，就是这一版的更新说明。
+            [ -n "$notes" ] || notes="发布 $GITHUB_REF_NAME"
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
               --title "$GITHUB_REF_NAME" \
-              --notes "轻量的 AI Agent 核心：给它模型地址和工具（文件目录或内存对象），自动循环「问模型 → 执行工具 → 再问模型」。支持 OpenAI Chat / Responses、Anthropic、Gemini 四种协议，上下文压缩保留、提示词缓存；纯对话模型也能用工具。"
+              --notes "$notes"
           fi
 
       # --- 发布到 npm（Trusted Publishing，免 token / 验证码）---

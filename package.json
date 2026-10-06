@@ -1,6 +1,6 @@
 {
   "name": "@kernel4632/agent-core",
-  "version": "0.25.0",
+  "version": "0.25.1",
   "description": "轻量的 AI Agent 核心：给它模型地址和工具（文件目录或内存对象），自动循环「问模型 → 执行工具 → 再问模型」。支持 OpenAI Chat / Responses、Anthropic、Gemini 四种协议，上下文压缩保留、提示词缓存，纯对话模型也能用工具。",
   "keywords": ["agent", "ai", "llm", "tool-calling", "bun", "openai", "anthropic", "gemini", "ai-sdk"],
   "license": "MIT",
