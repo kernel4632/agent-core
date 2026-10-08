@@ -53,7 +53,8 @@ export interface Config {
     mediaFallback?: 'error' | 'strip'
     provider?: Record<string, any>
     maxToolOutput?: number
-    maxTokens?: number
+    maxTokens?: number            // 单次生成的最大输出 token，映射到请求体的 maxOutputTokens；不设＝不限。provider.maxOutputTokens 显式设置时优先。
+    maxContextTokens?: number     // 上下文预算；估算的上下文达到它的 compactThreshold 比例时自动压缩。默认 128000，设 Infinity 关闭自动压缩。
     compactThreshold?: number
     compact?: Partial<Config>
     output?: any
@@ -103,10 +104,10 @@ export interface Callbacks {
     onCompact?: (event: any) => void | Promise<void>
 }
 
-// --- 工具集合：scan / adopt / merge 都返回这个形状 ---
+// --- 工具集合：scan / adopt / merge / pick / omit 都返回这个形状 ---
 export interface ToolSet {
-    schema: Record<string, any>
-    handlers: Record<string, any>
+    schema: Record<string, { name?: string; description?: string; inputSchema?: any; [key: string]: any }>
+    handlers: Record<string, any>   // 执行器内部形状，不要自己构造，原样传回 merge/pick/omit
 }
 
 // 内存工具对象的形状（AI SDK tool() 产物、MCP client.tools() 的单项都符合这个形状）
@@ -146,6 +147,8 @@ export interface ToolModule {
         concurrency?: number
     }) => Promise<{ output: any; stop?: boolean; error?: string; interrupted?: boolean }>
     merge: (...sets: ToolSet[]) => ToolSet
+    pick: (set: ToolSet, names: string[]) => ToolSet
+    omit: (set: ToolSet, names: string[]) => ToolSet
 }
 
 // --- 历史块 ---

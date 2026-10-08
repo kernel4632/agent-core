@@ -136,7 +136,7 @@ describe('常驻加固', () => {
     })
 
     test('默认带上下文预算（自动压缩开启），工具输出上限默认不设', () => {
-        expect(Agent.create().config.maxTokens).toBe(128000) // 默认压缩；设 Infinity 关闭。
+        expect(Agent.create().config.maxContextTokens).toBe(128000) // 默认压缩；设 Infinity 关闭。
         expect(Agent.create().config.maxToolOutput).toBeUndefined()
     })
 

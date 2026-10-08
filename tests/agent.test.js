@@ -120,7 +120,7 @@ describe('Agent 入口', () => {
         await expect(agent.send({ input: 'x', config: { noToolRounds: 0 } })).rejects.toThrow('noToolRounds')
         await expect(agent.send({ input: 'x', config: { compactThreshold: undefined } })).rejects.toThrow('compactThreshold') // undefined 会让压缩永远不触发。
         await expect(agent.send({ input: 'x', config: { compactThreshold: 0 } })).rejects.toThrow('compactThreshold')       // 0 会让每轮都触发。
-        await expect(agent.send({ input: 'x', config: { maxTokens: '1000' } })).rejects.toThrow('maxTokens')                 // 字符串会让压缩算不出来。
+        await expect(agent.send({ input: 'x', config: { maxContextTokens: '1000' } })).rejects.toThrow('maxContextTokens')       // 字符串会让压缩算不出来。
     })
 
     test('maxToolConcurrency 设成 Infinity 是合法的', async () => {
@@ -151,7 +151,7 @@ describe('Agent 入口', () => {
 
         expect(agent.config.maxToolOutput).toBe(2000)   // 这次改的。
         expect(agent.config.provider.temperature).toBe(0.1) // 没提的继续留着。
-        expect(agent.config.maxTokens).toBe(128000) // 默认带上上下文预算，自动压缩才会开启。
+        expect(agent.config.maxContextTokens).toBe(128000) // 默认带上上下文预算，自动压缩才会开启。
     })
 
     test('send 传的 compact 只覆盖写了的字段，其余保留', async () => {

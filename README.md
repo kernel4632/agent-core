@@ -641,7 +641,8 @@ import Agent from '@kernel4632/agent-core'
 | `mediaFallback` | `'error'` | 媒体能力关闭时的处理方式；改成 `'strip'` 后保留文字并丢掉不支持的媒体 |
 | `provider` | `{}` | AI SDK 的生成参数，整份交给 AI SDK；不设时用模型自己的默认值 |
 | `maxToolOutput` | `undefined` | 默认不截断工具输出；主动设置后超出部分从中间截断并告知模型 |
-| `maxTokens` | `128000` | 上下文预算，**默认开启自动压缩**：估算的上下文超过预算的 `compactThreshold` 比例时就压缩一次。设 `Infinity` 关闭。注意区别于 `provider.maxOutputTokens`（那是单次生成上限） |
+| `maxContextTokens` | `128000` | 上下文预算，**默认开启自动压缩**：估算的上下文超过预算的 `compactThreshold` 比例时就压缩一次。设 `Infinity` 关闭 |
+| `maxTokens` | `undefined` | 单次生成的最大输出 token，映射到请求体的 `maxOutputTokens`；不设＝不限。`provider.maxOutputTokens` 显式设置时优先于它 |
 | `compactThreshold` | `0.8` | 压缩触发比例，0.8 表示到达 80% 时压缩 |
 | `compact` | `undefined` | 压缩单独用一套模型时写在这里，例如 `{ model: '便宜的小模型' }`；不写就和主模型共用 |
 | `output` | `undefined` | 结构化输出格式，例如 `Agent.output.object({ schema })`；不写就返回普通文字 |
@@ -716,7 +717,7 @@ const agent = Agent.create({
 })
 ```
 
-在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的 send 继续生效。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxTokens` 是上下文预算，和 `provider.maxOutputTokens`（单次生成量）不是一回事。
+在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的 send 继续生效。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
 
 `cache` 默认开启。四种协议各按自己的方式让服务端复用固定的开头（system、工具描述、历史），命中后那部分不再重新计算，长会话能明显变快、变便宜：
 
@@ -985,7 +986,28 @@ Agent.tool.adopt(await mcpClient.tools())                                       
 
 `inputSchema` 可以是裸 JSON Schema、zod，或 AI SDK 的 `jsonSchema()`。`execute(input, { abortSignal })` 会收到取消信号（也接受别名 `signal`）。
 
-文件工具和内存工具可以合并：`Agent.tool.merge(await Agent.tool.scan('./tools'), Agent.tool.adopt(mcpTools))`，或者直接用 `Agent.tool.from('./tools', mcpTools)`（见上）。
+文件工具和内存工具可以合并：`Agent.tool.merge(await Agent.tool.scan('./tools'), Agent.tool.adopt(mcpTools))`，或者直接用 `Agent.tool.from('./tools', mcpTools)`（见上）。想从集合里取子集，用 `pick` / `omit`：
+
+```js
+const readonly = Agent.tool.pick(tools, ['read', 'glob'])   // 只留这两个工具
+const safe = Agent.tool.omit(tools, ['shell', 'write'])     // 去掉这些，其余全留
+const agent = Agent.create({ config, tools: safe })
+```
+
+`pick` / `omit` 的 `names` 是字符串数组，`schema` 和 `handlers` 会**一起筛**，不会出现"模型看不见、却还能被执行"的隐蔽状态。返回的是新集合，可以直接交给 `create` / `send` / `merge`，也可以继续 `pick` / `omit`。空集合或 `undefined` 集合也安全（返回空集合）。
+
+#### 工具集合里有什么
+
+`scan` / `adopt` / `merge` / `pick` / `omit` 都返回同一种 `{ schema, handlers }`，里面的东西：
+
+| 位置 | 是什么 |
+|------|--------|
+| `schema[name].name` | 工具名 |
+| `schema[name].description` | 给模型看的工具说明 |
+| `schema[name].inputSchema` | **已编译的校验器**（AI SDK 的 `jsonSchema()` 形态）；原始 JSON Schema 在 `inputSchema.jsonSchema` 里 |
+| `handlers[name]` | 执行器内部形状（文件工具是 `url`，内存工具是 `execute` 等）；**不要自己构造**，原样传回 `merge` / `pick` / `omit` 或 `Agent.tool.execute` |
+
+工具对象上的额外字段会被 `scan` / `adopt` 原样带进 `schema[name]`：比如工具自己声明 `touchesFiles: ['path']`，应用层就能从 `tools.schema[name].touchesFiles` 读到。注意 `schema` 是发给模型的那一份，别把不想让模型看到的内部标记放进去（`execute`、`toModelOutput`、`timeout` 不会被带进去，它们只留在 `handlers`）。
 
 **MCP 工具直接可用，不需要包装**：`@ai-sdk/mcp` 的 `client.tools()` 自带 `execute` 和 `toModelOutput`，核心按 AI SDK 的签名调用它们，文字、图片都会正确交给模型。完整接入例子见前面的[「接入 MCP 和技能」](#接入-mcp-和技能)。
 
@@ -995,11 +1017,13 @@ Agent.tool.adopt(await mcpClient.tools())                                       
 >
 > 从 0.19 升级：`onPermission` 的 `arguments` 字段改名为 `input`；结束原因多了一个 `'finished'`（没注册工具、或结构化输出已校验成功，原先是 `'no-tool'`）。工具对象的 `execute(input, { abortSignal })`、`toModelOutput({ output, input })` 现在按 AI SDK 签名调用。
 >
-> 从 0.21 升级：去掉了 `gpt-tokenizer`，上下文 token 改用**自校准估算**（字符数 × 每字符 token 比，比例由真实 `usage` 学到，跟着模型走）；`maxTokens` 默认变为 `128000`，**自动压缩默认开启**（想关掉设 `maxTokens: Infinity`）。产物从 ~3.9 MB 降到 ~1.3 MB。
+> 从 0.21 升级：去掉了 `gpt-tokenizer`，上下文 token 改用**自校准估算**（字符数 × 每字符 token 比，比例由真实 `usage` 学到，跟着模型走）；`maxContextTokens` 默认变为 `128000`，**自动压缩默认开启**（想关掉设 `maxContextTokens: Infinity`）。产物从 ~3.9 MB 降到 ~1.3 MB。
 >
-> 从 0.22 升级：内存工具声明的 `timeout` 现在真的生效；新增 `capabilities.usage`（关掉流式请求里的 `include_usage`）；`compactThreshold`、字符串型 `maxTokens` 等非法配置现在会在 `send` 入口报错。
+> 从 0.22 升级：内存工具声明的 `timeout` 现在真的生效；新增 `capabilities.usage`（关掉流式请求里的 `include_usage`）；`compactThreshold`、字符串型 `maxContextTokens` 等非法配置现在会在 `send` 入口报错。
 >
 > 从 0.23 升级：内存工具（`Agent.tool.adopt`）现在也支持 `async *execute` 流式输出，和文件工具一致；`Tool.from` 接受一组目录（字符串数组）；取消错误统一带 `error.kind === 'aborted'`。
+>
+> 从 0.25 升级（破坏性改名）：上下文预算 `maxTokens` 改名为 **`maxContextTokens`**；`maxTokens` 现在指**单次生成的最大输出** token（映射到请求体的 `maxOutputTokens`）。这是把名字拨回 OpenAI / Anthropic 的习惯（它们的 `max_tokens` 就是输出上限，不是上下文）。另外：`onPermission` 现在要求**严格返回布尔**——非 `true`（含对象、漏 `return`）一律按拒绝处理；新增 `Agent.tool.pick` / `Agent.tool.omit` 用来取工具子集（做只读模式用 `omit` 去掉写工具）。
 
 #### `Agent.tool.execute(options)`
 
@@ -1140,7 +1164,7 @@ History.turns(agent.history)   // 折成回合：[[user], [assistant, tool], [us
 | `maxToolConcurrency` | 不限制 | 默认不限文件工具并发：模型偶尔一轮返回几十个工具调用，会瞬间起几十个进程。设个上限，比如 `8`。 |
 | `requestTimeout` | 不限制 | 默认不限单笔时长：卡住的请求会一直等下去。设毫秒数，到点中断这一笔。 |
 | `retryMaxElapsed` | 不限制 | 默认重试所有错误且无总上限，等于无限重试。生产建议设毫秒数收口，或用 `retry` 过滤掉不该重试的错误（如 `auth`、`request`）。 |
-| `maxTokens` | `128000` | 上下文预算，要按你模型的窗口调。比窗口大会撑爆，比需求小会频繁压缩。 |
+| `maxContextTokens` | `128000` | 上下文预算，要按你模型的窗口调。比窗口大会撑爆，比需求小会频繁压缩。 |
 
 ## 可观测性
 
@@ -1244,7 +1268,7 @@ const agent = Agent.create({ config: { /* ... */ }, tools })
 |---|---|
 | `Agent.version` | 包版本，排查问题时报得出来 |
 | `Agent.create(...)` | 创建 Agent 实例 |
-| `Agent.tool` | `.from()` / `.scan()` / `.adopt()` / `.execute()` / `.merge()` |
+| `Agent.tool` | `.from()` / `.scan()` / `.adopt()` / `.execute()` / `.merge()` / `.pick()` / `.omit()` |
 | `Agent.history` | `.user()` / `.assistant()` / `.tool()` / `.compact()` 造消息块；`.turns()` / `.render()` 读历史 |
 | `Agent.context` | `.build()` |
 | `Agent.compact` | `.run()` |
@@ -1316,7 +1340,7 @@ const agent = Agent.create({ config: { /* ... */ }, tools })
 
 **Q：上下文太长会怎样？**
 
-上下文超过 `config.maxTokens` 的 `compactThreshold`（默认 0.8，即 80%）时，Loop 会自动调用 Compact 把历史压缩成一段总结，然后继续运行。**默认就开着**：`maxTokens` 默认 `128000`，不配置也会在接近上限时自动压缩，避免把上下文撑爆。你的模型窗口比这小就把它调小；想彻底关掉设 `maxTokens: Infinity`。
+上下文超过 `config.maxContextTokens` 的 `compactThreshold`（默认 0.8，即 80%）时，Loop 会自动调用 Compact 把历史压缩成一段总结，然后继续运行。**默认就开着**：`maxContextTokens` 默认 `128000`，不配置也会在接近上限时自动压缩，避免把上下文撑爆。你的模型窗口比这小就把它调小；想彻底关掉设 `maxContextTokens: Infinity`。
 
 **上下文 token 怎么估**：不装分词器，用"字符数 × 每字符多少 token"。这个比例是**会自校准**的——每轮模型都会回 `usage.inputTokens`（这次请求真实的输入 token 数），拿它反推这个模型真实的"每字符 token 比"记下来给下一轮。换模型（`config.compact` 的压缩模型、`send` 时覆盖 `model`、换 provider）就换一条记录，越用越准，也不怕分词器对不上模型。
 
@@ -1333,7 +1357,7 @@ config: {
 
 不写 `compact` 就和主模型共用。自动压缩和手动 `agent.compact()` 用的都是这一套。
 
-> 用更小的小模型做压缩时注意：那笔压缩请求的**大小是由主模型的 `maxTokens` 决定的**，跟压缩模型自己的窗口无关。如果压缩模型的窗口比主模型预算小，压缩请求会先在小模型这边撑爆。让压缩模型的窗口 ≥ 主模型预算，或把 `maxTokens` 调小。
+> 用更小的小模型做压缩时注意：那笔压缩请求的**大小是由主模型的 `maxContextTokens` 决定的**，跟压缩模型自己的窗口无关。如果压缩模型的窗口比主模型预算小，压缩请求会先在小模型这边撑爆。让压缩模型的窗口 ≥ 主模型预算，或把 `maxContextTokens` 调小。
 
 **最新的那条总结会折进 `system`，而不是当成一条用户消息塞进对话里**，并且带一句"这是你自己之前做过的工作，数据已由工具确认"。裸的 `role:'user'` 总结会被模型读成"用户塞给我一张表"，于是它从头重做整个任务——真实端点实测 `gpt-oss-120b` 改之前 1/6 能正确续跑，改之后 6/6。
 

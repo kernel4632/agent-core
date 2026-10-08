@@ -30,6 +30,10 @@
     // 积木 4：合并工具集合
     const all = Tool.merge(fileTools, remoteTools)
 
+    // 积木 5：取子集（schema 和 handlers 一起筛，不会出现"看不见还能执行"的状态）
+    const readOnly = Tool.pick(all, ['read', 'glob'])   // 只留这两个
+    const noShell = Tool.omit(all, ['shell'])           // 去掉 shell，其余全留
+
 工具集合里的条目有两种执行方式，execute 一处分开：
   文件工具   → handler 带 url，交给工具子进程（见 tool-process.js），排队、取消、超时都在这里管；
   内存工具   → handler 带 execute 函数，在主进程直接调，结果经过和文件工具一致的成形规则。
@@ -191,7 +195,7 @@ const adopt = (input) => {
 
     if (nameless.length) throw new TypeError('数组里的工具必须带 name（record 形式的名字从键来）')
 
-    if (dropped.length) throw new TypeError(`工具 ${dropped.join('、')} 缺少 execute 函数`)
+    if (dropped.length) throw new TypeError(`工具 ${dropped.join('、')} 缺少 execute 函数；已有工具表用 merge/pick/omit 组合，不要拆成工具对象再喂回来；handlers[name] 不是 execute`)
 
     return { schema, handlers }
 }
@@ -460,4 +464,28 @@ const merge = (...sets) => ({
     handlers: Object.assign(Object.create(null), ...sets.map(set => set?.handlers ?? {})),
 })
 
-export default { from, scan, adopt, execute, merge }
+
+// --- 取子集：pick 只保留、omit 只去掉 ---
+// schema 和 handlers 必须用同一批名字一起筛。只筛一份会得到"模型看不见但还能执行"（或反过来）的
+// 隐蔽状态，上层很难发现。返回新集合，原集合不动。
+const subset = (set, keep) => {
+    const schema = Object.create(null)
+    const handlers = Object.create(null)
+    for (const name of Object.keys(set?.schema ?? {})) if (keep(name)) schema[name] = set.schema[name]
+    for (const name of Object.keys(set?.handlers ?? {})) if (keep(name)) handlers[name] = set.handlers[name]
+    return { schema, handlers }
+}
+
+//   Tool.pick(tools, ['read', 'write'])   只留这两个工具
+const pick = (set, names) => {
+    const wanted = new Set(names ?? [])
+    return subset(set, name => wanted.has(name))
+}
+
+//   Tool.omit(tools, ['shell'])           去掉 shell，其余全留
+const omit = (set, names) => {
+    const dropped = new Set(names ?? [])
+    return subset(set, name => !dropped.has(name))
+}
+
+export default { from, scan, adopt, execute, merge, pick, omit }

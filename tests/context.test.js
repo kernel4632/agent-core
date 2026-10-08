@@ -155,7 +155,7 @@ describe('Context 裁剪', () => {
     test('没人读 token 时不做分词估算', () => {
         const context = Context.build({ history: withTurns(3) })
 
-        // token 是取值器：没设 maxTokens 时 Loop 根本不读它，分词那一遍（2000 条历史约 120ms）就不会白跑。
+        // token 是取值器：没设 maxContextTokens 时 Loop 根本不读它，分词那一遍（2000 条历史约 120ms）就不会白跑。
         expect(typeof Object.getOwnPropertyDescriptor(context, 'token').get).toBe('function')
         expect(context.token).toBeGreaterThan(0)  // 读的时候仍然算得出来。
         expect(context.token).toBe(context.token) // 读第二次直接用缓存，不重复分词。

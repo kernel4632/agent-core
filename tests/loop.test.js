@@ -163,7 +163,7 @@ describe('压缩这条路径', () => {
                 history: [History.user({ content: '很久以前的工作记录'.repeat(50) })],
                 config: {
                     ...config, baseURL: `http://127.0.0.1:${big.port}/v1`, model: 'big-model',
-                    maxTokens: 20, compactThreshold: 0.5, noToolRounds: 1,
+                    maxContextTokens: 20, compactThreshold: 0.5, noToolRounds: 1,
                     compact: { baseURL: `http://127.0.0.1:${small.port}/v1`, model: 'small-model' },
                 },
             })
@@ -223,7 +223,7 @@ describe('压缩这条路径', () => {
             async fetch(request) { await request.json(); return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '这是一段总结' }, finish_reason: 'stop' }], usage: {} }) },
         })
 
-        const agent = Agent.create({ config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxTokens: 600, compactThreshold: 0.8 } })
+        const agent = Agent.create({ config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxContextTokens: 600, compactThreshold: 0.8 } })
         const seeded = Array.from({ length: 40 }, (_, i) => ({ role: 'user', content: `第 ${i} 轮的一些内容，凑长度用的文本`.repeat(3) }))
         agent.history.push(...seeded)
 
@@ -272,7 +272,7 @@ describe('压缩这条路径', () => {
             async fetch(request) { await request.json(); calls += 1; return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '一段总结' }, finish_reason: 'stop' }], usage: {} }) },
         })
 
-        const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${compacting.port}/v1`, maxTokens: 20, compactThreshold: 0.8 } })
+        const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${compacting.port}/v1`, maxContextTokens: 20, compactThreshold: 0.8 } })
         await agent.send({ input: '你好' }).catch(() => {})
 
         expect(calls).toBeLessThan(20) // 修之前这里 3 秒能跑出 5500 次真实模型请求。
@@ -594,6 +594,48 @@ describe('Loop', () => {
 
         expect(error.message).toBe('权限服务挂了')
         expect(JSON.stringify(history)).not.toContain('不该跑到这里') // 没放行就没执行。
+    })
+
+    // 权限回调决定"放不放行"，只有严格返回 true 才放行；其余任何值都按拒绝。
+    // 以前写成 `if (allowed)`，返回 { allowed: false } 这类对象也会被当成真值放行。
+    const permissionCase = async onPermission => {
+        const history = [History.user({ content: '开始' })]
+        const executed = []
+        let round = 0
+        await Loop.run({
+            history,
+            system: '',
+            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+            buildContext: Context.build,
+            compact: async () => '总结',
+            executeTool: async () => { executed.push('ran'); return { output: { type: 'text', value: '真实输出' } } },
+            onPermission,
+            onLLMFinish: result => {
+                round += 1
+                if (round === 1) result.toolCalls = [{ toolCallId: 'c1', toolName: 'echo', input: {} }]
+            },
+        })
+        return { ran: executed.length > 0, text: JSON.stringify(history) }
+    }
+
+    test('onPermission 返回对象（真值但不是 true）时工具被拒', async () => {
+        const { ran, text } = await permissionCase(() => ({ allowed: false }))
+        expect(ran).toBe(false)                 // 对象没被当成放行。
+        expect(text).toContain('execution-denied')
+    })
+
+    test('onPermission 返回 undefined（漏 return）时工具被拒', async () => {
+        const { ran, text } = await permissionCase(() => {}) // 没有任何 return。
+        expect(ran).toBe(false)
+        expect(text).toContain('execution-denied')
+    })
+
+    test('onPermission 返回 true 时工具正常执行', async () => {
+        const { ran, text } = await permissionCase(() => true)
+        expect(ran).toBe(true)
+        expect(text).toContain('真实输出')
+        expect(text).not.toContain('execution-denied')
     })
 })
 

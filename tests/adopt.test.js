@@ -221,6 +221,43 @@ describe('Tool.from 一行拼装', () => {
     })
 })
 
+describe('Tool.pick / Tool.omit', () => {
+    const make = () => Tool.adopt({ a: { execute: async () => 1 }, b: { execute: async () => 2 }, c: { execute: async () => 3 } })
+
+    test('pick 只保留指定工具，schema 和 handlers 一起筛', () => {
+        const picked = Tool.pick(make(), ['a', 'c'])
+        expect(Object.keys(picked.schema).sort()).toEqual(['a', 'c'])
+        expect(Object.keys(picked.handlers).sort()).toEqual(['a', 'c']) // 两份表一致，不会"看不见但还能执行"。
+        expect(Object.keys(picked.schema)).toEqual(Object.keys(picked.handlers)) // 同一批名字，顺序也一致。
+    })
+
+    test('omit 去掉指定工具，其余全留', () => {
+        const left = Tool.omit(make(), ['b'])
+        expect(Object.keys(left.schema).sort()).toEqual(['a', 'c'])
+        expect(Object.keys(left.handlers).sort()).toEqual(['a', 'c'])
+    })
+
+    test('omit 掉的工具既看不见也执行不了', async () => {
+        const left = Tool.omit(make(), ['b'])
+        expect(left.schema.b).toBeUndefined()
+        await expect(Tool.execute({ name: 'b', input: {}, handlers: left.handlers })).rejects.toThrow(/not found/)
+    })
+
+    test('空集合、undefined 集合、undefined names 都安全', () => {
+        expect(Object.keys(Tool.pick(null, ['a']).schema)).toEqual([])
+        expect(Object.keys(Tool.omit(undefined, ['a']).schema)).toEqual([])
+        expect(Object.keys(Tool.pick(make(), undefined).schema)).toEqual([])                 // 没点名 = 一个都不留。
+        expect(Object.keys(Tool.omit(make(), undefined).schema).sort()).toEqual(['a', 'b', 'c']) // 没点名 = 全留。
+    })
+
+    test('返回的是新集合，原集合不动', () => {
+        const set = make()
+        const picked = Tool.pick(set, ['a'])
+        expect(Object.keys(set.schema).sort()).toEqual(['a', 'b', 'c']) // 原集合没被改。
+        expect(Object.getPrototypeOf(picked.schema)).toBeNull()         // 和 scan/adopt 一样是 null 原型。
+    })
+})
+
 describe('Agent 自动归一化', () => {
     const model = () => {
         const server = Bun.serve({

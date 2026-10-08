@@ -30,7 +30,7 @@ const AGENT_COUNT = 8        // 并发会话数
 const SENDS_PER_BATCH = 15   // 每台会话每批跑多少次 send
 const BATCH_COUNT = 2        // 跑两批，比较两批的内存增量
 const SEND_TIMEOUT = 20000   // 单次 send 超过多久算挂起（毫秒）
-const MAX_TOKENS = 1200      // 上下文预算；配合 compactThreshold 让长跑真的触发压缩
+const MAX_CONTEXT_TOKENS = 1200 // 上下文预算；配合 compactThreshold 让长跑真的触发压缩
 const COMPACT_THRESHOLD = 0.5 // 估算 token 达到预算的 50% 就压缩；压一次后能落到阈值以下，不会每轮都压
 
 const log = console.log
@@ -194,7 +194,7 @@ const main = async () => {
         model: 'stress-model',
         stream: false,
         system: '你是压测用的助手。',
-        maxTokens: MAX_TOKENS,
+        maxContextTokens: MAX_CONTEXT_TOKENS,
         compactThreshold: COMPACT_THRESHOLD,
         noToolRounds: Infinity, // 模型一直调工具，不用"连续无工具"来收尾
         maxSteps: 4,            // 每次 send 固定跑 4 轮工具后按 step-limit 收尾

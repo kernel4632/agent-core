@@ -19,7 +19,7 @@ const result = await Loop.run({
             body: {},
         },
         // 下面这些值由 Agent 组装好再传进来（见 index.js 的默认值），Loop 直接使用，不再自己补默认。
-        maxTokens: 128000,         // 上下文预算；默认开启自动压缩，设 Infinity 关闭
+        maxContextTokens: 128000,   // 上下文预算；默认开启自动压缩，设 Infinity 关闭
         compactThreshold: 0.8,     // 上下文估算达到预算的这个比例时压缩
         maxSteps: undefined,       // 不设上限；调用方主动传入正整数时才限制模型轮数
         stream: true,              // 主请求和压缩都流式输出
@@ -43,7 +43,7 @@ const result = await Loop.run({
     onLLMFinish: (result) => { },          // 本次模型请求完成，返回完整 result
     onLLMEvent: event => {},               // 原样接收 AI SDK 的所有流事件
     onRetry: (info) => { },                // 请求失败重试中
-    onPermission: async (permission) => { }, // 工具权限询问，返回 true 或 false
+    onPermission: async (permission) => { }, // 工具权限询问；必须严格返回 true 才放行，其它任何值都按拒绝
     onToolCall: (call) => { },              // 工具调用开始
     onToolOutput: (output) => { },          // 工具实时输出
     onToolResult: (result) => { },         // 工具执行完
@@ -74,6 +74,19 @@ const waitForPermission = async (asked, signal) => {
     let onAbort
     const stopped = new Promise(resolve => { onAbort = () => resolve(false); signal.addEventListener('abort', onAbort, { once: true }) })
     try { return await Promise.race([asked, stopped]) } finally { signal.removeEventListener('abort', onAbort) }
+}
+
+// 权限必须严格返回 true 才放行：其它任何值（含对象、漏 return 的 undefined）一律拒绝。
+// 漏 return 多半是回调写错了，提醒一次就够，别每个工具调用都刷屏。
+let warnedPermission = false
+const checkPermission = async (onPermission, payload, signal) => {
+    if (!onPermission) return true // 没回调＝无人值守，直接放行。（取消路径由 signal 在下面兜住。）
+    const answer = await waitForPermission(onPermission(payload), signal)
+    if (typeof answer !== 'boolean') {
+        if (!warnedPermission) { warnedPermission = true; console.warn('onPermission 必须返回布尔值，非 true 一律按拒绝处理。') }
+        return false
+    }
+    return answer
 }
 
 // --- 把一次请求的用量加进合计 ---
@@ -139,14 +152,14 @@ const run = async ({
         // --- 构建上下文，Token 超限时压一次 ---
         // 每轮最多压一次，不循环压到达标为止：压缩本身就是一次真实模型请求，
         // 而"压完还是超限"通常意味着剩下的内容（单个巨大回合、或工具定义本身）根本压不动，
-        // 循环只会一轮一轮地烧钱——实测 maxTokens 配小时能烧到 5500 次请求，
+        // 循环只会一轮一轮地烧钱——实测 maxContextTokens 配小时能烧到 5500 次请求，
         // 每轮降一点点的情况下加了"没变小就停"的护栏也还能烧 122 次。
         // 压一次之后仍然超限就照常发出去，由模型服务判断收不收；下一轮如果还超，自然会再压一次。
-        let context = buildContext({ history, system, tools, budget: llm.maxTokens, ratio: meter.ratio(key) })
-        if (Number.isFinite(llm.maxTokens) && context.token >= llm.maxTokens * compactThreshold) {
+        let context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })
+        if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * compactThreshold) {
             const content = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
             history.push(History.compact({ content }))                       // 总结写回 history。
-            context = buildContext({ history, system, tools, budget: llm.maxTokens, ratio: meter.ratio(key) })                // 用压缩后的历史重建上下文。
+            context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })                // 用压缩后的历史重建上下文。
         }
         // 压缩只往 history 里追加一条总结，永远不删任何东西：
         // history 是这个项目唯一的权威数据来源，该保留多少由持有它的上层决定，核心包无权替它丢数据。
@@ -169,7 +182,7 @@ const run = async ({
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
                 const content = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 强制压缩一次。
                 history.push(History.compact({ content }))   // 总结写回 history（只增不删）。
-                context = buildContext({ history, system, tools, budget: llm.maxTokens, ratio: meter.ratio(key) }) // 用压缩后的历史重建上下文。
+                context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) }) // 用压缩后的历史重建上下文。
             }
         }
         steps += 1            // 模型完整回答后才算这一轮，失败重试由 LLM.chat 自己处理。
@@ -208,7 +221,7 @@ const run = async ({
             // 模型已经产生了完整工具调用。即使此刻被取消，也要给它补一条取消结果。
             if (signal?.aborted) return { call, output: { type: 'error-text', value: '工具执行已取消' }, stop: true }
 
-            const allowed = await waitForPermission(Notify.decide(onPermission, { sessionId, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input, signal }, true), signal) // 没权限回调时按无人值守模式直接放行；有回调时取消不吊死。
+            const allowed = await checkPermission(onPermission, { sessionId, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input, signal }, signal) // 没权限回调时按无人值守模式直接放行；有回调时严格 true 才放行，取消不吊死。
             // 等待期间被取消：也按"已取消"结算，别写成"用户拒绝"——拒绝和取消是两回事，历史只增不删，写错了会永远留着。
             if (signal?.aborted) return { call, output: { type: 'error-text', value: '工具执行已取消' }, stop: true }
             if (!allowed) return { call, output: { type: 'execution-denied', reason: '工具执行被用户拒绝' } } // 拒绝也是一条结果，模型需要知道。

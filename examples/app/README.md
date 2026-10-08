@@ -20,7 +20,7 @@ bun run examples/app/server.js
 | 权限 | `onPermission` | 读操作放行，写操作（`write_note`）单独询问并打印决定 |
 | 观测 | 一组 `callbacks` | `onLLMStart/Finish` 记耗时和 usage，`onToolCall/Result` 记工具耗时，`onStep` 落盘，`onCompact` 记压缩 |
 | 取消 | `POST .../stop` | 调 `agent.stop()`；取消的结果以 `aborted` 事件返回，不当失败 |
-| 生产设置 | `server.js` 的 `config` | `maxToolOutput` / `maxToolConcurrency` / `requestTimeout` / `retryMaxElapsed` / `maxTokens` / `maxSteps` |
+| 生产设置 | `server.js` 的 `config` | `maxToolOutput` / `maxToolConcurrency` / `requestTimeout` / `retryMaxElapsed` / `maxContextTokens` / `maxSteps` |
 | 换真模型 | `server.js` 顶部 | 设 `BASE_URL` / `API_KEY` / `MODEL` 就用真模型，否则用假模型 |
 | 两种工具来源 | `tools/` + `server.js` | 目录里的文件工具（子进程）和代码里的内存工具混用 |
 

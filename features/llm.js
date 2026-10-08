@@ -26,6 +26,7 @@ const result = await LLM.chat({
         headers: {},                // 额外请求头；模型实例走 AI SDK 的请求级 headers
         body: {},                   // 原始请求体，仅本包创建的字符串模型可用
     },
+    maxTokens,                      // 单次生成最大输出 token；映射成请求体的 maxOutputTokens，provider.maxOutputTokens 显式设置时优先
 
     // --- 流式与回调 ---
     stream: true,
@@ -252,6 +253,7 @@ const chat = async ({
     retry,                // 调用方过滤不想重试的错误。
     signal,               // 取消信号。
     provider = {},        // AI SDK 生成参数整包，headers / body 单独取出来。
+    maxTokens,            // 单次生成最大输出 token；provider.maxOutputTokens 显式给了就优先用它。
 }) => {
     // --- 检查输入 ---
     if (!model || !Array.isArray(messages) || (typeof model === 'string' && !baseURL)) throw new TypeError('model and messages are required; string models also need baseURL') // 模型实例自带连接，模型名才需要地址。
@@ -294,6 +296,8 @@ const chat = async ({
     const requestMessages = cache && protocol === 'anthropic' && modelMessages.length ? [...modelMessages.slice(0, -1), markLast(modelMessages.at(-1))] : modelMessages
     const requestSystem = cache && protocol === 'anthropic' && system ? mark({ role: 'system', content: system }) : system
     const input = { ...generation, model: providerModel, system: requestSystem, messages: requestMessages, abortSignal: signal, maxRetries: 0 } // 生成参数可扩展，但不能覆盖 Agent 的上下文和重试控制。
+    // maxTokens 是"单次生成最大输出"，映射到 AI SDK 的 maxOutputTokens；provider 里显式写的更具体，优先于它。
+    if (maxTokens !== undefined && generation.maxOutputTokens === undefined) input.maxOutputTokens = maxTokens
     if (typeof model !== 'string' && headers) input.headers = headers // 已创建的模型按 AI SDK 请求级参数发送额外请求头。
     if (hasTools) {
         input.tools = tools

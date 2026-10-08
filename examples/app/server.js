@@ -68,7 +68,7 @@ const config = {
     maxToolConcurrency: 4,    // 一轮里最多同时跑几个工具：防止一次并行开几十个子进程。
     requestTimeout: 60000,    // 单笔模型请求最多等 60 秒：卡死的上游不会把会话永远吊住。
     retryMaxElapsed: 120000,  // 模型持续失败最多再试 2 分钟：给瞬时故障留机会，又不无限重试。
-    maxTokens: 32000,         // 上下文预算：接近时自动压缩，避免把上下文撑爆。
+    maxContextTokens: 32000,  // 上下文预算：接近时自动压缩，避免把上下文撑爆。
     compactThreshold: 0.8,    // 用到预算的 80% 时压一次。
     maxSteps: 12,             // 一次 send 最多问模型几轮：模型一直调工具停不下来时，这是最后一道保险。
     noToolRounds: 1,          // 模型一轮不调工具就结束；生产里可调大让它有机会补救一次。

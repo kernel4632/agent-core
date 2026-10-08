@@ -56,7 +56,7 @@ const DEFAULT_CAPABILITIES = { ...History.mediaDefaults, tools: true, structured
 // 上下文用到预算的 80% 就触发压缩：留两成余量给压缩请求本身，避免刚要压就又超预算。
 const DEFAULT_COMPACT_THRESHOLD = 0.8
 // 默认上下文预算 128000。不显式设置也会在接近上限时自动压缩，避免把上下文撑爆；设 Infinity 可关掉自动压缩。
-const DEFAULT_MAX_TOKENS = 128000
+const DEFAULT_MAX_CONTEXT_TOKENS = 128000
 // 连续 3 轮模型都没调用工具就插一条提醒，逼它重新走工具。次数太少会误伤纯聊天，太多则白烧轮次。
 const DEFAULT_NO_TOOL_ROUNDS = 3
 // 那条提醒的原文。特意写成“系统提醒、请勿对话回复”，防止模型把它当成用户的话接着闲聊。
@@ -77,7 +77,10 @@ const inputProblem = (input, limits) => {
     }
     // maxSteps 只收正整数：轮数必须有限，否则模型可能陷进无限循环，永远不返回。
     if (!positive(limits.maxSteps)) return new RangeError('maxSteps must be a positive integer')
-    if (!positive(limits.maxTokens, false)) return new RangeError('maxTokens must be a positive integer or Infinity') // 字符串 '1000' 会让压缩永远不触发。
+    // maxContextTokens 是上下文预算，允许 Infinity 表示关闭自动压缩；字符串 '1000' 会让压缩永远不触发。
+    if (!positive(limits.maxContextTokens, false)) return new RangeError('maxContextTokens must be a positive integer or Infinity')
+    // maxTokens 是单次生成的最大输出 token；不设（undefined）跳过，设了就必须是正整数。
+    if (!positive(limits.maxTokens)) return new RangeError('maxTokens must be a positive integer')
     // noToolRounds / maxToolConcurrency 允许 Infinity，表示“永远提醒 / 不限制并发”。
     if (!positive(limits.noToolRounds, false)) return new RangeError('noToolRounds must be a positive integer or Infinity')
     if (!positive(limits.maxToolConcurrency, false)) return new RangeError('maxToolConcurrency must be a positive integer or Infinity')
@@ -176,7 +179,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             ...config,
             provider: { ...config.provider },
             capabilities: { ...DEFAULT_CAPABILITIES, ...config.capabilities },
-            maxTokens: config.maxTokens ?? DEFAULT_MAX_TOKENS, // 默认开启自动压缩；想关掉设 maxTokens: Infinity。
+            maxTokens: config.maxTokens, // 单次生成的最大输出 token；默认不设（undefined），会映射成请求体的 maxOutputTokens。
+            maxContextTokens: config.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS, // 上下文预算；默认开启自动压缩，想关掉设 maxContextTokens: Infinity。
             compactThreshold: config.compactThreshold ?? DEFAULT_COMPACT_THRESHOLD,
             noToolRounds: config.noToolRounds ?? DEFAULT_NO_TOOL_ROUNDS,
         },
@@ -271,7 +275,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
 const Agent = {
     version,              // 当前版本号，来自 package.json
     create,               // 创建一台独立 Agent，配置、工具、历史各自隔离
-    tool: Tool,           // 工具能力：from / scan / adopt / execute / merge
+    tool: Tool,           // 工具能力：from / scan / adopt / execute / merge / pick / omit
     history: History,     // 历史消息块的构造器（user / assistant / tool / compact …）
     context: Context,     // 把历史裁剪成模型上下文
     compact: Compact,     // 把上下文压缩成一段总结

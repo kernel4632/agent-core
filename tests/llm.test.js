@@ -234,6 +234,22 @@ describe('Agent 配置落到请求上', () => {
         expect(recorded.at(-1).top_p).toBe(0.8)
     })
 
+    test('maxTokens 会映射成请求体的 maxOutputTokens', async () => {
+        recorded.length = 0
+        const agent = Agent.create({ config: config({ maxTokens: 123 }) })
+        await agent.send({ input: '你好' })
+
+        expect(recorded.at(-1).max_tokens).toBe(123) // 单次生成上限，落到 OpenAI 风格的 max_tokens。
+    })
+
+    test('provider.maxOutputTokens 显式设置时优先于 maxTokens', async () => {
+        recorded.length = 0
+        const agent = Agent.create({ config: config({ maxTokens: 123, provider: { maxOutputTokens: 50 } }) })
+        await agent.send({ input: '你好' })
+
+        expect(recorded.at(-1).max_tokens).toBe(50) // provider 更具体，覆盖 maxTokens。
+    })
+
     test('send 时按次覆盖 provider，写进去的就是这次要用的全部', async () => {
         recorded.length = 0
         const agent = Agent.create({ config: config({ provider: { temperature: 0.2, topP: 0.8 } }) })

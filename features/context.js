@@ -126,7 +126,7 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
         ? built
         : [...built, { role: 'user', content: [{ type: 'text', text: '（上下文已压缩，请继续）' }] }]
 
-    // Token 只在真的有人读的时候才算：没设 maxTokens 时 Loop 压根不看它。
+    // Token 只在真的有人读的时候才算：没设 maxContextTokens 时 Loop 压根不看它。
     // 估算只是一次字符计数（毫秒级），但这份惰性语义保留着，调用方不读就不算。
     let counted
     return {
