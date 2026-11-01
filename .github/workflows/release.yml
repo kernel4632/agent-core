@@ -72,7 +72,7 @@ jobs:
       # --- 发布到 npm（Trusted Publishing，免 token / 验证码）---
       # 放在建 Release 之后：即使 npm 这步因为还没配可信发布者而失败，GitHub Release 也已经建好了。
       # npm publish 会自动触发 prepack（bun run build）和 prepublishOnly（bun test），所以这里不用再重复。
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
