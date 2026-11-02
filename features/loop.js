@@ -157,8 +157,9 @@ const run = async ({
         // 压一次之后仍然超限就照常发出去，由模型服务判断收不收；下一轮如果还超，自然会再压一次。
         let context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })
         if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * compactThreshold) {
-            const content = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
-            history.push(History.compact({ content }))                       // 总结写回 history。
+            const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
+            add(usage, summary.usage)                                         // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
+            history.push(History.compact({ content: summary.content }))        // 总结写回 history。
             context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })                // 用压缩后的历史重建上下文。
         }
         // 压缩只往 history 里追加一条总结，永远不删任何东西：
@@ -180,8 +181,9 @@ const run = async ({
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
-                const content = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 强制压缩一次。
-                history.push(History.compact({ content }))   // 总结写回 history（只增不删）。
+                const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 强制压缩一次。
+                add(usage, summary.usage)                                     // 超长重压同样计费用量。
+                history.push(History.compact({ content: summary.content }))   // 总结写回 history（只增不删）。
                 context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) }) // 用压缩后的历史重建上下文。
             }
         }
@@ -214,17 +216,25 @@ const run = async ({
         const toolResults = await Promise.all(toolCalls.map(async call => {
             await Notify.tell(onToolCall, call) // 让上层知道即将执行哪个工具。
 
+            // 这些路径同样"已经结算、结果即将写进 history"，和正常执行一样属于一次完整的工具调用；
+            // 只通知 onToolCall 不通知 onToolResult，会让按结果回调更新界面/落盘的应用永远停在"运行中"。
+            const settled = output => ({ call, output })
+            const denied = (output, extra = {}) => {
+                void Notify.tell(onToolResult, { ...call, ...extra, output }) // 拒绝/取消/无效也要让上层知道这次调用结束了。
+                return { call, output, ...extra }
+            }
+
             // AI SDK 标记 invalid 的调用：参数没法解析，或模型点了一个不存在的工具。
             // 此时 call.input 是原始字符串而不是对象，真跑下去等于拿脏数据喂工具。告诉模型让它重来。
-            if (call.invalid) return { call, output: { type: 'error-text', value: `工具调用无效：${call.error?.message ?? '参数无法解析，或这个工具不存在'}` } }
+            if (call.invalid) return denied({ type: 'error-text', value: `工具调用无效：${call.error?.message ?? '参数无法解析，或这个工具不存在'}` })
 
             // 模型已经产生了完整工具调用。即使此刻被取消，也要给它补一条取消结果。
-            if (signal?.aborted) return { call, output: { type: 'error-text', value: '工具执行已取消' }, stop: true }
+            if (signal?.aborted) return denied({ type: 'error-text', value: '工具执行已取消' }, { stop: true })
 
             const allowed = await checkPermission(onPermission, { sessionId, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input, signal }, signal) // 没权限回调时按无人值守模式直接放行；有回调时严格 true 才放行，取消不吊死。
             // 等待期间被取消：也按"已取消"结算，别写成"用户拒绝"——拒绝和取消是两回事，历史只增不删，写错了会永远留着。
-            if (signal?.aborted) return { call, output: { type: 'error-text', value: '工具执行已取消' }, stop: true }
-            if (!allowed) return { call, output: { type: 'execution-denied', reason: '工具执行被用户拒绝' } } // 拒绝也是一条结果，模型需要知道。
+            if (signal?.aborted) return denied({ type: 'error-text', value: '工具执行已取消' }, { stop: true })
+            if (!allowed) return denied({ type: 'execution-denied', reason: '工具执行被用户拒绝' }) // 拒绝也是一条结果，模型需要知道。
 
             let value
             try {
@@ -235,15 +245,17 @@ const run = async ({
                 // 取消路径由 tool.js 用 resolve 处理，不会走到这里；这里接的是"工具名不在表里"这类调用错误。
                 const output = { type: 'error-text', value: `工具执行失败：${error.message}` } // 失败信息也交给模型，让它自己决定怎么补救。
                 await Notify.tell(onToolResult, { ...call, error: error.message, output })
-                return { call, output }
+                return { ...settled(output) } // settled 里的 call/output 形状和正常路径一致，onStep 拿到的才是完整结果。
             }
             await Notify.tell(onToolResult, { ...call, result: value, output: value.output })                   // 通知上层这个工具已经执行完。
-            return { call, output: value.output, stop: value?.stop === true || value?.interrupted === true }    // 工具主动停止或被中断都要结束循环。
+            return { ...settled(value.output), stop: value?.stop === true || value?.interrupted === true }    // 工具主动停止或被中断都要结束循环。
         }))
 
         // --- 把本轮消息和工具结果写回历史 ---
         history.push(...assistantMessages) // AI SDK 的 tool 消息不用，工具结果由项目自己的执行器生成。
         for (const { call, output } of toolResults) history.push(History.tool({ toolCallId: call.toolCallId, toolName: call.toolName, content: output }))
+        // onStep 带完整结果（call + output + stop/error），和 onToolResult 同一种形状：
+        // 想在轮次结束时"这轮工具都返回了什么"直接读这里，不必再去监听 onToolResult 自己拼。
         await Notify.tell(onStep, { step: steps, result, toolCalls, toolResults })   // 工具结果已写入 history，调用方可安全持久化这一轮。
 
         // --- 判断是否停止循环 ---

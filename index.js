@@ -237,6 +237,40 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     }
 
 
+    // resume：不发新消息，用现有 history 的末尾接着跑（比如停止后继续被中断的回复）。
+    // 实战里应用为了续跑，被迫塞一条假用户消息、再在 onStart 里偷偷删掉——那是绕过"历史只增不删"的补丁；
+    // 这个入口让续跑成为一等能力：不 push 任何消息，模型看到的历史末尾就是中断前的最后一条。
+    agent.resume = (options = {}) => {
+        if ('input' in options) return Promise.reject(new TypeError('resume 不接受 input；要发新消息用 send')) // 续跑的语义就是"接着说"，混进新输入说明调用场景想用的是 send。
+        const badCallbacks = 'callbacks' in options && (typeof options.callbacks !== 'object' || options.callbacks === null || Array.isArray(options.callbacks))
+        if (badCallbacks) return Promise.reject(new TypeError('callbacks must be an object'))
+        const last = agent.history.at(-1)
+        const ready = last && last.role !== 'user' // 末尾是 assistant 或 tool 才有"没说完的话"。
+        if (!ready) return Promise.reject(new Error('history 末尾不是 assistant / tool 消息，没有可继续的内容；发新消息请用 send'))
+
+        return start(agent, async signal => {
+            if ('config' in options) agent.config = mergeConfig(agent.config, options.config)
+            if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
+            const callbacks = { ...agent.callbacks }
+            const compactLLM = buildCompact(agent.config)
+            const tools = agent.tools
+            return Loop.run({
+                history: agent.history,
+                system: agent.config.system,
+                tools: agent.config.capabilities.tools === false ? {} : tools.schema,
+                llm: buildLLM(agent.config),
+                buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
+                compact: request => Compact.run({ ...request, llm: compactLLM, stream: compactLLM.stream }),
+                executeTool: request => Tool.execute({ ...request, handlers: tools.handlers, limit: agent.config.maxToolOutput, concurrency: agent.config.maxToolConcurrency }),
+                sessionId: agent.id,
+                meter,
+                ...callbacks,
+                signal,
+            })
+        }, options.signal)
+    }
+
+
     // stop：取消当前正在跑的那次运行，并等它真正收尾后再回 { ok: true }。
     // 本来就没在跑就返回 { ok: false }，让调用方能区分“停掉了”和“当时没东西可停”。
     agent.stop = async () => {
@@ -254,7 +288,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     agent.compact = ({ onCompact = agent.callbacks.onCompact, onRetry = agent.callbacks.onRetry, ...options } = {}) => start(agent, async signal => {
         const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio: meter.ratio(modelKey(agent.config)), capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }) // 工具表和 send 保持一致：关掉工具能力时这里也不带。
         const compactLLM = buildCompact(agent.config)
-        const content = await Compact.run({
+        const { content } = await Compact.run({
             ...options,
             messages: context.messages,
             llm: compactLLM,

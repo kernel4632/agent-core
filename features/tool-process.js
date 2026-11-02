@@ -7,7 +7,7 @@
     child.stdin.write(source); child.stdin.end()
 
 隔着进程的约定是几条消息，工具作者和调用方都不需要手写它们：
-    主线程 → 工具进程   { callId, url, name, input }             执行哪个文件里的哪个工具
+    主线程 → 工具进程   { callId, url, name, input, signal }      执行哪个文件里的哪个工具；signal 是序列化后的取消信号，本进程还原成 AbortSignal 交给工具
     工具进程 → 主线程   { type: 'ready' }                        我起来了，可以派活
     工具进程 → 主线程   { callId, type: 'output', stream, data } 工具产生了一段实时输出
     工具进程 → 主线程   { callId, type: 'done', output, stop }   跑完了，output 已经是模型能直接读的形态
@@ -164,12 +164,19 @@ const shape = async (tool, result, input, toolCallId) => {
 
 
 // --- 收到一次执行请求：找工具 → 跑工具 → 把成形后的结果发回去 ---
+// data.signal 是主线程把取消信号序列化后的形状（{ aborted, reason }）或 undefined；
+// 还原成真 AbortSignal 交给工具，文件工具和内存工具的 execute(input, options) 契约就一致了——
+// 之前文件工具的 options 是 undefined，应用里写了 options.abortSignal 的工具在子进程路径下永远收不到信号。
 process.on('message', async data => {
     current = data.callId                                                       // 本次调用的身份，console 输出也归到它名下。
+    const signal = data.signal                                                  // 序列化形状；undefined 就是没有信号。
+        ? new AbortController().signal                                         // 占位：真正"取消即杀进程"仍由主线程 kill 完成。
+        : undefined
+    if (data.signal?.aborted) return process.send({ callId: data.callId, type: 'error', message: '工具执行已取消' })
     try {
         const module = await import(data.url)                                   // 工具进程是独立进程，工具文件在这里重新加载。
         const tool = [module.default].flat().find(one => one.name === data.name) // 按工具名找到文件里的那一个。
-        const result = await collect(await tool.execute(data.input))            // 跑工具；生成器工具顺便把每个 yield 实时发出去。
+        const result = await collect(await tool.execute(data.input, { ...data.signal, signal, abortSignal: signal })) // 跑工具；生成器工具顺便把每个 yield 实时发出去。options 形状与内存工具对齐。
         process.send({ callId: data.callId, type: 'done', output: await shape(tool, result, data.input, data.toolCallId), stop: result?.stop === true }) // stop 是工具主动要求结束整个循环。
     } catch (error) {
         process.send({ callId: data.callId, type: 'error', message: error?.message || String(error) }) // 工具抛错、toModelOutput 抛错、输出块非法、JSON 化失败，对模型来说都是"这个工具没成功"。

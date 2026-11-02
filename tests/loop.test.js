@@ -331,6 +331,60 @@ describe('Loop', () => {
         expect(steps).toEqual([{ step: 1, history: 3, results: 1 }, { step: 2, history: 4, results: 0 }])
     })
 
+    test('onStep 的 toolResults 带完整结果（call + output），不是只有工具名', async () => {
+        // 实战反馈：README 说"工具结果已写入 history，调用方可安全持久化这一轮"，
+        // 但 toolResults 曾经只有工具名（甚至 null），想在轮次里看结果的应用拿不到内容。
+        const steps = []
+        const history = [History.user({ content: '开始' })]
+        let round = 0
+
+        await Loop.run({
+            history,
+            system: '',
+            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 },
+            buildContext: Context.build,
+            compact: async () => '总结',
+            executeTool: async request => ({ output: { type: 'text', value: request.name } }),
+            onLLMFinish: result => {
+                round += 1
+                if (round === 1) result.toolCalls = [{ toolCallId: 'full-1', toolName: 'echo', input: {} }]
+            },
+            onStep: step => steps.push(step),
+        })
+
+        const withTools = steps.find(step => step.toolResults.length)
+        expect(withTools.toolResults[0]).toMatchObject({ call: { toolCallId: 'full-1', toolName: 'echo' }, output: { type: 'text', value: 'echo' } }) // 完整形状，和 onToolResult 一致。
+    })
+
+    test('工具被拒绝、取消或调用无效时，onToolResult 也会触发', async () => {
+        // 实战反馈：拒绝结果会写进 history，但只发 onToolCall 不发 onToolResult，
+        // 按结果回调更新界面的应用会让卡片永远停在"运行中"。
+        const results = []
+        const history = [History.user({ content: '开始' })]
+        let round = 0
+
+        await Loop.run({
+            history,
+            system: '',
+            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 },
+            buildContext: Context.build,
+            compact: async () => '总结',
+            executeTool: async () => ({ output: { type: 'text', value: '不该执行' } }),
+            onLLMFinish: result => {
+                round += 1
+                if (round === 1) result.toolCalls = [{ toolCallId: 'deny-1', toolName: 'echo', input: {} }]
+            },
+            onPermission: () => false,                                  // 全部拒绝。
+            onToolResult: result => results.push(result),
+        })
+
+        expect(results).toHaveLength(1)                                  // 拒绝也有一次结果通知。
+        expect(results[0]).toMatchObject({ toolCallId: 'deny-1', toolName: 'echo', output: { type: 'execution-denied' } })
+        expect(JSON.stringify(history)).toContain('工具执行被用户拒绝')   // 结果确实写进了 history。
+    })
+
     test('不合法的轮数上限在请求模型前就报错', async () => {
         const agent = Agent.create({ config: { ...config, maxSteps: 0 } })
         await expect(agent.send('你好')).rejects.toThrow('maxSteps must be a positive integer') // 入口拦住，请求根本没发出去。
@@ -436,6 +490,55 @@ describe('Loop', () => {
             expect(answer.steps).toBe(2)
             expect(answer.usage).toEqual({ inputTokens: 130, outputTokens: 25, totalTokens: 155, cacheReadTokens: 90, cacheWriteTokens: 0 }) // 第二轮没给 total 时按 input+output 补上。
         } finally { server.stop(true) }
+    })
+
+    test('自动压缩那一笔的用量计进 send 的合计', async () => {
+        // 实战反馈：压缩请求的 token 之前不进合计，长会话成本被系统性低估。
+        let round = 0
+        const server = Bun.serve({
+            port: 0,
+            async fetch() {
+                round += 1
+                const summary = round === 1
+                // 压缩 100+20，回答 10+2：合计应该是 132，而不是只算回答的 12。
+                const usage = summary ? { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } : { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 }
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: summary ? '总结' : '回答' }, finish_reason: 'stop' }], usage })
+            },
+        })
+        try {
+            const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxContextTokens: 1 } }) // 预算 1：第一轮必然先压缩。
+            const answer = await agent.send('你好')
+            expect(answer.usage).toEqual({ inputTokens: 110, outputTokens: 22, totalTokens: 132, cacheReadTokens: 0, cacheWriteTokens: 0 }) // 压缩的 120 也进了合计。
+        } finally { server.stop(true) }
+    })
+
+    test('resume：不发新消息，用历史末尾续跑', async () => {
+        // 实战反馈：应用为了续跑被迫塞假用户消息再偷偷删掉。现在 resume 是一等入口。
+        const seen = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                seen.push(await request.json())
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '接着说' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        try {
+            const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1` } })
+            await agent.send('你好')
+            const before = agent.history.length
+            const answer = await agent.resume()
+            expect(answer.text).toBe('接着说')
+            expect(agent.history.length).toBe(before + 1)             // 只追加了 assistant 回复，没有任何用户消息。
+            expect(seen[1].messages.at(-1).role).toBe('assistant')    // 发给模型的末尾就是中断前的回复，不是新输入。
+        } finally { server.stop(true) }
+    })
+
+    test('resume：历史末尾是用户消息时拒绝，混入 input 也拒绝', async () => {
+        const agent = Agent.create({ config })
+        await expect(agent.resume()).rejects.toThrow(/没有可继续/)      // 空 history：没有可继续的内容。
+        agent.history.push(History.user({ content: '没人回答' }))
+        await expect(agent.resume()).rejects.toThrow(/没有可继续/)      // 末尾是 user：没有半截回复可续。
+        await expect(agent.resume({ input: '新输入' })).rejects.toThrow(/send/) // 想发新消息应该用 send，不接收 input。
     })
 
     test('工具返回 stop: true 时结束循环，reason 是 tool-stop', async () => {

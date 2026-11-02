@@ -16,8 +16,8 @@ const content = await Compact.run({
 })
 // content = "压缩后的总结文本"
 // onCompact compact-start: { type, messages }，压缩开始
-// onCompact: 接收 AI SDK 原生事件，不做过滤或转换
-// onCompact compact-finish: { type, content }，压缩完成
+// onCompact: 接收 AI SDK 原生事件，统一带 request: 'compact' 标记——靠它区分总结增量和回答增量
+// onCompact compact-finish: { type, content, usage }，压缩完成，带这一笔的用量
 */
 
 import LLM from './llm.js'
@@ -30,6 +30,8 @@ const SUMMARIZE = `请把以上对话压缩成一段总结，供你自己后续�
 只输出总结本身，不要说"好的"，不要继续对话。`
 
 // Compact 只负责把上下文变成总结文本，是否需要压缩由调用方决定。
+// 返回 { content, usage }：usage 是压缩这一笔请求的用量（AI SDK 原始形状），
+// 交给 Loop 加进整次 send 的合计——压缩也是真实的模型请求，钱不该在账外。
 const run = async ({ messages, llm, stream = true, onCompact, onRetry, signal }) => {
     await Notify.tell(onCompact, { type: 'compact-start', messages })                             // 告诉上层：压缩开始了。
 
@@ -53,13 +55,15 @@ const run = async ({ messages, llm, stream = true, onCompact, onRetry, signal })
         stream,                                                                                   // 流式与否跟调用方走。
         signal,                                                                                   // 取消压缩和取消普通请求是同一种。
         onRetry,               // 压缩失败能重试——它和主循环走的是同一条 LLM.chat，同一套退避。
-        onLLMEvent: onCompact, // 压缩过程中的每个流事件都转发给上层，UI 能显示进度。
+        // 压缩的流事件原样转发，但统一盖上 request: 'compact' 标记：和回答的 text-delta 是同一个 type，
+        // 不标记的话，把两类事件转发到同一条流的应用无法区分，会把总结正文当回答渲染（实战踩过）。
+        onLLMEvent: event => Notify.tell(onCompact, { ...event, request: 'compact' }),
     })
 
     const content = result.text.trim()                                                            // 总结就是模型输出的文字。
     if (!content) throw new Error('压缩失败：模型返回空总结') // 空总结会导致 History.compact 校验失败，提前报错。
-    await Notify.tell(onCompact, { type: 'compact-finish', content })                             // 告诉上层：压缩完成，总结是这个。
-    return content                                                                                // 总结文本交回调用方（由它写进 history）。
+    await Notify.tell(onCompact, { type: 'compact-finish', content, usage: result.usage })        // 告诉上层：压缩完成，顺带这一笔的用量。
+    return { content, usage: result.usage }                                                       // 文本和用量一起交回调用方（由它写进 history / 计进合计）。
 }
 
 export default { run }

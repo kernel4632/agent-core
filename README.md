@@ -601,6 +601,14 @@ const agent = Agent.create({
 })
 ```
 
+**人机审批的推荐结构**（实战里每个应用都会撞到的问题）：
+
+- 等用户点击的实现是"返回一个挂起的 Promise"——包保证取消信号一到就不再等它，但**等多久、谁来唤醒**由你的回调决定。常见做法：按 `toolCallId` 存一张 `Map<id, resolve>`，审批接口收到决定后 `resolve(true/false)`。
+- **等待期间 `send` 仍处于"正在运行"**：想允许用户在审批时发新消息顶掉任务，按 `send` 的既有语义处理（新 send 会先 stop 旧的）。
+- **服务重启会丢掉挂起的审批**：`Map` 在内存里。重启后要么给会话补发一条审批请求（凭 history 里的 assistant 工具调用就能还原 `toolCallId`），要么在启动时把该会话标记为"已中断"。
+- **务必给每条路径都 `return`**：非布尔返回值一律按拒绝处理（0.26 起），漏 return 会让这次调用被静默拒绝。
+- **拒绝/取消/无效调用现在也会触发 `onToolResult`**（0.27 起），`output.type` 分别是 `execution-denied` / `error-text`——界面统一从这一个回调翻状态即可，不用再监听 `onPermission` 补通知。
+
 ---
 
 ## API 参考
@@ -795,10 +803,10 @@ console.log(answer.text)
 | `onPermission` | 工具执行前 | `{ toolName, input, sessionId, toolCallId, signal }` → 返回 `true/false` |
 | `onToolCall` | 工具即将执行 | `{ toolCallId, toolName, input }` |
 | `onToolOutput` | 工具有流式输出 | `{ toolName, stream, data, toolCallId, input? }`；`data` 是工具 yield / 打印出来的原值，类型不定 |
-| `onToolResult` | 工具执行完成 | `{ toolName, output, ... }` |
-| `onStep` | 一轮模型和工具都完成后 | `{ step, result, toolCalls, toolResults }` |
+| `onToolResult` | 工具执行完成（拒绝/取消/无效调用也触发） | `{ toolName, toolCallId, output, ... }` |
+| `onStep` | 一轮模型和工具都完成后 | `{ step, result, toolCalls, toolResults }`；`toolResults` 是完整结果对象（`call` + `output`），和 `onToolResult` 同一种形状 |
 | `onRetry` | 请求失败重试 | `{ attempt, error, delay }`（主请求和压缩请求共用） |
-| `onCompact` | 上下文压缩 | `compact-start` / AI SDK 事件 / `compact-finish` |
+| `onCompact` | 上下文压缩 | `compact-start` / AI SDK 事件（统一带 `request: 'compact'` 标记）/ `compact-finish`（带 `usage`，即压缩这一笔的用量） |
 
 除了 `onPermission`，所有回调都只是通知：回调自己抛错会被忽略，任务照常进行，工具结果也不会被改写。`onPermission` 的返回值决定放不放行，所以它抛错时这次 `send` 会失败，交给你的 `.catch()`。注意它按"非 `true` 即拒绝"处理：**每个分支都要显式 `return true`**，忘了返回会让那次工具被拒。
 
@@ -824,6 +832,7 @@ const result = await agent.send({
 // result.steps → 这次 send 一共请求了模型几轮
 // result.usage → 整次 send 的用量合计：{ inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens }
 //                算钱、看缓存命中直接读这里；cacheReadTokens / inputTokens 就是缓存命中率
+//                自动压缩那一笔的用量也计在合计里（0.27 起）——压缩也是真实的模型请求
 // result.reason:
 //   'finished'   → 没注册工具，或结构化输出已校验成功：这就是最终回答
 //   'no-tool'    → 有工具，但连续 noToolRounds 轮（默认 3）没调用工具才结束
@@ -867,6 +876,18 @@ await agent.send({
 ```js
 await agent.stop()   // 等待完全停止后返回 { ok: true }；Agent 空闲时返回 { ok: false }
 ```
+
+#### `agent.resume(options?)`
+
+不发新消息，用现有历史的末尾接着跑——典型场景是停止后继续被中断的回复。它不往 `history` 里写任何东西：模型看到的末尾就是中断前的最后一条（assistant 或 tool 消息），所以**不会**出现"续跑后历史里多出一条假的用户消息"。
+
+```js
+const answer = await agent.resume()          // 从上次停下的地方继续，返回值和 send 相同
+const answer = await agent.resume({ config: { model: '新模型' } })   // 也可以像 send 一样按次覆盖 config / callbacks
+```
+
+- 历史末尾必须是 `assistant` 或 `tool` 消息（有"没说完的话"可续），否则直接报错；想发新内容用 `send`。
+- `resume` 不接受 `input`；传了会报错，防止把"继续"误写成新指令。
 
 #### 流式与网页实时推送
 
@@ -1004,10 +1025,15 @@ const agent = Agent.create({ config, tools: safe })
 |------|--------|
 | `schema[name].name` | 工具名 |
 | `schema[name].description` | 给模型看的工具说明 |
+| `schema[name].source` | **来源标记**：`'file'`（目录扫描）或 `'memory'`（内存工具，MCP 工具走这里）。应用判断"这个工具从哪来"读它，别靠工具名前缀猜 |
 | `schema[name].inputSchema` | **已编译的校验器**（AI SDK 的 `jsonSchema()` 形态）；原始 JSON Schema 在 `inputSchema.jsonSchema` 里 |
 | `handlers[name]` | 执行器内部形状（文件工具是 `url`，内存工具是 `execute` 等）；**不要自己构造**，原样传回 `merge` / `pick` / `omit` 或 `Agent.tool.execute` |
 
-工具对象上的额外字段会被 `scan` / `adopt` 原样带进 `schema[name]`：比如工具自己声明 `touchesFiles: ['path']`，应用层就能从 `tools.schema[name].touchesFiles` 读到。注意 `schema` 是发给模型的那一份，别把不想让模型看到的内部标记放进去（`execute`、`toModelOutput`、`timeout` 不会被带进去，它们只留在 `handlers`）。
+工具对象上的额外字段会被 `scan` / `adopt` 原样带进 `schema[name]`：比如工具自己声明 `touchesFiles: ['path']`，应用层就能从 `tools.schema[name].touchesFiles` 读到。注意 `schema` 是发给模型的那一份，别把不想让模型看到的内部标记放进去（`execute`、`toModelOutput`、`timeout` 不会被带进去，它们只留在 `handlers`）。**想要"只在宿主用、不进 schema"的字段**（比如内部钩子），把工具包一层、从闭包里取，别写在工具对象上：
+
+```js
+const wrap = (tool, host) => ({ ...tool, execute: (input, options) => tool.execute(input, { ...options, host }) })  // host 从闭包取，不进 schema
+```
 
 **MCP 工具直接可用，不需要包装**：`@ai-sdk/mcp` 的 `client.tools()` 自带 `execute` 和 `toModelOutput`，核心按 AI SDK 的签名调用它们，文字、图片都会正确交给模型。完整接入例子见前面的[「接入 MCP 和技能」](#接入-mcp-和技能)。
 
@@ -1024,6 +1050,8 @@ const agent = Agent.create({ config, tools: safe })
 > 从 0.23 升级：内存工具（`Agent.tool.adopt`）现在也支持 `async *execute` 流式输出，和文件工具一致；`Tool.from` 接受一组目录（字符串数组）；取消错误统一带 `error.kind === 'aborted'`。
 >
 > 从 0.25 升级（破坏性改名）：上下文预算 `maxTokens` 改名为 **`maxContextTokens`**；`maxTokens` 现在指**单次生成的最大输出** token（映射到请求体的 `maxOutputTokens`）。这是把名字拨回 OpenAI / Anthropic 的习惯（它们的 `max_tokens` 就是输出上限，不是上下文）。另外：`onPermission` 现在要求**严格返回布尔**——非 `true`（含对象、漏 `return`）一律按拒绝处理；新增 `Agent.tool.pick` / `Agent.tool.omit` 用来取工具子集（做只读模式用 `omit` 去掉写工具）。
+>
+> 从 0.27 升级：`Compact.run` 的返回值从总结文本变成 `{ content, usage }`（单独用 `Agent.compact` 时注意解构）；`onCompact` 的流事件统一带 `request: 'compact'` 标记、`compact-finish` 带 `usage`；工具被拒绝/取消/无效调用也触发 `onToolResult`，`onStep` 的 `toolResults` 是完整结果对象；自动压缩的用量计进 `send().usage`；新增 `agent.resume()` 从历史末尾续跑；工具的 `schema[name]` 带来源标记 `source: 'file' | 'memory'`；文件工具（子进程路径）的 `execute(input, options)` 现在也能拿到 `options.abortSignal`（取消即杀进程不变，信号仅供工具优雅收尾）。
 
 #### `Agent.tool.execute(options)`
 

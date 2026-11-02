@@ -126,6 +126,7 @@ const scan = async (...directories) => {
 
             schema[tool.name] = {
                 ...modelTool,
+                source: 'file',                                  // 来源标记：应用区分文件工具 / 内存工具读这里，别靠名字猜。
                 inputSchema: normalizeInputSchema(tool.inputSchema),
             }
 
@@ -187,6 +188,7 @@ const adopt = (input) => {
         schema[name] = {
             ...modelTool,
             name,
+            source: 'memory',                        // 来源标记：和 scan 的 'file' 对应；MCP 工具走 adopt 进来也是 'memory'。
             inputSchema: normalizeInputSchema(tool.inputSchema),
         }
 
@@ -436,7 +438,7 @@ const runInSubprocess = ({ name, input, toolCallId, handler, signal, onOutput, l
                 call.finish({ output: { type: 'error-text', value: `${call.output.text()}\n工具执行超时（${handler.timeout}ms）` }, error: 'timeout' })
             }, handler.timeout)
 
-            try { child.send({ callId: call.id, url: handler.url, name, input, toolCallId }) }
+            try { child.send({ callId: call.id, url: handler.url, name, input, toolCallId, signal: signal ? { aborted: signal.aborted, reason: signal.reason } : undefined }) }
             catch (error) {
                 retire(child)
                 call.finish({ output: { type: 'error-text', value: `工具执行失败：无法派发到工具进程（${error.message}）` }, error: error.message })

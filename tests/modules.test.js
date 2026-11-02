@@ -142,10 +142,25 @@ describe('LLM and Compact', () => {
 
     test('compacts messages and reports lifecycle events', async () => {
         const events = []
-        const content = await Compact.run({ messages: [{ role: 'user', content: 'long text' }], llm: { baseURL: modelURL, apiKey: 'test', model: 'test-model', protocol: 'chat' }, stream: false, onCompact: event => events.push(event) })
+        const { content, usage } = await Compact.run({ messages: [{ role: 'user', content: 'long text' }], llm: { baseURL: modelURL, apiKey: 'test', model: 'test-model', protocol: 'chat' }, stream: false, onCompact: event => events.push(event) })
         expect(content).toBe('压缩后的内容')
+        expect(usage).toMatchObject({ inputTokens: 1, outputTokens: 1 })  // 这台假模型报了 1+1；压缩的用量原样交回，调用方（Loop）把它计进合计。
         expect(events[0].type).toBe('compact-start')
-        expect(events.at(-1)).toEqual({ type: 'compact-finish', content: '压缩后的内容' })
+        expect(events.at(-1)).toMatchObject({ type: 'compact-finish', content: '压缩后的内容' }) // compact-finish 现在带 usage 字段：算总账的应用从这一个事件就能读到压缩的成本。
+        expect('usage' in events.at(-1)).toBe(true)
+    })
+
+    test('压缩的流事件带 request: compact 标记，回答的没有', async () => {
+        // 实战里应用把 onLLMEvent 和 onCompact 转发到同一条流，总结和回答的 text-delta 是同一个 type，
+        // 没标记时前端会把总结当回答渲染。现在压缩的事件统一盖 request: 'compact'。
+        const compactEvents = []
+        const chatEvents = []
+        await Compact.run({ messages: [{ role: 'user', content: 'long text' }], llm: { baseURL: modelURL, apiKey: 'test', model: 'test-model', protocol: 'chat' }, stream: true, onCompact: event => compactEvents.push(event) })
+        await LLM.chat({ baseURL: modelURL, apiKey: 'test', model: 'test-model', messages: [{ role: 'user', content: 'hello' }], onLLMEvent: event => chatEvents.push(event) })
+        const compactDeltas = compactEvents.filter(event => event.type === 'text-delta')
+        expect(compactDeltas.length).toBeGreaterThan(0)
+        expect(compactDeltas.every(event => event.request === 'compact')).toBe(true)  // 压缩的增量全带标记。
+        expect(chatEvents.some(event => event.type === 'text-delta' && event.request !== undefined)).toBe(false) // 回答的没有。
     })
 })
 

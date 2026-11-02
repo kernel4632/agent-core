@@ -110,12 +110,18 @@ export interface ToolSet {
     handlers: Record<string, any>   // 执行器内部形状，不要自己构造，原样传回 merge/pick/omit
 }
 
+// scan / adopt 会在每个工具的 schema 里盖上来源标记：file（目录扫描）/ memory（内存工具）。
+// 应用判断"这个工具从哪来"读它，不要再靠工具名前缀猜（名字是应用拼的，拼法一变判断就失效）。
+export type ToolSourceKind = 'file' | 'memory'
+
 // 内存工具对象的形状（AI SDK tool() 产物、MCP client.tools() 的单项都符合这个形状）
 export interface ToolLike {
     name?: string           // 数组形式必填；record 形式从键名取；单个对象直接传时也必填
     description?: string
     inputSchema?: any       // 裸 JSON Schema / zod / AI SDK jsonSchema() 三种都认
     execute: (input: any, options?: { signal?: AbortSignal; abortSignal?: AbortSignal }) => any | Promise<any>
+    // 两条路径的契约一致：内存工具和文件工具（子进程）的 execute 都拿得到第二参 { signal, abortSignal }。
+    // 注意：文件工具的"取消即杀进程"仍由包负责，signal 只是让工具能优雅收尾（比如通知孙进程清理）。
     toModelOutput?: (options: { output: any; input?: any; toolCallId?: string }) => any
     timeout?: number
     [key: string]: any
@@ -221,6 +227,7 @@ export interface AgentInstance {
         (input: string | any[], options?: Omit<SendOptions, 'input'>): Promise<Answer>
         (options: SendOptions & { input: string | any[] }): Promise<Answer>
     }
+    resume: (options?: Omit<SendOptions, 'input'>) => Promise<Answer>   // 不发新消息，用现有历史末尾续跑（历史末尾须是 assistant/tool）
     stop: () => Promise<{ ok: boolean }>
     compact: (options?: { onCompact?: Callbacks['onCompact']; onRetry?: Callbacks['onRetry']; signal?: AbortSignal }) => Promise<string>
 }
