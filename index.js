@@ -15,6 +15,7 @@
 2. send 先把用户输入推进只增不删的历史，再交给 start 启动；
 3. start 停掉上一次还在跑的运行，合入外部取消信号，然后执行本轮工作；
 4. 工作里由 Loop 反复「请求模型 → 执行工具」，上下文接近预算时调 Compact 压缩；
+   每一轮请求前都会重新读一次 agent.config，所以运行中改模型/生成参数/限额，下一笔请求就生效；
 5. 运行结束（成功或失败）后清空 running，下一次 send 才能干净地开始。
 */
 
@@ -217,16 +218,19 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             const callbacks = { ...agent.callbacks }
 
             agent.history.push(History.user({ content: input }))
-            const compactLLM = buildCompact(agent.config)
             const tools = agent.tools  // 直接用归一化后的工具集合，无需再合并 MCP / skills。
 
             return Loop.run({
                 history: agent.history,
-                system: agent.config.system,
+                system: agent.config.system,       // system 和工具表定义"这次任务是什么"，在 send 开始时定下。
                 tools: agent.config.capabilities.tools === false ? {} : tools.schema,
-                llm: buildLLM(agent.config),
+                getLLM: () => buildLLM(agent.config), // 每轮请求前现取一次：运行中改模型/思考强度，下一笔请求就生效。
                 buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
-                compact: request => Compact.run({ ...request, llm: compactLLM, stream: compactLLM.stream }),
+                // 压缩发生在哪一轮，就用那一刻的 compact 配置——宿主运行中换了压缩模型也照样跟上。
+                compact: request => {
+                    const llm = buildCompact(agent.config)
+                    return Compact.run({ ...request, llm, stream: llm.stream })
+                },
                 executeTool: request => Tool.execute({ ...request, handlers: tools.handlers, limit: agent.config.maxToolOutput, concurrency: agent.config.maxToolConcurrency }),
                 sessionId: agent.id,
                 meter,                            // token 估算器：跨 send 复用，按模型记住自校准的比例。
@@ -252,15 +256,17 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             if ('config' in options) agent.config = mergeConfig(agent.config, options.config)
             if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
             const callbacks = { ...agent.callbacks }
-            const compactLLM = buildCompact(agent.config)
             const tools = agent.tools
             return Loop.run({
                 history: agent.history,
-                system: agent.config.system,
+                system: agent.config.system,       // 和 send 一样：system 与工具表在这次续跑开始时定下。
                 tools: agent.config.capabilities.tools === false ? {} : tools.schema,
-                llm: buildLLM(agent.config),
+                getLLM: () => buildLLM(agent.config), // 每轮请求前现取一次，和 send 同一条路。
                 buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
-                compact: request => Compact.run({ ...request, llm: compactLLM, stream: compactLLM.stream }),
+                compact: request => {
+                    const llm = buildCompact(agent.config)
+                    return Compact.run({ ...request, llm, stream: llm.stream })
+                },
                 executeTool: request => Tool.execute({ ...request, handlers: tools.handlers, limit: agent.config.maxToolOutput, concurrency: agent.config.maxToolConcurrency }),
                 sessionId: agent.id,
                 meter,

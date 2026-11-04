@@ -220,6 +220,7 @@ export interface SendOptions {
 export interface AgentInstance {
     id: string
     history: Message[]
+    // 活配置：运行中改它，下一笔模型请求就用新值（system 和工具表要下一次 send 才换）。
     config: Config
     tools: ToolSet
     callbacks: Callbacks

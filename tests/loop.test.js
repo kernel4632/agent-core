@@ -317,7 +317,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -342,7 +342,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -368,7 +368,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '不该执行' } }),
@@ -551,7 +551,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { finish: { description: '结束', inputSchema: jsonSchema({ type: 'object', properties: { summary: { type: 'string' } } }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '做完了' }, stop: true }), // 工具主动要求结束。
@@ -577,7 +577,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { ghost: { description: '不存在', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => { throw new Error('Tool ghost was not found in handlers') }, // 模拟找得到描述、找不到执行地址。
@@ -602,7 +602,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: {},
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => { executed.push(request.name); return { output: { type: 'text', value: 'ran' } } },
@@ -659,7 +659,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '真实输出' } }), // 工具本身成功。
@@ -684,7 +684,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '不该跑到这里' } }),
@@ -709,7 +709,7 @@ describe('Loop', () => {
             history,
             system: '',
             tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-            llm: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => { executed.push('ran'); return { output: { type: 'text', value: '真实输出' } } },
@@ -787,7 +787,7 @@ describe('取消在工具边界', () => {
                 history: [History.user({ content: '跑' })],
                 system: '',
                 tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-                llm: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => { controller.abort(); return { output: { type: 'text', value: 'x' } } }, // 工具一跑完就取消。
@@ -812,7 +812,7 @@ describe('取消在工具边界', () => {
                 history: [History.user({ content: '跑' })],
                 system: '',
                 tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-                llm: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false },
+                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => ({ output: { type: 'text', value: 'x' } }),
@@ -847,7 +847,7 @@ describe('取消在工具边界', () => {
                 history,
                 system: '',
                 tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
-                llm: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false },
+                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => ({ output: { type: 'text', value: 'x' } }),
@@ -857,6 +857,110 @@ describe('取消在工具边界', () => {
             const toolMessage = JSON.stringify(history.find(message => message.role === 'tool'))
             expect(toolMessage).toContain('已取消')
             expect(toolMessage).not.toContain('拒绝') // 取消不能被写成"用户拒绝"，那会永远留在历史里。
+        } finally { mock.stop(true) }
+    })
+})
+
+
+describe('运行中改配置', () => {
+    // 实战反馈（issue #19）：宿主在会话运行中改模型 / 思考强度，以前要等下一次 send；
+    // 想让当前任务别断，只能干等或重建 Agent（重建会把正在跑的循环一起丢掉），于是服务端只能回 409。
+    // 现在 Loop 每一轮请求模型前都重新取一次配置：当前这一笔和它发起的工具跑完，下一笔请求就用新值。
+    // 下面每个用例都从"模型实际收到的请求体"看结果，不看内部状态。
+
+    // 一个只回文字、把每次请求体记下来的假模型：模型永远不调工具，靠 noToolRounds 走完多轮。
+    const recording = () => {
+        const bodies = []
+        const mock = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                bodies.push(await request.json())
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '还在做' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        return { bodies, mock }
+    }
+
+    // 一个假工具：只是让 Loop 认为"这次任务有工具"，这样不调工具时会继续追问，一次 send 里才会有多轮请求。
+    const ping = () => Agent.tool.adopt({ ping: { description: 'ping', inputSchema: { type: 'object', properties: {} }, execute: async () => 'pong' } })
+
+    test('改模型：下一笔请求就是新模型，已经发出的那笔不受影响', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'model-a', stream: false, noToolRounds: 3 },
+                tools: ping(),
+            })
+            // 第一笔请求结束、下一轮还没开始——正是"用户在会话运行中改了设置"的时刻。
+            agent.callbacks.onLLMFinish = () => { agent.config.model = 'model-b' }
+
+            const result = await agent.send('做事')
+
+            expect(bodies.map(body => body.model)).toEqual(['model-a', 'model-b', 'model-b']) // 只有后面的请求换了模型。
+            expect(result.reason).toBe('no-tool')                                            // 三轮都没调工具，按 noToolRounds 正常结束。
+        } finally { mock.stop(true) }
+    })
+
+    test('改 provider：温度这类生成参数下一笔就用新值', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 2, provider: { temperature: 0.1 } },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.config.provider = { ...agent.config.provider, temperature: 0.9 } } // 相当于改了"思考强度"。
+
+            await agent.send('做事')
+
+            expect(bodies.map(body => body.temperature)).toEqual([0.1, 0.9]) // 第二笔请求已经吃到新参数。
+        } finally { mock.stop(true) }
+    })
+
+    test('改限额：下一轮请求和判定就用新上限', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 3 },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.config.noToolRounds = 1 } // 运行中收紧上限。
+
+            const result = await agent.send('做事')
+
+            // 上限是按"这一轮开始时的配置"判定的，所以第 1 轮照旧跑完；第 2 轮一开始就吃到新值，之后立刻收手。
+            expect(bodies).toHaveLength(2) // 快照会跑满 3 轮。
+            expect(result.reason).toBe('no-tool')
+        } finally { mock.stop(true) }
+    })
+
+    test('改 compact 配置：压缩发生在哪一轮，就用那一刻的压缩模型', async () => {
+        const bodies = []
+        const mock = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                bodies.push(body)
+                const compacting = JSON.stringify(body.messages).includes('压缩成一段总结') // 压缩请求带着压缩指令。
+                // 普通轮次回一大段话，把上下文迅速顶过预算；压缩轮次回一句总结。
+                const content = compacting ? '这一段是总结' : '这轮说了很多很多话'.repeat(2000)
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        try {
+            const agent = Agent.create({
+                config: {
+                    baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'model-a', stream: false, noToolRounds: 2,
+                    maxContextTokens: 2000, compactThreshold: 0.5, // 第一轮装得下，第二轮就被第一轮的长回复顶超。
+                    compact: { model: 'compact-a' },
+                },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.config.compact = { model: 'compact-b' } } // 运行中换了压缩模型。
+
+            await agent.send('做事')
+
+            const compactRequest = bodies.find(body => JSON.stringify(body.messages).includes('压缩成一段总结'))
+            expect(compactRequest.model).toBe('compact-b') // 压缩配置也是现取的，不用等下一次 send。
         } finally { mock.stop(true) }
     })
 })

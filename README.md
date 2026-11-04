@@ -725,7 +725,7 @@ const agent = Agent.create({
 })
 ```
 
-在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的 send 继续生效。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
+在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的每一次模型请求继续生效（包括正在跑的这一轮的下一笔，见下方「运行中改配置」）。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
 
 `cache` 默认开启。四种协议各按自己的方式让服务端复用固定的开头（system、工具描述、历史），命中后那部分不再重新计算，长会话能明显变快、变便宜：
 
@@ -819,7 +819,7 @@ await agent.send('继续')
 
 const result = await agent.send({
     input: '帮我写个函数',          // 用户输入（必填）。也可以是内容块数组，见下方"发图片"
-    config: { model: '新模型' },    // 可选：覆盖部分配置（会写回 Agent，之后的 send 继续生效）
+    config: { model: '新模型' },    // 可选：覆盖部分配置（会写回 Agent，之后的每一次模型请求继续生效）
     history: [],                   // 可选：整份替换历史（也写回 Agent）
     tools: newTools,               // 可选：整份替换工具集（也写回 Agent）
     callbacks: { onLLMEvent: e => {} }, // 可选：合并回调（逐项写回 Agent，最后传的长期生效）
@@ -843,6 +843,24 @@ const result = await agent.send({
 `send` 的出错方式只有一种：返回的 Promise 拒绝。空输入、非法配置、取消、模型报错全都从这里出来，所以只需要写 `.catch()`，不用另外包同步的 `try/catch`。取消造成的拒绝带 `error.kind === 'aborted'`；模型报错的 `error.kind` 见下方。
 
 > 输入是在发请求**之前**就写进 `history` 的，所以一次 `send` 失败后，这条输入已经留在历史里（历史只增不删）。重试前记得先决定要不要把它去掉，否则会叠成连续两条同样的输入。
+
+#### 运行中改配置：下一笔模型请求就生效
+
+`agent.config` 是**活配置**：一次 `send` 还在跑的时候改它，下一笔请求模型就用新值——不用停掉当前任务，也不用重建 Agent。
+
+```js
+// 在 onStep / onLLMFinish 里改都行：当前这笔请求和它发起的工具已经跑完
+agent.config.model = '新的模型'
+agent.config.provider = { ...agent.config.provider, temperature: 0.2 }
+agent.config.maxContextTokens = 64000
+```
+
+- **什么时候切换**：只在请求边界。已经发出去的那一笔不会被打断，它发起的工具也照常跑完；下一轮请求模型时才换。流式过程中不会热替换。
+- **哪些会跟着换**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`maxSteps` / `noToolRounds`、`maxToolOutput` / `maxToolConcurrency`，以及压缩用的 `compact` 那套配置（压缩发生在哪一轮，就用那一刻的值）。token 估算也按新模型重新记。
+- **哪些不换**：`system` 和工具表在 `send` 开始时定下来，改它们要等下一次 `send`。它们定义的是"这次任务是什么"；模型、强度、限额是"拿什么跑这次任务"。
+- 按次传的 `send({ config })` 语义不变：写回 `agent.config`，这次运行从第一笔请求起就用它。
+
+> 会话运行中改模型 / 思考强度，直接写 `agent.config` 就行：历史、流式输出和运行状态都不中断。
 
 连续发送时，建议保存并处理旧任务的 Promise，避免出现未处理的中止错误：
 

@@ -6,8 +6,10 @@ const result = await Loop.run({
     system: "你是编程助手",         // 系统提示词
     tools: tools.schema,        // 给模型看的工具描述，来自 Tool.scan() 的 schema
 
-    // --- LLM 参数（必填，内部传给 LLM.chat）---
-    llm: {
+    // --- LLM 参数（必填，每轮请求前调一次）---
+    // 收的是"取值函数"而不是固定对象：Loop 每一轮请求模型前都重新调一次，
+    // 运行中改了 agent.config 的模型、思考强度、能力开关或限额，下一笔请求就用新值。
+    getLLM: () => ({
         // 连接
         baseURL: "https://中转站/v1",
         apiKey: "sk-xxx",
@@ -18,7 +20,7 @@ const result = await Loop.run({
             headers: {},
             body: {},
         },
-        // 下面这些值由 Agent 组装好再传进来（见 index.js 的默认值），Loop 直接使用，不再自己补默认。
+        // 下面这些值由 Agent 组装好再返回（见 index.js 的默认值），Loop 直接使用，不再自己补默认。
         maxContextTokens: 128000,   // 上下文预算；默认开启自动压缩，设 Infinity 关闭
         compactThreshold: 0.8,     // 上下文估算达到预算的这个比例时压缩
         maxSteps: undefined,       // 不设上限；调用方主动传入正整数时才限制模型轮数
@@ -27,7 +29,7 @@ const result = await Loop.run({
         noToolRounds: 3,           // 有工具时连续多少轮不调工具就结束；Infinity 表示永不因此结束
         retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；压缩那次请求也走同一套。
         retryMaxDelay: 600000,      // 重试退避上限（毫秒）；压缩那次请求也走同一套。
-    },
+    }),
     // --- 功能模块（必填，平齐的功能模块作为参数传）---
     buildContext: Context.build,       // 上下文构建模块
     compact: Compact.run,             // 上下文压缩模块
@@ -133,21 +135,25 @@ const ask = async (request, llm) => {
 }
 
 const run = async ({
-    history, system, tools, llm, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                       // 数据、LLM 参数、功能模块、取消信号、token 估算器
+    history, system, tools, getLLM, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                   // 数据、模型配置的取值函数、功能模块、取消信号、token 估算器
     onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
 }) => {
     await Notify.tell(onStart) // 外部需要时知道循环已经开始了。
-    const noToolRounds = llm.noToolRounds       // 结束轮数由 Agent 填好再传进来，这里不再写第二份默认值。
-    const compactThreshold = llm.compactThreshold // 压缩比例同理，来源只有 Agent 一处。
     let noToolCount = 0        // 记录连续没有工具调用的模型回合。
     let steps = 0              // 一次 send 发给模型的轮数；重试属于同一轮，压缩不算任务轮次。
     let temporaryPrompt = null  // 工具提示只临时发送给模型，不写入 history。
     const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } // 整次 send 的用量合计；算钱、看缓存命中都从这里读，不用自己在回调里累加。
-    const key = modelKey(llm)   // 换模型（baseURL / 协议 / 模型名 / provider 任意一项变了）就换一条估算记录。
 
     while (true) {
         // --- 每轮开始：先响应取消信号 ---
         if (signal?.aborted) throw aborted()
+
+        // --- 这一轮请求用哪套模型配置：每轮现取一次，不用 send 开始时的快照 ---
+        // 宿主在运行中改 agent.config（模型、思考强度、能力开关、限额……），下一笔请求就用新值：
+        // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
+        // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
+        const llm = getLLM()
+        const key = modelKey(llm)
 
         // --- 构建上下文，Token 超限时压一次 ---
         // 每轮最多压一次，不循环压到达标为止：压缩本身就是一次真实模型请求，
@@ -156,7 +162,7 @@ const run = async ({
         // 每轮降一点点的情况下加了"没变小就停"的护栏也还能烧 122 次。
         // 压一次之后仍然超限就照常发出去，由模型服务判断收不收；下一轮如果还超，自然会再压一次。
         let context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })
-        if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * compactThreshold) {
+        if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * llm.compactThreshold) {
             const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
             add(usage, summary.usage)                                         // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
             history.push(History.compact({ content: summary.content }))        // 总结写回 history。
@@ -204,8 +210,8 @@ const run = async ({
             if ('output' in result || !Object.keys(tools).length) return { reason: 'finished', ...answer } // 结构化输出已校验成功，或根本没注册工具：这就是最终回答，不再追问。
             if (steps >= llm.maxSteps) return { reason: 'step-limit', ...answer } // 上限返回本轮文字，工具轮不捏造对象。
             noToolCount += 1                                                    // 累计没有工具调用的轮次。
-            if (noToolCount === noToolRounds - 1) temporaryPrompt = llm.noToolPrompt // 结束前一轮：插入临时提示推一下模型。
-            if (noToolCount >= noToolRounds) return { reason: 'no-tool', ...answer } // 到达上限：返回最后一次回答。Infinity 时这里永不触发。
+            if (noToolCount === llm.noToolRounds - 1) temporaryPrompt = llm.noToolPrompt // 结束前一轮：插入临时提示推一下模型。
+            if (noToolCount >= llm.noToolRounds) return { reason: 'no-tool', ...answer } // 到达上限：返回最后一次回答。Infinity 时这里永不触发。
             continue
         }
         noToolCount = 0 // 有工具调用，计数清零。
