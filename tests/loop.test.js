@@ -25,6 +25,8 @@ const server = Bun.serve({
 const config = { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }
 
 // Loop 每轮从 agent 现读配置和工具表；直接调 Loop 的测试只要这个最小形状，不必真造一台 Agent。
+// 这些用例里常把 noToolRounds 调成 1，只是为了两三步就结束、把注意力放在被测的那件事上；
+// 库的默认值是 3（见 index.js 的 DEFAULT_NO_TOOL_ROUNDS），下面有专门的用例守着它。
 const fakeAgent = (config, schema = {}) => ({ id: 'test-agent', config: { capabilities: {}, ...config }, tools: { schema } })
 
 afterAll(() => server.stop(true))

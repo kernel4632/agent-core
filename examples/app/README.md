@@ -20,7 +20,8 @@ bun run examples/app/server.js
 | 权限 | `onPermission` | 读操作放行，写操作（`write_note`）单独询问并打印决定 |
 | 观测 | 一组 `callbacks` | `onLLMStart/Finish` 记耗时和 usage，`onToolCall/Result` 记工具耗时，`onStep` 落盘，`onCompact` 记压缩 |
 | 取消 | `POST .../stop` | 调 `agent.stop()`；取消的结果以 `aborted` 事件返回，不当失败 |
-| 生产设置 | `server.js` 的 `config` | `maxToolOutput` / `maxToolConcurrency` / `requestTimeout` / `retryMaxElapsed` / `maxContextTokens` / `noToolRounds` |
+| 收尾 | `server.js` 的 `finish` 工具 | 模型做完后调用它，返回 `stop: true`，Loop 立刻结束。`noToolRounds` 保持默认 3，不用为了演示把它改小 |
+| 生产设置 | `server.js` 的 `config` | `maxToolOutput` / `maxToolConcurrency` / `requestTimeout` / `retryMaxElapsed` / `maxContextTokens` |
 | 换真模型 | `server.js` 顶部 | 设 `BASE_URL` / `API_KEY` / `MODEL` 就用真模型，否则用假模型 |
 | 两种工具来源 | `tools/` + `server.js` | 目录里的文件工具（子进程）和代码里的内存工具混用 |
 
@@ -54,7 +55,7 @@ curl -N -X POST http://127.0.0.1:8787/sessions/<id>/messages \
   -d '{"message":"please read README.md and write a note about it"}'
 ```
 
-这条消息会让假模型依次调用 `now`、`read_file`、`write_note`，其中 `write_note` 会过一次权限门。
+这条消息会让假模型依次调用 `now`、`read_file`、`write_note`（`write_note` 会过一次权限门），最后调用 `finish` 收尾，`done` 事件里的 `reason` 是 `tool-stop`。
 
 看历史（已经落盘的内容）：
 
@@ -117,5 +118,5 @@ BASE_URL=https://你的中转站/v1 API_KEY=sk-xxx MODEL=gpt-4o-mini bun run exa
 ## 注意
 
 - `.data/` 是本机运行产生的会话历史，已加入 `.gitignore`，不进版本库。
-- 假模型只认关键字（`now` / `read` / `write` / `slow` / `[status:数字]`），不懂真正语义，只是为了把每一步稳定走一遍。
+- 假模型只认关键字（`now` / `read` / `write` / `slow` / `[status:数字]`），不懂真正语义，只是为了把每一步稳定走一遍；做完后会调 `finish`，所以一次对话正常以 `tool-stop` 结束。
 - SSE 事件类型：`delta`（文字增量）、`llm`（模型返回，带耗时和 usage）、`tool_call` / `tool_result`、`permission`、`step`、`compact`、`done`（正常结束）、`aborted`（被取消）、`error`（出错，带 `kind`）。

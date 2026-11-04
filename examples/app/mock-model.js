@@ -1,9 +1,9 @@
-﻿/* 这个文件管一个假的 OpenAI 兼容模型，让整个示例离线可跑。
+/* 这个文件管一个假的 OpenAI 兼容模型，让整个示例离线可跑。
    它在 /v1/chat/completions 上按脚本回话，专门演示"多轮工具调用"：
      第 1 轮：调 now
      第 2 轮：如果用户提到读文件，调 read_file
      第 3 轮：如果用户提到写东西，调 write_note（这个工具会过权限门）
-     最后   ：回一段文字收尾
+     最后   ：调 finish 收尾（它返回 stop: true，Agent 立刻结束，不用等 noToolRounds 追问）
    假模型只认关键字，不真懂语义，目的是把每一步都稳定走一遍。
 
    想换成真实模型：不用改这里，给 server.js 设三个环境变量即可——
@@ -51,7 +51,8 @@ const nextMove = messages => {
     if (!ran.has('now')) return { tool: 'now', args: {}, slow }
     if (wantsRead && !ran.has('read_file')) return { tool: 'read_file', args: { path: file }, slow }
     if (wantsWrite && !ran.has('write_note')) return { tool: 'write_note', args: { note: `关于 ${file} 的自动笔记` }, slow }
-    return { text: `任务完成。本轮依次调用了：${[...ran].join('、') || '（无）'}。`, slow }
+    // 该做的都做完了：调用 finish 收尾（它返回 stop: true）。顺带带一句话，免得界面上只剩一个工具卡片。
+    return { tool: 'finish', args: { summary: `任务完成。本轮依次调用了：${[...ran].join('、') || '（无）'}。` }, text: '任务完成。', slow }
 }
 
 const chunk = (model, delta, finishReason = null, usage) => ({
@@ -79,7 +80,8 @@ const reply = model => async move => {
 
     if (move.tool) {
         return sse(model, [
-            chunk(model, { role: 'assistant', tool_calls: [{ index: 0, id: `call_${move.tool}`, type: 'function', function: { name: move.tool, arguments: JSON.stringify(move.args) } }] }),
+            chunk(model, { role: 'assistant', content: move.text ?? '' }), // 带说明文字时先发出来，和工具调用同属一条回复。
+            chunk(model, { tool_calls: [{ index: 0, id: `call_${move.tool}`, type: 'function', function: { name: move.tool, arguments: JSON.stringify(move.args) } }] }),
             chunk(model, {}, 'tool_calls', usage),
         ], delay)
     }
@@ -100,7 +102,7 @@ const replyOnce = model => async move => {
         choices: [{
             index: 0,
             message: move.tool
-                ? { role: 'assistant', content: null, tool_calls: [{ id: `call_${move.tool}`, type: 'function', function: { name: move.tool, arguments: JSON.stringify(move.args) } }] }
+                ? { role: 'assistant', content: move.text ?? null, tool_calls: [{ id: `call_${move.tool}`, type: 'function', function: { name: move.tool, arguments: JSON.stringify(move.args) } }] }
                 : { role: 'assistant', content: move.text },
             finish_reason: move.tool ? 'tool_calls' : 'stop',
         }],

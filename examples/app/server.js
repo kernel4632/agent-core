@@ -39,6 +39,17 @@ const notes = [] // 内存工具写在进程里的数据，重启就没了——
 const tools = await Agent.tool.from(
     new URL('./tools', import.meta.url), // 文件工具：now、read_file
     {
+        finish: { // 任务完成时由模型主动调用：返回 stop: true，Loop 立刻收尾，不用等追问轮数。
+            description: '任务已经全部完成时调用它，给出一句总结',
+            inputSchema: {
+                type: 'object',
+                properties: { summary: { type: 'string', description: '这次完成了什么' } },
+                required: ['summary'],
+            },
+            async execute({ summary }) {
+                return { stop: true, output: { type: 'text', value: summary } }
+            },
+        },
         write_note: { // 内存工具：直接写在代码里，主进程内执行。
             description: '把一条笔记写进会话的笔记区（这是一个写操作）',
             inputSchema: {
@@ -63,14 +74,14 @@ const WRITE_TOOLS = new Set(['write_note'])
 const config = {
     ...model,
     stream: true,
-    system: '你是一个可靠的助手。需要事实时先调用工具，不要凭空猜。写东西之前会经过权限确认。',
+    system: '你是一个可靠的助手。需要事实时先调用工具，不要凭空猜。写东西之前会经过权限确认。任务全部完成时调用 finish 工具收尾。',
     maxToolOutput: 20000,     // 单个工具最多回多少字符：一个爱刷日志的工具否则能把上下文和内存撑爆。
     maxToolConcurrency: 4,    // 一轮里最多同时跑几个工具：防止一次并行开几十个子进程。
     requestTimeout: 60000,    // 单笔模型请求最多等 60 秒：卡死的上游不会把会话永远吊住。
     retryMaxElapsed: 120000,  // 模型持续失败最多再试 2 分钟：给瞬时故障留机会，又不无限重试。
     maxContextTokens: 32000,  // 上下文预算：接近时自动压缩，避免把上下文撑爆。
     compactThreshold: 0.8,    // 用到预算的 80% 时压一次。
-    noToolRounds: 1,          // 模型一轮不调工具就结束；生产里可调大让它有机会补救一次。
+    // noToolRounds 用默认值 3：模型连续三轮不调工具才结束，给它补救的机会；正常收尾靠 finish 工具。
 }
 
 // --- 四、会话管理：id → 会话（agent + 这一轮的 SSE 出口） ---
