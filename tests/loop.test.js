@@ -318,7 +318,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -341,7 +341,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -365,7 +365,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '不该执行' } }),
@@ -382,19 +382,9 @@ describe('Loop', () => {
         expect(JSON.stringify(history)).toContain('工具执行被用户拒绝')   // 结果确实写进了 history。
     })
 
-    test('不合法的轮数上限在请求模型前就报错', async () => {
-        const agent = Agent.create({ config: { ...config, maxSteps: 0 } })
-        await expect(agent.send('你好')).rejects.toThrow('maxSteps must be a positive integer') // 入口拦住，请求根本没发出去。
-    })
-
     test('不合法的无工具结束轮数在请求模型前就报错', async () => {
         const agent = Agent.create({ config: { ...config, noToolRounds: 0 } })
         await expect(agent.send('你好')).rejects.toThrow('noToolRounds must be a positive integer or Infinity')
-    })
-
-    test('按次传入的非法轮数上限同样在入口被拦住', async () => {
-        const agent = Agent.create({ config })
-        await expect(agent.send({ input: '你好', config: { maxSteps: 2.5 } })).rejects.toThrow('maxSteps must be a positive integer') // 覆盖值也要一起检查，不能绕过。
     })
 
     test('无工具结束轮数可调，调大就多问几轮', async () => {
@@ -417,52 +407,6 @@ describe('Loop', () => {
 
         expect(await count(1)).toEqual({ calls: 1, reason: 'no-tool' }) // 模型不调工具就结束，不再多问。
         expect(await count(5)).toEqual({ calls: 5, reason: 'no-tool' }) // 多给几次机会，上限跟着配置走。
-    })
-
-    test('达到轮数上限时保留完整工具结果，下次 send 可以继续', async () => {
-        let calls = 0
-        const server = Bun.serve({
-            port: 0,
-            fetch() {
-                calls += 1
-                return Response.json({
-                    id: `response-${calls}`, object: 'chat.completion',
-                    choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [{ id: `call-${calls}`, type: 'function', function: { name: 'echo', arguments: '{"value":"ok"}' } }] }, finish_reason: 'tool_calls' }],
-                    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-                })
-            },
-        })
-        try {
-            const tools = await Agent.tool.scan(new URL('./fixtures/tools', import.meta.url))
-            const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxSteps: 2 }, tools })
-
-            const first = await agent.send('重复使用工具')
-            expect(first.reason).toBe('step-limit')          // 模型一直用工具也会停下来。
-            expect(calls).toBe(2)                            // 精确控制模型请求次数。
-            expect(agent.history.filter(message => message.role === 'tool')).toHaveLength(2)
-            expect(Context.build({ history: agent.history }).messages.filter(message => message.role === 'tool')).toHaveLength(2) // 工具调用和结果仍成对。
-
-            const second = await agent.send('接着做')
-            expect(second.reason).toBe('step-limit')         // 上限针对每次 send，第二次重新计算。
-            expect(calls).toBe(4)
-        } finally { server.stop(true) }
-    })
-
-    test('轮数上限也限制连续没有工具调用的模型请求', async () => {
-        let calls = 0
-        const server = Bun.serve({
-            port: 0,
-            fetch() {
-                calls += 1
-                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '等一下' }, finish_reason: 'stop' }], usage: {} })
-            },
-        })
-        try {
-            const tools = await Agent.tool.scan(new URL('./fixtures/tools', import.meta.url))
-            const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxSteps: 1 }, tools })
-            expect(await agent.send('继续')).toMatchObject({ reason: 'step-limit', text: '等一下' })
-            expect(calls).toBe(1) // 原来要等连续三次无工具调用，轮数设为 1 就只请求一次。
-        } finally { server.stop(true) }
     })
 
     test('send 的返回值带上整次运行的用量，多轮相加，缺字段按 0 算', async () => {

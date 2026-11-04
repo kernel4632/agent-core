@@ -58,7 +58,6 @@ export interface Config {
     compactThreshold?: number
     compact?: Partial<Config>
     output?: any
-    maxSteps?: number
     maxToolConcurrency?: number
     retryBaseDelay?: number
     retryMaxDelay?: number
@@ -79,7 +78,7 @@ export interface Usage {
     cacheWriteTokens: number
 }
 
-export type Reason = 'finished' | 'no-tool' | 'tool-stop' | 'step-limit'
+export type Reason = 'finished' | 'no-tool' | 'tool-stop'
 
 export interface Answer {
     reason: Reason

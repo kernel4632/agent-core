@@ -66,8 +66,6 @@ const inputProblem = (input, limits) => {
         const bad = input.find(part => PART.has(part?.type) && badPart(part))
         if (bad) return new TypeError(`内容块的 ${JSON.stringify(bad.type)} 形状不合法：媒体要 mediaType 且值是字符串 / URL / 二进制`)
     }
-    // maxSteps 只收正整数：轮数必须有限，否则模型可能陷进无限循环，永远不返回。
-    if (!positive(limits.maxSteps)) return new RangeError('maxSteps must be a positive integer')
     // maxContextTokens 是上下文预算，允许 Infinity 表示关闭自动压缩；字符串 '1000' 会让压缩永远不触发。
     if (!positive(limits.maxContextTokens, false)) return new RangeError('maxContextTokens must be a positive integer or Infinity')
     // maxTokens 是单次生成的最大输出 token；不设（undefined）跳过，设了就必须是正整数。
@@ -155,7 +153,6 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             mediaFallback: 'error',
             maxToolOutput: undefined,
             maxToolConcurrency: undefined,
-            maxSteps: undefined,
             retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；照抄 Roo Code 的 5 秒。
             retryMaxDelay: 600000,      // 单次退避上限（毫秒）；照抄 Roo Code 的 600 秒封顶。
             retryMaxElapsed: undefined, // 不限重试总时长（Roo 没有总上限）；可设毫秒数收口。

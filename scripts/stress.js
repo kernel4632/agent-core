@@ -30,6 +30,7 @@ const AGENT_COUNT = 8        // 并发会话数
 const SENDS_PER_BATCH = 15   // 每台会话每批跑多少次 send
 const BATCH_COUNT = 2        // 跑两批，比较两批的内存增量
 const SEND_TIMEOUT = 20000   // 单次 send 超过多久算挂起（毫秒）
+const TOOL_ROUNDS = 4        // 每个 send 让假模型调几轮工具，之后由模型自己收尾
 const MAX_CONTEXT_TOKENS = 1200 // 上下文预算；配合 compactThreshold 让长跑真的触发压缩
 const COMPACT_THRESHOLD = 0.5 // 估算 token 达到预算的 50% 就压缩；压一次后能落到阈值以下，不会每轮都压
 
@@ -46,12 +47,12 @@ const failures = []
 // --- 假模型服务：非流式 OpenAI Chat 兼容 ---
 // 行为：
 //   带压缩指令的请求 → 返回一段短总结（走 compact 路径）
-//   普通请求：一律回 echo 的 tool_calls，让 Loop 多轮调工具，直到撞上 maxSteps 才收尾。
-//   为什么不用"模型给最终文字"来收尾：压缩会把最近的用户消息和工具回合裁掉，
-//   模型下一轮未必还看得到这次 send 的编号。让 send 由 maxSteps 收尾，结果就只取决于循环本身，
-//   不会被压缩的裁剪行为干扰，压测才测的是被测代码而不是假模型的假设。
+//   普通请求：同一个 send 连问 TOOL_ROUNDS 轮工具，之后改回一段文字，由 noToolRounds: 1 收尾。
+//   计数按 send 的编号存在内存里，不看 history 被裁成什么样：压缩会裁掉旧回合，
+//   靠"模型在历史里数到第几轮"来收尾会把假模型的假设混进压测结果；按编号计数只取决于循环问了几次。
 // 编号从用户消息里读出来，模型回显的一定是这台会话自己的编号；谁串台了一眼能看出来。
 const stats = { main: 0, compact: 0, toolCalls: 0 }
+const rounds = new Map() // 编号 → 这次 send 已经问过几轮
 let callSeq = 0
 
 const TOKEN_IN_TEXT = /\[([A-Za-z0-9]+-\d+-\d+)\]/
@@ -99,8 +100,11 @@ const server = Bun.serve({
         }
 
         stats.main += 1
-        stats.toolCalls += 1
         const token = findTask(messages)?.token ?? 'unknown'
+        const round = (rounds.get(token) ?? 0) + 1
+        rounds.set(token, round)
+        if (round > TOOL_ROUNDS) return reply({ content: `任务完成：${token}` }) // 问满固定轮数后由模型收尾。
+        stats.toolCalls += 1
         return reply({ toolCall: { name: 'echo', args: { value: token } } })
     },
 })
@@ -196,8 +200,7 @@ const main = async () => {
         system: '你是压测用的助手。',
         maxContextTokens: MAX_CONTEXT_TOKENS,
         compactThreshold: COMPACT_THRESHOLD,
-        noToolRounds: Infinity, // 模型一直调工具，不用"连续无工具"来收尾
-        maxSteps: 4,            // 每次 send 固定跑 4 轮工具后按 step-limit 收尾
+        noToolRounds: 1,        // 假模型在 TOOL_ROUNDS 轮之后改回文字，这一轮就结束 send
         retryMaxElapsed: 0,     // 本地假模型不该失败；真失败就如实抛出来，不要一直重试
     }
 

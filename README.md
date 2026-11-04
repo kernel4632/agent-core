@@ -64,17 +64,16 @@ flowchart TD
     D --> E["结果写回 history"]
     E --> S{"有工具返回<br/>stop:true？"}
     S -->|是| T1["返回 tool-stop"]
-    S -->|否| T2{"步数到 maxSteps？"}
-    T2 -->|是| T3["返回 step-limit"]
-    T2 -->|否| A
+    S -->|否| A
 
     C -->|不要| F{"结束判定"}
     F -->|结构化输出成功<br/>或没注册工具| R1["返回 finished"]
-    F -->|步数到 maxSteps| T3
     F -->|连续不调工具<br/>达 noToolRounds| R2["返回 no-tool"]
     F -->|还没到| P["继续下一轮<br/>（末轮前插一句提醒）"]
     P --> A
 ```
+
+没有"最大轮数"这种上限：**什么时候停由模型的判断和工具的结果决定**，不由一个写死的步数决定。这个包只在你取消、模型报错、或两种正常收尾时结束。
 
 **① 模型不调工具，不会立刻结束。** 很多模型在任务没做完时会"礼貌地"给一段总结就停下。直接结束会把没干完的活丢掉。所以有工具时，模型不调工具会先**临时**插一句提醒（`noToolPrompt`）再问一次，连续 `noToolRounds` 轮（默认 3）都不调才结束。这句提醒只挂在那一次请求上，**不写进 `history`**。不想要这个行为，把 `noToolRounds` 设成 `Infinity`。
 
@@ -654,7 +653,6 @@ import Agent from '@kernel4632/agent-core'
 | `compactThreshold` | `0.8` | 压缩触发比例，0.8 表示到达 80% 时压缩 |
 | `compact` | `undefined` | 压缩单独用一套模型时写在这里，例如 `{ model: '便宜的小模型' }`；不写就和主模型共用 |
 | `output` | `undefined` | 结构化输出格式，例如 `Agent.output.object({ schema })`；不写就返回普通文字 |
-| `maxSteps` | `undefined` | 默认不限制模型轮数；主动设置正整数后，到上限先保存这一轮的工具结果，再返回 `step-limit` |
 | `maxToolConcurrency` | `undefined` | 默认不限制**文件工具**的并发；主动设置后超出的排队。内存工具（`Agent.tool.adopt` / MCP）在主进程直接跑，不受这个上限约束 |
 | `retryBaseDelay` | `5000` | 第一次退避的基数（毫秒），之后每次 ×2：5s、10s、20s…（照抄 Roo Code） |
 | `retryMaxDelay` | `600000` | 单次退避上限（毫秒），到顶就按这个值等待、不再增长（默认 10 分钟，照抄 Roo Code） |
@@ -837,7 +835,6 @@ const result = await agent.send({
 //   'finished'   → 没注册工具，或结构化输出已校验成功：这就是最终回答
 //   'no-tool'    → 有工具，但连续 noToolRounds 轮（默认 3）没调用工具才结束
 //   'tool-stop'  → 某个工具返回了 stop: true
-//   'step-limit' → 达到 maxSteps，当前工具结果已保存，下一次 send 可继续
 ```
 
 `send` 的出错方式只有一种：返回的 Promise 拒绝。空输入、非法配置、取消、模型报错全都从这里出来，所以只需要写 `.catch()`，不用另外包同步的 `try/catch`。取消造成的拒绝带 `error.kind === 'aborted'`；模型报错的 `error.kind` 见下方。
@@ -882,7 +879,7 @@ agent.tools = Agent.tool.omit(agent.tools, ['shell'])   // 运行中撤掉一个
 ```
 
 - **什么时候切换**：只在请求边界。已经发出去的那一笔不会被打断，它发起的工具也照常跑完；下一轮请求模型时才换。流式过程中不会热替换。
-- **每轮都会重新取的**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`maxSteps` / `noToolRounds`、`maxToolOutput` / `maxToolConcurrency`、`system`、工具表；压缩用的 `compact` 配置在压缩发生的那一轮取。token 估算也按新模型重新记。
+- **每轮都会重新取的**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`noToolRounds`、`maxToolOutput` / `maxToolConcurrency`、`system`、工具表；压缩用的 `compact` 配置在压缩发生的那一轮取。token 估算也按新模型重新记。
 - **工具表只读一遍，不重新扫描目录**：把 `agent.tools` 换成新的集合（`Agent.tool.from` / `pick` / `omit` 的返回值）就生效；目录里的文件不会在这次运行中被重新扫描——要重新扫描用新的 `send`（`send({ tools })` 会在开始时现扫）。模型看到的那张表和执行时用的 handler 取自同一份集合。
 - **不随轮次换的只有两样**：`history` 是这次运行的权威数据，循环始终往同一个数组追加；回调是运行期的接线，在 `send` 开始时定下。
 - 按次传的 `send({ config })` 语义不变：写回 `agent.config`，这次运行从第一笔请求起就用它。
@@ -1072,6 +1069,8 @@ const wrap = (tool, host) => ({ ...tool, execute: (input, options) => tool.execu
 > 从 0.25 升级（破坏性改名）：上下文预算 `maxTokens` 改名为 **`maxContextTokens`**；`maxTokens` 现在指**单次生成的最大输出** token（映射到请求体的 `maxOutputTokens`）。这是把名字拨回 OpenAI / Anthropic 的习惯（它们的 `max_tokens` 就是输出上限，不是上下文）。另外：`onPermission` 现在要求**严格返回布尔**——非 `true`（含对象、漏 `return`）一律按拒绝处理；新增 `Agent.tool.pick` / `Agent.tool.omit` 用来取工具子集（做只读模式用 `omit` 去掉写工具）。
 >
 > 从 0.27 升级：`Compact.run` 的返回值从总结文本变成 `{ content, usage }`（单独用 `Agent.compact` 时注意解构）；`onCompact` 的流事件统一带 `request: 'compact'` 标记、`compact-finish` 带 `usage`；工具被拒绝/取消/无效调用也触发 `onToolResult`，`onStep` 的 `toolResults` 是完整结果对象；自动压缩的用量计进 `send().usage`；新增 `agent.resume()` 从历史末尾续跑；工具的 `schema[name]` 带来源标记 `source: 'file' | 'memory'`；文件工具（子进程路径）的 `execute(input, options)` 现在也能拿到 `options.abortSignal`（取消即杀进程不变，信号仅供工具优雅收尾）。
+>
+> 从 0.30 升级（破坏性）：去掉了 `maxSteps` 和结束原因 `'step-limit'`。这个包**不再限制循环轮数**——什么时候停由模型的判断和工具的结果决定。原来靠 `maxSteps` 兜底的地方，改由应用层控制：给 `send` 传 `signal`、设 `requestTimeout`，或者写一个返回 `stop: true` 的 `finish` 工具。
 
 #### `Agent.tool.execute(options)`
 
@@ -1112,7 +1111,7 @@ console.log(output.total)
 
 `Agent.output` 是包内 AI SDK 的 Output，`Agent.schema` 是包内 Zod，无需另装一套。数组可用 `Agent.output.array({ element: Agent.schema.string() })`，普通 JSON 可用 `Agent.output.json()`。所选模型服务须支持对应输出格式。
 
-有工具时先完成工具调用，再读取最终对象。工具轮、`tool-stop` 或轮数用尽不会凭空产生 `output`。最终对象校验成功立即结束；格式错误默认也会重试（重新生成不保证还是坏的），想让它立刻失败可用 `retry` 过滤或收紧 `retryMaxElapsed`。手动及自动压缩只生成文本总结，不继承任务的对象格式。流式和非流式都在最终结果上提供 `output`；流中仍会有生成时的文字片段。
+有工具时先完成工具调用，再读取最终对象。工具轮或 `tool-stop` 不会凭空产生 `output`。最终对象校验成功立即结束；格式错误默认也会重试（重新生成不保证还是坏的），想让它立刻失败可用 `retry` 过滤或收紧 `retryMaxElapsed`。手动及自动压缩只生成文本总结，不继承任务的对象格式。流式和非流式都在最终结果上提供 `output`；流中仍会有生成时的文字片段。
 
 直接使用底层 LLM，绕过 Agent 循环。
 
@@ -1213,6 +1212,8 @@ History.turns(agent.history)   // 折成回合：[[user], [assistant, tool], [us
 | `requestTimeout` | 不限制 | 默认不限单笔时长：卡住的请求会一直等下去。设毫秒数，到点中断这一笔。 |
 | `retryMaxElapsed` | 不限制 | 默认重试所有错误且无总上限，等于无限重试。生产建议设毫秒数收口，或用 `retry` 过滤掉不该重试的错误（如 `auth`、`request`）。 |
 | `maxContextTokens` | `128000` | 上下文预算，要按你模型的窗口调。比窗口大会撑爆，比需求小会频繁压缩。 |
+
+**这个包不限制循环轮数。** 循环停不停只由模型的判断、工具的结果（`stop: true`）、取消和报错决定。生产里要兜住"模型一直调工具停不下来"，由应用层做：给 `send` 传 `signal`，用你自己的计时器或业务条件取消；或者写一个 `finish` 工具让模型主动收尾。
 
 ## 可观测性
 

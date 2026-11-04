@@ -14,7 +14,6 @@ const result = await Loop.run({
             capabilities: { tools: true, image: true, reasoning: false }, // 能力开关
             maxContextTokens: 128000,   // 上下文预算；设 Infinity 关闭自动压缩
             compactThreshold: 0.8,      // 达到预算的这个比例时压缩
-            maxSteps: undefined,        // 不设上限；主动传入正整数时才限制模型轮数
             stream: true,               // 主请求和压缩都流式输出
             noToolPrompt: "请继续使用工具", // 有工具却连续不调时的提醒（只挂在那次请求上）
             noToolRounds: 3,            // 连续多少轮不调工具就好结束；Infinity 表示永不因此结束
@@ -49,7 +48,7 @@ const result = await Loop.run({
     onStep: (step) => { },                 // 一轮模型和工具都完成后
     onCompact: (event) => { },             // 压缩过程通知
  })
- // result = { reason: 'finished' | 'no-tool' | 'tool-stop' | 'step-limit', text: '最后一轮模型生成的文字', steps: 模型轮数, usage: { inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens } }
+ // result = { reason: 'finished' | 'no-tool' | 'tool-stop', text: '最后一轮模型生成的文字', steps: 模型轮数, usage: { inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens } }
  */
 
 import History from './history.js'
@@ -208,7 +207,6 @@ const run = async ({
             history.push(...assistantMessages)                                  // 保存模型完整 assistant 消息。
             await Notify.tell(onStep, { step: steps, result, toolCalls, toolResults: [] }) // 让调用方在回答已经写入 history 后观察这一轮。
             if ('output' in result || !Object.keys(tools).length) return { reason: 'finished', ...answer } // 结构化输出已校验成功，或根本没注册工具：这就是最终回答，不再追问。
-            if (steps >= llm.maxSteps) return { reason: 'step-limit', ...answer } // 上限返回本轮文字，工具轮不捏造对象。
             noToolCount += 1                                                    // 累计没有工具调用的轮次。
             if (noToolCount === llm.noToolRounds - 1) temporaryPrompt = llm.noToolPrompt // 结束前一轮：插入临时提示推一下模型。
             if (noToolCount >= llm.noToolRounds) return { reason: 'no-tool', ...answer } // 到达上限：返回最后一次回答。Infinity 时这里永不触发。
@@ -269,7 +267,6 @@ const run = async ({
             if (signal?.aborted) throw aborted()      // 取消导致的停止，仍然按异常向上抛。
             return { reason: 'tool-stop', ...answer } // 工具主动停止时不另外生成未请求的最终对象。
         }
-        if (steps >= llm.maxSteps) return { reason: 'step-limit', ...answer } // 完整工具历史写完后退出。
     }
 }
 
