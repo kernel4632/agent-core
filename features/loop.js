@@ -1,39 +1,36 @@
 /*
 目标被调用形式（绝对不可修改）：
 const result = await Loop.run({
-    // --- 数据（每轮请求前现取）---
-    history: [],                // 完整历史消息列表；只有这一个数组，循环只往里追加
-    getSystem: () => "你是编程助手", // 系统提示词：每轮调一次，宿主运行中改了就下一笔生效
-    getTools: () => tools.schema,   // 工具描述：每轮读一遍宿主手上那份（不重新扫描目录）
-
-    // --- LLM 参数（必填，每轮请求前调一次）---
-    // 收的是"取值函数"而不是固定对象：Loop 每一轮请求模型前都重新调一次，
-    // 运行中改了 agent.config 的模型、思考强度、能力开关或限额，下一笔请求就用新值。
-    getLLM: () => ({
-        // 连接
-        baseURL: "https://中转站/v1",
-        apiKey: "sk-xxx",
-        model: "model-name",
-        protocol: "chat",          // chat / responses / anthropic / gemini
-        provider: {                // AI SDK 的生成参数，交给 LLM.chat 原样转发
-            temperature: 0.3,
-            headers: {},
-            body: {},
+    // --- 宿主的活对象（每轮请求前现读，不缓存）---
+    // Loop 每一轮都把 agent.config 和 agent.tools 重新读一遍，再拼这一笔请求：
+    // 宿主运行中改模型 / 思考强度 / system / 限额，或者把 agent.tools 换成另一份集合，
+    // 下一笔请求就用新值，不用停掉当前任务，也不用重建 Agent。
+    agent: {
+        // config 的字段含义见 README 的「config 字段」；这里只列 Loop 会用到的那几项。
+        config: {
+            baseURL: "https://中转站/v1", apiKey: "sk-xxx", model: "model-name", protocol: "chat",
+            provider: { temperature: 0.3, headers: {}, body: {} }, // AI SDK 生成参数
+            system: "你是编程助手",      // 系统提示词
+            capabilities: { tools: true, image: true, reasoning: false }, // 能力开关
+            maxContextTokens: 128000,   // 上下文预算；设 Infinity 关闭自动压缩
+            compactThreshold: 0.8,      // 达到预算的这个比例时压缩
+            maxSteps: undefined,        // 不设上限；主动传入正整数时才限制模型轮数
+            stream: true,               // 主请求和压缩都流式输出
+            noToolPrompt: "请继续使用工具", // 有工具却连续不调时的提醒（只挂在那次请求上）
+            noToolRounds: 3,            // 连续多少轮不调工具就好结束；Infinity 表示永不因此结束
+            retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2
+            retryMaxDelay: 600000,      // 重试退避上限（毫秒）
         },
-        // 下面这些值由 Agent 组装好再返回（见 index.js 的默认值），Loop 直接使用，不再自己补默认。
-        maxContextTokens: 128000,   // 上下文预算；默认开启自动压缩，设 Infinity 关闭
-        compactThreshold: 0.8,     // 上下文估算达到预算的这个比例时压缩
-        maxSteps: undefined,       // 不设上限；调用方主动传入正整数时才限制模型轮数
-        stream: true,              // 主请求和压缩都流式输出
-        noToolPrompt: "请继续使用工具", // 示例；Agent 默认会传一段更长的提醒（见 index.js）
-        noToolRounds: 3,           // 有工具时连续多少轮不调工具就结束；Infinity 表示永不因此结束
-        retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；压缩那次请求也走同一套。
-        retryMaxDelay: 600000,      // 重试退避上限（毫秒）；压缩那次请求也走同一套。
-    }),
+        tools: { schema: {} },          // 当前的工具集合（Tool.from / scan / adopt 的返回值），只读不扫描
+    },
+
+    // --- 数据 ---
+    history: [],                        // 完整历史消息列表；只有这一个数组，循环只往里追加，不换目标
+
     // --- 功能模块（必填，平齐的功能模块作为参数传）---
     buildContext: Context.build,       // 上下文构建模块
     compact: Compact.run,             // 上下文压缩模块
-    executeTool: request => Tool.execute({ ...request, handlers: tools.handlers }), // 工具执行模块，handlers 由调用方补上
+    executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers }), // 工具执行模块，handlers 由调用方补上
     sessionId: "session-1",               // 压缩和工具输出使用的会话
 
     // --- 控制（可选）---
@@ -56,7 +53,7 @@ const result = await Loop.run({
  */
 
 import History from './history.js'
-import LLM from './llm.js'
+import LLM, { buildLLM } from './llm.js'
 import TextTools from './text-tools.js'
 import Notify from '../utils/notify.js'
 import Retry from '../utils/retry.js'                                          // 复用它的重试过滤判据，auto 降级用同一份。
@@ -135,7 +132,7 @@ const ask = async (request, llm) => {
 }
 
 const run = async ({
-    history, getSystem, getTools, getLLM, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),             // 数据、三个"每轮现取"的取值函数、功能模块、取消信号、token 估算器
+    agent, history, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                                    // 宿主活对象、数据、功能模块、取消信号、token 估算器
     onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
 }) => {
     await Notify.tell(onStart) // 外部需要时知道循环已经开始了。
@@ -148,14 +145,14 @@ const run = async ({
         // --- 每轮开始：先响应取消信号 ---
         if (signal?.aborted) throw aborted()
 
-        // --- 每轮重新拼一次请求：模型配置、系统提示、工具表都从宿主现取 ---
-        // 宿主在运行中改 agent.config、换 agent.tools，下一笔请求就用新值：
+        // --- 每轮现读一次宿主状态，现拼这一笔请求 ---
+        // agent 是活对象：宿主在运行中改 agent.config、换 agent.tools，下一笔请求就用新值。
         // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
-        // 工具表只是"读一遍宿主手上那份"，不重新扫描目录——扫描是宿主的事（Tool.from / scan）。
+        // 工具表只读宿主手上那份，不重新扫描目录——扫描是宿主的事（Tool.from / scan）。
         // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
-        const llm = getLLM()
-        const system = getSystem()
-        const tools = getTools()
+        const llm = buildLLM(agent.config)                                                // 模型、生成参数、能力开关、限额、重试都在里面。
+        const system = agent.config.system                                                // 系统提示词。
+        const tools = agent.config.capabilities.tools === false ? {} : agent.tools.schema // 这一轮给模型看的工具表。
         const key = modelKey(llm)
 
         // --- 构建上下文，Token 超限时压一次 ---

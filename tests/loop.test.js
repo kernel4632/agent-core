@@ -24,6 +24,9 @@ const server = Bun.serve({
 })
 const config = { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }
 
+// Loop 每轮从 agent 现读配置和工具表；直接调 Loop 的测试只要这个最小形状，不必真造一台 Agent。
+const fakeAgent = (config, schema = {}) => ({ id: 'test-agent', config: { capabilities: {}, ...config }, tools: { schema } })
+
 afterAll(() => server.stop(true))
 
 
@@ -315,9 +318,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -340,9 +341,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => ({ output: { type: 'text', value: request.name } }),
@@ -366,9 +365,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '不该执行' } }),
@@ -549,9 +546,7 @@ describe('Loop', () => {
 
         const answer = await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ finish: { description: '结束', inputSchema: jsonSchema({ type: 'object', properties: { summary: { type: 'string' } } }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }, { finish: { description: '结束', inputSchema: jsonSchema({ type: 'object', properties: { summary: { type: 'string' } } }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '做完了' }, stop: true }), // 工具主动要求结束。
@@ -575,9 +570,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ ghost: { description: '不存在', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { ghost: { description: '不存在', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => { throw new Error('Tool ghost was not found in handlers') }, // 模拟找得到描述、找不到执行地址。
@@ -600,9 +593,7 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({}),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }, {}),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async request => { executed.push(request.name); return { output: { type: 'text', value: 'ran' } } },
@@ -657,9 +648,7 @@ describe('Loop', () => {
 
         const answer = await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '真实输出' } }), // 工具本身成功。
@@ -682,9 +671,7 @@ describe('Loop', () => {
         let round = 0
         const error = await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => ({ output: { type: 'text', value: '不该跑到这里' } }),
@@ -707,9 +694,7 @@ describe('Loop', () => {
         let round = 0
         await Loop.run({
             history,
-            getSystem: () => '',
-            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-            getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
+            agent: fakeAgent({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             buildContext: Context.build,
             compact: async () => '总结',
             executeTool: async () => { executed.push('ran'); return { output: { type: 'text', value: '真实输出' } } },
@@ -785,9 +770,7 @@ describe('取消在工具边界', () => {
         try {
             const error = await Loop.run({
                 history: [History.user({ content: '跑' })],
-                getSystem: () => '',
-                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
+                agent: fakeAgent({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }, { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => { controller.abort(); return { output: { type: 'text', value: 'x' } } }, // 工具一跑完就取消。
@@ -810,9 +793,7 @@ describe('取消在工具边界', () => {
         try {
             const error = await Loop.run({
                 history: [History.user({ content: '跑' })],
-                getSystem: () => '',
-                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
+                agent: fakeAgent({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }, { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => ({ output: { type: 'text', value: 'x' } }),
@@ -845,9 +826,7 @@ describe('取消在工具边界', () => {
         try {
             await Loop.run({
                 history,
-                getSystem: () => '',
-                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
-                getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
+                agent: fakeAgent({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }, { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 buildContext: Context.build,
                 compact: async () => '总结',
                 executeTool: async () => ({ output: { type: 'text', value: 'x' } }),

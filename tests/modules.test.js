@@ -169,7 +169,7 @@ describe('Loop and Agent', () => {
         const history = [History.user({ content: '请回答我' })]
         const events = []
         const result = await Loop.run({
-            history, getSystem: () => '', getTools: () => ({}), getLLM: () => ({ baseURL: modelURL, apiKey: 'test', model: 'test-model' }),
+            history, agent: { config: { baseURL: modelURL, apiKey: 'test', model: 'test-model', capabilities: {} }, tools: { schema: {} } },
             buildContext: Context.build, compact: Compact.run, executeTool: async () => ({}),
         })
         expect(result.reason).toBe('finished')

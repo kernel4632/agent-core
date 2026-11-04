@@ -26,22 +26,12 @@ import Context from './features/context.js'   // 负责把历史消息裁剪成�
 import Compact from './features/compact.js'   // 负责把上下文压缩成总结文本
 import Loop from './features/loop.js'         // 负责驱动"请求模型 → 执行工具"的主循环
 import Tool from './features/tool.js'         // 负责扫描、接纳和执行工具
-import LLM from './features/llm.js'           // 底层模型请求封装，也暴露给调用方直接使用
+import LLM, { buildLLM } from './features/llm.js' // 底层请求封装（对外只暴露 chat）+ 「Agent 配置 → 一次请求参数」的翻译（内部用）
 import TextTools from './features/text-tools.js' // 纯对话模型的文字工具协议，直接用 LLM.chat 时也能自己调
 import History from './features/history.js'   // 负责创建标准格式的历史消息块
 import { createMeter, modelKey } from './utils/tokens.js' // 本地 token 估算器：按模型记账，用真实 usage 自校准
 import { badPart, PART } from './utils/shape.js' // 内容块形状校验：send 的用户输入也用它挡一下，别让坏块进只增不删的历史
 import { version } from './package.json'      // 版本号只在 package.json 里写一次，打包时会被内联进产物
-
-
-// --- 模型和循环共用同一份配置，不再逐字段抄一遍 ---
-// 把 Agent 配置翻译成底层 LLM 请求配置。两个容易看懵的点：
-// output 要塞进 provider，是 AI SDK 要求结构化输出从 provider 选项传入，不能平铺在顶层；
-// system 在这里置空，是因为系统提示由 Loop 每轮单独传，避免同一条提示被传两遍。
-const buildLLM = (config, overrides = {}) => {
-    const { output, ...merged } = { ...config, ...overrides }
-    return { ...merged, provider: { ...merged.provider, output }, system: undefined }
-}
 
 
 // --- 压缩用的模型配置 ---
@@ -220,11 +210,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             agent.history.push(History.user({ content: input }))
 
             return Loop.run({
-                history: agent.history,
-                // 下面三样每一轮请求前都重新取一次：宿主运行中改了配置、换了工具表，下一笔请求就按新的拼。
-                getLLM: () => buildLLM(agent.config),
-                getSystem: () => agent.config.system,
-                getTools: () => agent.config.capabilities.tools === false ? {} : agent.tools.schema, // 读宿主手上那份集合，不重新扫描目录。
+                agent,                      // 活对象：Loop 每一轮都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效。
+                history: agent.history,     // 数据固定这一个数组：循环只往里追加，不换目标。
                 buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
                 // 压缩发生在哪一轮，就用那一刻的 compact 配置——宿主运行中换了压缩模型也照样跟上。
                 compact: request => {
@@ -258,11 +245,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
             const callbacks = { ...agent.callbacks }
             return Loop.run({
+                agent,                      // 和 send 同一条路：每轮现读宿主的配置、system 和工具表。
                 history: agent.history,
-                // 和 send 同一条路：每轮请求前现取配置、system 和工具表。
-                getLLM: () => buildLLM(agent.config),
-                getSystem: () => agent.config.system,
-                getTools: () => agent.config.capabilities.tools === false ? {} : agent.tools.schema,
                 buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
                 compact: request => {
                     const llm = buildCompact(agent.config)
