@@ -315,8 +315,8 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -340,8 +340,8 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -366,8 +366,8 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, maxSteps: 2 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -549,8 +549,8 @@ describe('Loop', () => {
 
         const answer = await Loop.run({
             history,
-            system: '',
-            tools: { finish: { description: '结束', inputSchema: jsonSchema({ type: 'object', properties: { summary: { type: 'string' } } }) } },
+            getSystem: () => '',
+            getTools: () => ({ finish: { description: '结束', inputSchema: jsonSchema({ type: 'object', properties: { summary: { type: 'string' } } }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -575,8 +575,8 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            system: '',
-            tools: { ghost: { description: '不存在', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ ghost: { description: '不存在', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -600,8 +600,8 @@ describe('Loop', () => {
 
         await Loop.run({
             history,
-            system: '',
-            tools: {},
+            getSystem: () => '',
+            getTools: () => ({}),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -657,8 +657,8 @@ describe('Loop', () => {
 
         const answer = await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -682,8 +682,8 @@ describe('Loop', () => {
         let round = 0
         const error = await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -707,8 +707,8 @@ describe('Loop', () => {
         let round = 0
         await Loop.run({
             history,
-            system: '',
-            tools: { echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+            getSystem: () => '',
+            getTools: () => ({ echo: { description: 'echo', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
             getLLM: () => ({ baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
             buildContext: Context.build,
             compact: async () => '总结',
@@ -785,8 +785,8 @@ describe('取消在工具边界', () => {
         try {
             const error = await Loop.run({
                 history: [History.user({ content: '跑' })],
-                system: '',
-                tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+                getSystem: () => '',
+                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 }),
                 buildContext: Context.build,
                 compact: async () => '总结',
@@ -810,8 +810,8 @@ describe('取消在工具边界', () => {
         try {
             const error = await Loop.run({
                 history: [History.user({ content: '跑' })],
-                system: '',
-                tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+                getSystem: () => '',
+                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
                 buildContext: Context.build,
                 compact: async () => '总结',
@@ -845,8 +845,8 @@ describe('取消在工具边界', () => {
         try {
             await Loop.run({
                 history,
-                system: '',
-                tools: { echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+                getSystem: () => '',
+                getTools: () => ({ echo: { description: 'e', inputSchema: jsonSchema({ type: 'object', properties: {} }) } }),
                 getLLM: () => ({ baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false }),
                 buildContext: Context.build,
                 compact: async () => '总结',
@@ -961,6 +961,92 @@ describe('运行中改配置', () => {
 
             const compactRequest = bodies.find(body => JSON.stringify(body.messages).includes('压缩成一段总结'))
             expect(compactRequest.model).toBe('compact-b') // 压缩配置也是现取的，不用等下一次 send。
+        } finally { mock.stop(true) }
+    })
+
+    test('改 system：下一笔请求的系统提示就换了', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 2, system: '旧的系统提示' },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.config.system = '新的系统提示' } // 运行中换了提示词。
+
+            await agent.send('做事')
+
+            const systemOf = body => body.messages.find(message => message.role === 'system')?.content
+            expect(bodies.map(systemOf)).toEqual(['旧的系统提示', '新的系统提示'])
+        } finally { mock.stop(true) }
+    })
+
+    test('换工具表：下一笔请求按新表发，执行也走新表的 handler', async () => {
+        const bodies = []
+        const executed = []
+        const mock = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                bodies.push(body)
+                const answered = body.messages.some(message => message.role === 'tool')
+                // 第二轮开始要求调用新表里的 new_tool，其余轮次回文字。
+                const wantsTool = bodies.length >= 2 && !answered
+                const message = wantsTool
+                    ? { role: 'assistant', content: null, tool_calls: [{ id: 'call-new', type: 'function', function: { name: 'new_tool', arguments: '{}' } }] }
+                    : { role: 'assistant', content: '好' }
+                return Response.json({ choices: [{ index: 0, message, finish_reason: wantsTool ? 'tool_calls' : 'stop' }], usage: {} })
+            },
+        })
+        const oldTools = Agent.tool.adopt({ old_tool: { description: '旧工具', inputSchema: { type: 'object', properties: {} }, execute: async () => { executed.push('old'); return 'old' } } })
+        const newTools = Agent.tool.adopt({ new_tool: { description: '新工具', inputSchema: { type: 'object', properties: {} }, execute: async () => { executed.push('new'); return 'new' } } })
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 3 },
+                tools: oldTools,
+            })
+            agent.callbacks.onLLMFinish = () => { agent.tools = newTools } // 运行中整份换掉工具集合。
+
+            await agent.send('做事')
+
+            const namesOf = body => (body.tools ?? []).map(tool => tool.function?.name)
+            expect(namesOf(bodies[0])).toEqual(['old_tool'])   // 第一笔还是旧表。
+            expect(namesOf(bodies[1])).toEqual(['new_tool'])   // 第二笔换成新表。
+            expect(executed).toEqual(['new'])                  // 模型点的是新表里的工具，执行的也是新表的 handler。
+        } finally { mock.stop(true) }
+    })
+
+    test('撤掉工具：下一笔请求就不带工具，这轮回答直接算最终结果', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 3 },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.tools = Agent.tool.omit(agent.tools, ['ping']) } // 运行中把工具全撤了。
+
+            const result = await agent.send('做事')
+
+            expect(bodies[0].tools).toHaveLength(1)  // 第一笔还带着那个工具。
+            expect(bodies[1].tools).toBeUndefined()  // 第二笔不再带工具。
+            expect(bodies).toHaveLength(2)
+            expect(result.reason).toBe('finished')   // 没有工具了，这一轮的回答就是最终结果（不是 no-tool）。
+        } finally { mock.stop(true) }
+    })
+
+    test('运行中关掉 capabilities.tools：同样立刻不带工具，出口也一致', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 3 },
+                tools: ping(),
+            })
+            agent.callbacks.onLLMFinish = () => { agent.config.capabilities = { ...agent.config.capabilities, tools: false } }
+
+            const result = await agent.send('做事')
+
+            expect(bodies[0].tools).toHaveLength(1)
+            expect(bodies[1].tools).toBeUndefined()
+            expect(result.reason).toBe('finished') // 和"工具表是空的"同一个出口，不会半生效成 no-tool。
         } finally { mock.stop(true) }
     })
 })

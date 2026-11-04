@@ -1,10 +1,10 @@
 /*
 目标被调用形式（绝对不可修改）：
 const result = await Loop.run({
-    // --- 数据（必填）---
-    history: [],                // 完整历史消息列表
-    system: "你是编程助手",         // 系统提示词
-    tools: tools.schema,        // 给模型看的工具描述，来自 Tool.scan() 的 schema
+    // --- 数据（每轮请求前现取）---
+    history: [],                // 完整历史消息列表；只有这一个数组，循环只往里追加
+    getSystem: () => "你是编程助手", // 系统提示词：每轮调一次，宿主运行中改了就下一笔生效
+    getTools: () => tools.schema,   // 工具描述：每轮读一遍宿主手上那份（不重新扫描目录）
 
     // --- LLM 参数（必填，每轮请求前调一次）---
     // 收的是"取值函数"而不是固定对象：Loop 每一轮请求模型前都重新调一次，
@@ -135,7 +135,7 @@ const ask = async (request, llm) => {
 }
 
 const run = async ({
-    history, system, tools, getLLM, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                   // 数据、模型配置的取值函数、功能模块、取消信号、token 估算器
+    history, getSystem, getTools, getLLM, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),             // 数据、三个"每轮现取"的取值函数、功能模块、取消信号、token 估算器
     onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
 }) => {
     await Notify.tell(onStart) // 外部需要时知道循环已经开始了。
@@ -148,11 +148,14 @@ const run = async ({
         // --- 每轮开始：先响应取消信号 ---
         if (signal?.aborted) throw aborted()
 
-        // --- 这一轮请求用哪套模型配置：每轮现取一次，不用 send 开始时的快照 ---
-        // 宿主在运行中改 agent.config（模型、思考强度、能力开关、限额……），下一笔请求就用新值：
+        // --- 每轮重新拼一次请求：模型配置、系统提示、工具表都从宿主现取 ---
+        // 宿主在运行中改 agent.config、换 agent.tools，下一笔请求就用新值：
         // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
+        // 工具表只是"读一遍宿主手上那份"，不重新扫描目录——扫描是宿主的事（Tool.from / scan）。
         // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
         const llm = getLLM()
+        const system = getSystem()
+        const tools = getTools()
         const key = modelKey(llm)
 
         // --- 构建上下文，Token 超限时压一次 ---

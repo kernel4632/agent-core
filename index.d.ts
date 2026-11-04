@@ -220,8 +220,9 @@ export interface SendOptions {
 export interface AgentInstance {
     id: string
     history: Message[]
-    // 活配置：运行中改它，下一笔模型请求就用新值（system 和工具表要下一次 send 才换）。
+    // 活配置：每轮请求前重新取一次，运行中改它，下一笔模型请求就用新值（含 system）。
     config: Config
+    // 同样每轮现取：运行中换成另一份集合（Tool.from / pick / omit 的返回值），下一笔请求就按新表发。
     tools: ToolSet
     callbacks: Callbacks
     running: { controller: AbortController; task: Promise<Answer | string> } | null // send 时是 Answer；compact 时是总结字符串。

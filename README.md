@@ -869,23 +869,25 @@ await agent.send({
 
 > 直接 `send` 的内容块会在入口校验：`text` / `image` / `audio` / `video` / `file` 这些块形状不对（比如媒体缺 `mediaType`、值不是字符串 / URL / 二进制）会当场拒绝，不会写进只增不删的历史。图片块用 `{ type: 'image', image: <data URL 或 base64 或 URL 对象> }`，或 AI SDK 当前的 `{ type: 'file', mediaType, data }`。
 
-#### 运行中改配置：下一笔模型请求就生效
+#### 每轮现拼：运行中改什么，下一笔请求就生效
 
-`agent.config` 是**活配置**：一次 `send` 还在跑的时候改它，下一笔请求模型就用新值——不用停掉当前任务，也不用重建 Agent。
+每发一笔模型请求之前，Loop 都会重新从宿主那里取一遍这次请求要用的全部东西——配置、`system`、工具表，再重新拼出这一轮的上下文和请求。所以一次 `send` 还在跑的时候改它们，下一笔请求就用新值：不用停掉当前任务，也不用重建 Agent。
 
 ```js
 // 在 onStep / onLLMFinish 里改都行：当前这笔请求和它发起的工具已经跑完
 agent.config.model = '新的模型'
 agent.config.provider = { ...agent.config.provider, temperature: 0.2 }
-agent.config.maxContextTokens = 64000
+agent.config.system = '新的系统提示'
+agent.tools = Agent.tool.omit(agent.tools, ['shell'])   // 运行中撤掉一个工具，下一笔请求就不带它
 ```
 
 - **什么时候切换**：只在请求边界。已经发出去的那一笔不会被打断，它发起的工具也照常跑完；下一轮请求模型时才换。流式过程中不会热替换。
-- **哪些会跟着换**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`maxSteps` / `noToolRounds`、`maxToolOutput` / `maxToolConcurrency`，以及压缩用的 `compact` 那套配置（压缩发生在哪一轮，就用那一刻的值）。token 估算也按新模型重新记。
-- **哪些不换**：`system` 和工具表在 `send` 开始时定下来，改它们要等下一次 `send`。它们定义的是"这次任务是什么"；模型、强度、限额是"拿什么跑这次任务"。
+- **每轮都会重新取的**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`maxSteps` / `noToolRounds`、`maxToolOutput` / `maxToolConcurrency`、`system`、工具表；压缩用的 `compact` 配置在压缩发生的那一轮取。token 估算也按新模型重新记。
+- **工具表只读一遍，不重新扫描目录**：把 `agent.tools` 换成新的集合（`Agent.tool.from` / `pick` / `omit` 的返回值）就生效；目录里的文件不会在这次运行中被重新扫描——要重新扫描用新的 `send`（`send({ tools })` 会在开始时现扫）。模型看到的那张表和执行时用的 handler 取自同一份集合。
+- **不随轮次换的只有两样**：`history` 是这次运行的权威数据，循环始终往同一个数组追加；回调是运行期的接线，在 `send` 开始时定下。
 - 按次传的 `send({ config })` 语义不变：写回 `agent.config`，这次运行从第一笔请求起就用它。
 
-> 会话运行中改模型 / 思考强度，直接写 `agent.config` 就行：历史、流式输出和运行状态都不中断。
+> 会话运行中改模型 / 思考强度 / system / 工具表，直接改 `agent.config` 和 `agent.tools` 就行：历史、流式输出和运行状态都不中断。
 
 #### `agent.stop()`
 
