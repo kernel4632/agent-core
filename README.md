@@ -725,7 +725,7 @@ const agent = Agent.create({
 })
 ```
 
-在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的每一次模型请求继续生效（包括正在跑的这一轮的下一笔，见下方「运行中改配置」）。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
+在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的每一次模型请求继续生效（包括正在跑的这一轮的下一笔，见下方「每轮现拼」）。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities` 和 `compact` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
 
 `cache` 默认开启。四种协议各按自己的方式让服务端复用固定的开头（system、工具描述、历史），命中后那部分不再重新计算，长会话能明显变快、变便宜：
 
