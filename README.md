@@ -1,4 +1,4 @@
-﻿# @kernel4632/agent-core
+# @kernel4632/agent-core
 
 [![CI](https://github.com/kernel4632/agent-core/actions/workflows/ci.yml/badge.svg)](https://github.com/kernel4632/agent-core/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/kernel4632/agent-core)](https://github.com/kernel4632/agent-core/releases/latest)
@@ -867,7 +867,7 @@ await agent.send({
 
 能不能看懂取决于模型本身。实测 `kimi-k2.6` 可以，`gpt-oss-120b` 没有视觉能力、会直接报 `content must be a string`——是大声失败，不是静默忽略。
 
-> 直接 `send` 的内容块形状由你保证（工具返回的媒体会在边界自动校验并归一化；用户直接发的内容块不做校验）。图片块用 `{ type: 'image', image: <data URL 或 base64 或 URL 对象> }`，或 AI SDK 当前的 `{ type: 'file', mediaType, data }`。
+> 直接 `send` 的内容块会在入口校验：`text` / `image` / `audio` / `video` / `file` 这些块形状不对（比如媒体缺 `mediaType`、值不是字符串 / URL / 二进制）会当场拒绝，不会写进只增不删的历史。图片块用 `{ type: 'image', image: <data URL 或 base64 或 URL 对象> }`，或 AI SDK 当前的 `{ type: 'file', mediaType, data }`。
 
 #### `agent.stop()`
 

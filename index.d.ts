@@ -185,7 +185,8 @@ export interface ContextModule {
     build: (options: { history: Message[]; system?: string; tools?: Record<string, any>; budget?: number; ratio?: number; capabilities?: Capabilities; mediaFallback?: 'error' | 'strip' }) => { messages: any[]; readonly token: number }
 }
 export interface CompactModule {
-    run: (options: Record<string, any>) => Promise<string>
+    // 返回总结文本和这一笔压缩请求的用量（0.27 起带 usage：压缩也是真实请求，钱要计进合计）。
+    run: (options: Record<string, any>) => Promise<{ content: string; usage: Usage }>
 }
 export interface LLMModule {
     chat: (options: Record<string, any>) => Promise<any>
