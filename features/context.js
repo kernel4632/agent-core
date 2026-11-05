@@ -30,7 +30,7 @@ build() 一进来就把平铺历史读成回合：工具结果按 toolCallId 回
 */
 
 import History from './history.js' // 「什么是一个回合」由 History 定义，这里只是它的使用者
-import { estimate, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
+import { estimate, textChars, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
 
 // 开场留住用户最初说过的话（按用户回合数），总结前留住当前任务的最近现场（按回合数）。
 // 这两个数字是上限，真正能留多少还要看预算——光按条数留，一条巨大的消息就能让压缩永远收敛不了。
@@ -44,8 +44,10 @@ const RECENT_SHARE = 0.3
 
 // 一个回合有多大。用字符数而不是 token：裁剪要对每个候选回合都量一次，
 // 逐条估算 token 是没必要的开销。字符数用来在候选回合之间分预算足够了。
+// 媒体载荷（base64 / 二进制）不算字符：一张截图几百万字符，按长度算会让这一轮无论如何都装不下、
+// 在压缩后被整条丢掉；它真正的 token 成本由 tokens.js 按块计。
 // content 允许缺失（外部恢复的历史可能有），缺了按 0 算，别让 JSON.stringify(undefined).length 抛错。
-const size = turn => turn.reduce((total, message) => total + JSON.stringify(message.content ?? null).length, 0)
+const size = turn => turn.reduce((total, message) => total + textChars(message.content ?? null), 0)
 
 // --- 在预算内按给定顺序挑回合，装不下就到此为止 ---
 const within = (turns, budget) => {

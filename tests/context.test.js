@@ -221,3 +221,32 @@ describe('总结怎么进上下文', () => {
         expect(pairing(messages)).toEqual({ ok: true })                          // 硬加回来后配对仍然完整。
     })
 })
+
+
+describe('token 估算', () => {
+    test('带大图的历史不会把估算撑爆', () => {
+        // 实战：一张 1MB 的截图让 JSON 从 100 万字符涨到 4700 万字符，旧算法估出 80 万+ token，
+        // 真实 input 只有 14.5 万，于是上下文还很空就触发了压缩。媒体按块计，不按 base64 长度算。
+        const history = [
+            History.user({ content: [{ type: 'text', text: '看一下这张图' }, { type: 'image', image: 'data:image/png;base64,' + 'A'.repeat(3_000_000) }] }),
+            History.assistant({ content: null, toolCalls: [{ id: 'c1', name: 'shot', arguments: {} }] }),
+            History.tool({ toolCallId: 'c1', toolName: 'shot', content: { type: 'content', value: [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'A'.repeat(2_000_000) } }] } }),
+        ]
+        const { token } = Context.build({ history, system: '你是助手' })
+
+        expect(token).toBeLessThan(5000) // 两张大图 + 一句话，不该是几十万 token。
+    })
+
+    test('压缩后挑回合时，图片不会被当成超大回合丢掉', () => {
+        // 同一个根因的另一面：按 JSON 长度分配回合预算时，一张 2MB 的图 = 270 万字符，
+        // 这一轮永远装不进预算，压缩后整条用户消息就消失了；媒体不按字符算才对。
+        const history = [
+            History.user({ content: '最初目标' }),
+            History.compact({ content: '总结' }),
+            History.user({ content: [{ type: 'text', text: '看这张图' }, { type: 'image', image: 'data:image/png;base64,' + 'A'.repeat(2_000_000) }] }),
+        ]
+        const { messages } = Context.build({ history, budget: 1000, ratio: 0.6 })
+
+        expect(JSON.stringify(messages)).toContain('看这张图') // 最近的用户消息还在。
+    })
+})

@@ -1,13 +1,14 @@
 /*
-盯住新的 token 估算器：不装分词器，靠"字符数 × 每字符 token 比"，比例随真实 usage 自校准。
+盯住 token 估算器：不装分词器，靠"字符数 × 每字符 token 比"，比例随真实 usage 自校准。
 
-这里要守住两件事：
+这里要守住三件事：
 1. 估算随内容单调增长（不会把大内容估成小的）。
 2. 拿到真实 usage 后，比例会朝真实值靠；换模型各记各的。
+3. 媒体按块算，不按 base64 字符数——一张图不该把估算撑到几十倍（实战里真实 14.5 万 token 估成 80 万+）。
 */
 
 import { expect, test, describe } from 'bun:test'
-import { estimate, createMeter, modelKey, DEFAULT_RATIO } from '../utils/tokens.js'
+import { estimate, createMeter, modelKey, DEFAULT_RATIO, MEDIA_TOKENS } from '../utils/tokens.js'
 
 describe('token 估算器', () => {
     test('估算随内容增长，默认比例偏高', () => {
@@ -67,5 +68,55 @@ describe('token 估算器', () => {
         expect(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm' })).not.toBe(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm2' }))
         expect(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm' })).not.toBe(modelKey({ protocol: 'anthropic', baseURL: 'u', model: 'm' }))
         expect(modelKey({ model: { provider: 'openai', modelId: 'gpt' } })).toBe('openai|gpt')
+    })
+})
+
+
+describe('媒体不按字符数算', () => {
+    // 实战：一张图让 JSON 从 100 万字符涨到 4700 万字符，旧算法估出 80 万 token，
+    // 真实 input 只有 14.5 万，于是上下文还很空就触发了压缩。
+    test('图片的 base64 有多长，估出来都一样', () => {
+        const withImage = data => ({ messages: [{ role: 'user', content: [{ type: 'text', text: '看图' }, { type: 'image', image: data }] }] })
+        const small = estimate(withImage('data:image/png;base64,AAAA'))
+        const huge = estimate(withImage('data:image/png;base64,' + 'A'.repeat(2_000_000)))
+
+        expect(huge).toBe(small)                      // 2MB 的图和 4 字节的图，估出来完全一样。
+        expect(huge).toBeLessThan(MEDIA_TOKENS + 100) // 整个请求 = 一句话 + 一块媒体。
+    })
+
+    test('媒体按块计固定 token，文字照常按字符算', () => {
+        const one = { messages: [{ role: 'user', content: [{ type: 'image', image: 'x' }] }] }
+        const two = { messages: [{ role: 'user', content: [{ type: 'image', image: 'x' }, { type: 'image', image: 'y' }] }] }
+        const delta = estimate(two) - estimate(one)
+
+        expect(delta).toBeGreaterThanOrEqual(MEDIA_TOKENS) // 多一块媒体至少多一份固定值。
+        expect(delta).toBeLessThan(MEDIA_TOKENS + 100)     // 但不会跟着载荷长度涨。
+        expect(estimate({ messages: [{ role: 'user', content: 'a'.repeat(3000) }] })).toBeGreaterThan(estimate(one)) // 文字仍然按字符估。
+    })
+
+    test('二进制媒体不会被 JSON 化后算成几十倍', () => {
+        const bytes = new Uint8Array(500_000).fill(65)
+        const binary = estimate({ messages: [{ role: 'user', content: [{ type: 'image', image: bytes }] }] })
+        const text = estimate({ messages: [{ role: 'user', content: [{ type: 'image', image: 'x' }] }] })
+        expect(binary).toBe(text) // Uint8Array 序列化成 {"0":65,...} 的长度完全失真，这里直接按媒体块算。
+    })
+
+    test('工具结果里的媒体同样按块算', () => {
+        const output = {
+            type: 'content',
+            value: [{ type: 'text', text: '截图' }, { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'A'.repeat(1_000_000) } }],
+        }
+        const messages = [{ role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'shot', output }] }]
+        expect(estimate({ messages })).toBeLessThan(MEDIA_TOKENS + 200)
+    })
+
+    test('校准先扣掉媒体的固定估值，一张图不会把文字比例拉到接近 0', () => {
+        const meter = createMeter()
+        const payload = {
+            messages: [{ role: 'user', content: [{ type: 'text', text: 'a'.repeat(1000) }, { type: 'image', image: 'data:image/png;base64,' + 'A'.repeat(2_000_000) }] }],
+        }
+        meter.observe('k', payload, estimate(payload, 0.25)) // 真实用量 ≈ 文字按 0.25 估 + 图上固定的 MEDIA_TOKENS。
+
+        expect(meter.ratio('k')).toBeCloseTo(0.25, 1) // 学到的还是文字比例；旧算法在这里会掉到 MIN_RATIO。
     })
 })

@@ -374,7 +374,7 @@ const agent = Agent.create({ config: { ...config, system: ['你是一个助手�
     ├── notify.js         ← 所有回调的统一出口
     ├── schema.js         ← 工具参数格式归一化（scan 和 adopt 共用）
     ├── shape.js          ← 工具返回值变成输出块（内存工具用；子进程里有一份副本）
-    └── tokens.js         ← 上下文 token 估算：字符数 × 每字符 token 比，比例由真实 usage 自校准
+    └── tokens.js         ← 上下文 token 估算：文字按字符数 × 每字符 token 比（比例由真实 usage 自校准），媒体按块计
 ```
 
 `tool.js` 和 `tool-process.js` 是同一件事的两半，所以放在一起：前者在主线程里找工具、管工具进程，
@@ -1156,7 +1156,7 @@ const { messages, token } = Agent.context.build({
     tools: tools.schema,
 })
 // messages → 可以直接传给 LLM.chat 的消息数组
-// token    → 估算的 token 数（不装分词器：字符数 × 每字符 token 比，比例由 Loop 从真实 usage 自校准）
+// token    → 估算的 token 数（不装分词器：文字按字符数 × 每字符 token 比，比例由 Loop 从真实 usage 自校准；媒体按块计，不看 base64 长度）
 ```
 
 裁剪的最小单位是**回合**，不是消息。一个回合 = 模型的一次响应 + 它发起的全部工具调用 + 这些调用的结果，
@@ -1392,6 +1392,8 @@ const agent = Agent.create({ config: { /* ... */ }, tools })
 上下文超过 `config.maxContextTokens` 的 `compactThreshold`（默认 0.8，即 80%）时，Loop 会自动调用 Compact 把历史压缩成一段总结，然后继续运行。**默认就开着**：`maxContextTokens` 默认 `128000`，不配置也会在接近上限时自动压缩，避免把上下文撑爆。你的模型窗口比这小就把它调小；想彻底关掉设 `maxContextTokens: Infinity`。
 
 **上下文 token 怎么估**：不装分词器，用"字符数 × 每字符多少 token"。这个比例是**会自校准**的——每轮模型都会回 `usage.inputTokens`（这次请求真实的输入 token 数），拿它反推这个模型真实的"每字符 token 比"记下来给下一轮。换模型（`config.compact` 的压缩模型、`send` 时覆盖 `model`、换 provider）就换一条记录，越用越准，也不怕分词器对不上模型。
+
+**图片 / 音频 / 视频 / 文件不按 base64 字符数算。** 媒体块在 JSON 里可能有几百万字符，但模型为它付的 token 只取决于尺寸和解码方式，所以每块按固定值（`MEDIA_TOKENS`，1200）估，校准时会先把这部分从真实用量里扣掉。不这么做的话，一张截图就能让估算从 14 万跳到 80 万，上下文还很空就触发压缩（实战踩过：JSON 从 100 万字符涨到 4700 万字符）。
 
 **压缩只往 `agent.history` 里追加一条总结，永远不删任何东西。** `history` 是唯一权威数据来源，该保留多少由持有它的你来决定——压缩控制的是"这一轮发给模型的内容有多大"，不是"历史能留多少"。
 
