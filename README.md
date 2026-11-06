@@ -804,9 +804,36 @@ console.log(answer.text)
 | `onToolResult` | 工具执行完成（拒绝/取消/无效调用也触发） | `{ toolName, toolCallId, output, ... }` |
 | `onStep` | 一轮模型和工具都完成后 | `{ step, result, toolCalls, toolResults }`；`toolResults` 是完整结果对象（`call` + `output`），和 `onToolResult` 同一种形状 |
 | `onRetry` | 请求失败重试 | `{ attempt, error, delay }`（主请求和压缩请求共用） |
+| `onInject` | 每轮请求前（压缩之后） | `{ tokens, budget, compactThreshold }` → 返回字符串就临时附在本次请求末尾；返回其它值不注入 |
 | `onCompact` | 上下文压缩 | `compact-start` / AI SDK 事件（统一带 `request: 'compact'` 标记）/ `compact-finish`（带 `usage`，即压缩这一笔的用量） |
 
-除了 `onPermission`，所有回调都只是通知：回调自己抛错会被忽略，任务照常进行，工具结果也不会被改写。`onPermission` 的返回值决定放不放行，所以它抛错时这次 `send` 会失败，交给你的 `.catch()`。注意它按"非 `true` 即拒绝"处理：**每个分支都要显式 `return true`**，忘了返回会让那次工具被拒。
+除了 `onPermission` 和 `onInject`，所有回调都只是通知：回调自己抛错会被忽略，任务照常进行，工具结果也不会被改写。`onPermission` 的返回值决定放不放行，所以它抛错时这次 `send` 会失败，交给你的 `.catch()`。注意它按"非 `true` 即拒绝"处理：**每个分支都要显式 `return true`**，忘了返回会让那次工具被拒。`onInject` 抛错只当这一轮不注入，不打断任务。
+
+#### 宿主注入临时提示（`onInject`）
+
+想在"下一次模型请求"里临时补一句话，用 `onInject`：每轮请求前调一次，返回的文字作为一条 `user` 消息附在请求末尾，**不写进 `history`**，请求发完就没了。`tokens` 是这一轮压缩之后的估算值。
+
+典型用法是上下文余量提醒——快到压缩点了，让模型这一轮收口：
+
+```js
+let reminded = false   // "只提醒一次"是业务策略，由宿主自己记
+
+const agent = Agent.create({
+    config: { ...config, maxContextTokens: 128000, compactThreshold: 0.8 },
+    callbacks: {
+        onInject: ({ tokens, budget, compactThreshold }) => {
+            const threshold = budget * compactThreshold
+            if (reminded || tokens < threshold * 0.95) return undefined
+            reminded = true
+            return '上下文快满了，这一轮请收口：不要再开新任务，把已有结果整理成答复。'
+        },
+    },
+})
+```
+
+- 压缩当轮：`onInject` 在压缩之后才调，拿到的 `tokens` 已经是压小的值，自然不会再提醒。
+- 每轮都会问，去重由你决定（上面用 `reminded`）；核心不替宿主记"提醒过没有"。
+- 和核心自己的 `noToolPrompt` 同时存在时，两段文字会合在一条消息里。
 
 #### `agent.send(input)` / `agent.send(options)`
 

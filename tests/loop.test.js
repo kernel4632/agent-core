@@ -975,3 +975,109 @@ describe('运行中改配置', () => {
         } finally { mock.stop(true) }
     })
 })
+
+
+describe('宿主注入临时提示（onInject）', () => {
+    // 需求来自实战（issue #20）：宿主想在"下一次模型请求"里补一句"上下文快满了，收口"。
+    // 这句话不能写进 history（会永久占上下文），也不能靠改 system（会一直生效、还会换缓存键）。
+
+    // 一个只回文字、把每次请求体记下来的假模型；配 1 个工具，让一次 send 里有多轮请求。
+    const recording = () => {
+        const bodies = []
+        const mock = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                bodies.push(await request.json())
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '好' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        return { bodies, mock }
+    }
+    const ping = () => Agent.tool.adopt({ ping: { description: 'ping', inputSchema: { type: 'object', properties: {} }, execute: async () => 'pong' } })
+    const lastUser = body => body.messages.filter(message => message.role === 'user').at(-1)
+
+    test('返回的文字只挂在那次请求上，不写进 history', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 2 },
+                tools: ping(),
+                callbacks: { onInject: () => '这一轮请收口' },
+            })
+
+            await agent.send('做事')
+
+            expect(lastUser(bodies[0]).content).toContain('这一轮请收口') // 第一笔就带上了。
+            expect(lastUser(bodies[1]).content).toContain('这一轮请收口') // 每轮都会问，去重由宿主决定。
+            expect(JSON.stringify(agent.history)).not.toContain('这一轮请收口') // history 里没有。
+        } finally { mock.stop(true) }
+    })
+
+    test('回调拿得到估算和对齐参数，并且每轮都调一次', async () => {
+        const { mock } = recording()
+        const seen = []
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 2 },
+                tools: ping(),
+                callbacks: { onInject: info => { seen.push(info) } }, // 返回 undefined → 不注入。
+            })
+
+            await agent.send('做事')
+
+            expect(seen).toHaveLength(2)                 // 两轮请求，各问一次。
+            expect(seen[0].budget).toBe(128000)          // 默认上下文预算。
+            expect(seen[0].compactThreshold).toBe(0.8)   // 默认压缩比例。
+            expect(seen[0].tokens).toBeGreaterThan(0)    // 这一轮的估算值，宿主不用自己再算。
+        } finally { mock.stop(true) }
+    })
+
+    test('返回空串或非字符串时不注入', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+                tools: ping(),
+                callbacks: { onInject: () => ({ text: '不是字符串' }) },
+            })
+
+            await agent.send('做事')
+
+            expect(bodies[0].messages.filter(message => message.role === 'user')).toHaveLength(1) // 只有用户任务那一句。
+        } finally { mock.stop(true) }
+    })
+
+    test('和核心的 noToolPrompt 同时存在时，两段都在同一条消息里', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 3 },
+                tools: ping(),
+                callbacks: { onInject: () => '宿主提醒' },
+            })
+
+            await agent.send('做事')
+
+            const prompt = lastUser(bodies[2])            // 第 3 笔请求：核心在第 2 轮结束后挂上了 noToolPrompt。
+            expect(prompt.role).toBe('user')
+            expect(prompt.content).toContain('没有使用工具') // 核心的提醒。
+            expect(prompt.content).toContain('宿主提醒')     // 宿主注入的那句。
+        } finally { mock.stop(true) }
+    })
+
+    test('回调抛错只当这一轮不注入，不打断任务', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, noToolRounds: 1 },
+                tools: ping(),
+                callbacks: { onInject: () => { throw new Error('宿主坏了') } },
+            })
+
+            const result = await agent.send('做事')
+
+            expect(result.reason).toBe('no-tool')                                              // 任务照常跑完。
+            expect(bodies[0].messages.filter(message => message.role === 'user')).toHaveLength(1) // 没有注入任何东西。
+        } finally { mock.stop(true) }
+    })
+})

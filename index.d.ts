@@ -96,6 +96,9 @@ export interface Callbacks {
     onLLMEvent?: (event: any) => void | Promise<void>
     onPermission?: (permission: { sessionId: string; toolCallId: string; toolName: string; input: any; signal: AbortSignal }) => boolean | Promise<boolean>
     onRetry?: (info: { attempt: number; error: Error; delay: number }) => void
+    // 每轮请求前调用；返回字符串就临时附在这次请求末尾（role:'user'，不写进 history），返回其它值不注入。
+    // tokens 是这一轮压缩之后的估算值。去重由宿主负责：核心每轮都会问，"只提醒一次"是业务策略。
+    onInject?: (info: { tokens: number; budget: number; compactThreshold: number }) => string | undefined | null | Promise<string | undefined | null>
     onToolCall?: (call: { toolCallId: string; toolName: string; input: any; type?: string; title?: string; providerExecuted?: boolean; providerMetadata?: Record<string, any> }) => void | Promise<void>
     onToolOutput?: (output: { toolName: string; stream: string; data: unknown; toolCallId: string; input?: any }) => void
     onToolResult?: (result: { toolCallId: string; toolName: string; input?: any; output: any; result?: any; error?: string; type?: string; title?: string; providerExecuted?: boolean; providerMetadata?: Record<string, any> }) => void | Promise<void>

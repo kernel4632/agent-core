@@ -42,6 +42,7 @@ const result = await Loop.run({
     onLLMEvent: event => {},               // 原样接收 AI SDK 的所有流事件
     onRetry: (info) => { },                // 请求失败重试中
     onPermission: async (permission) => { }, // 工具权限询问；必须严格返回 true 才放行，其它任何值都按拒绝
+    onInject: async ({ tokens, budget, compactThreshold }) => '', // 每轮请求前问一次：返回字符串就临时附在本次请求末尾（不写进 history）
     onToolCall: (call) => { },              // 工具调用开始
     onToolOutput: (output) => { },          // 工具实时输出
     onToolResult: (result) => { },         // 工具执行完
@@ -85,6 +86,21 @@ const checkPermission = async (onPermission, payload, signal) => {
         return false
     }
     return answer
+}
+
+// --- 问宿主这一轮有没有要临时插一句的 ---
+// 和 onPermission 一样，它的返回值要拿来用，所以不能走 Notify.tell（那里把返回值丢掉）。
+// 但两者不同：权限决定"放不放行"，出错必须让调用方知道；而这里只是"加一句话"，
+// 宿主的钩子坏了就当这一轮不注入，不打断正在跑的任务。
+// 每轮都会问；"这次 run 只提醒一次"这种去重是宿主自己的业务策略，核心不替它记。
+const askInject = async (onInject, info) => {
+    if (!onInject) return ''
+    try {
+        const text = await onInject(info)
+        return typeof text === 'string' ? text.trim() : ''
+    } catch {
+        return ''
+    }
 }
 
 // --- 把一次请求的用量加进合计 ---
@@ -132,7 +148,7 @@ const ask = async (request, llm) => {
 
 const run = async ({
     agent, history, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                                    // 宿主活对象、数据、功能模块、取消信号、token 估算器
-    onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
+    onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onInject, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
 }) => {
     await Notify.tell(onStart) // 外部需要时知道循环已经开始了。
     let noToolCount = 0        // 记录连续没有工具调用的模型回合。
@@ -171,12 +187,20 @@ const run = async ({
         // history 是这个项目唯一的权威数据来源，该保留多少由持有它的上层决定，核心包无权替它丢数据。
         // 压缩控制的是"这一轮发给模型的内容有多大"，不是"历史能留多少"。
 
+        // --- 宿主想临时插一句吗：每轮请求前问一次，放在压缩之后，拿到的才是这一轮真正要用的估算 ---
+        // 典型用法：上下文快到压缩点了，提醒模型这一轮收口。这句只挂在这一笔请求上，不写进 history。
+        const injected = onInject ? await askInject(onInject, { tokens: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold }) : ''
+
         // --- 请求模型 ---
         // 重试不在这里：它是 LLM.chat 自带的，压缩那次请求走的是同一条路、同一套退避。
         if (signal?.aborted) throw aborted()
         // 上下文超长专项（照抄 Roo Code）：模型说"窗口放不下"时，先强制压缩一次再把这一笔请求重发，
         // 最多重试 CONTEXT_WINDOW_RETRIES 次；超过就按普通错误抛出。这是每轮自动压缩之外的兜底。
-        const buildRequest = () => ({ ...llm, messages: temporaryPrompt ? [...context.messages, History.user({ content: temporaryPrompt })] : context.messages, tools, signal, onLLMEvent, onLLMStart, onRetry }) // 临时提示只挂在本次请求上。
+        // 临时提示（核心自己的 noToolPrompt + 宿主注入的）合在一条消息里，只挂在本次请求上。
+        const buildRequest = () => {
+            const prompt = [temporaryPrompt, injected].filter(Boolean).join('\n\n')
+            return { ...llm, messages: prompt ? [...context.messages, History.user({ content: prompt })] : context.messages, tools, signal, onLLMEvent, onLLMStart, onRetry }
+        }
         let result
         let sent
         for (let attempt = 0; ; attempt += 1) {
