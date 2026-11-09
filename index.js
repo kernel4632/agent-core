@@ -84,13 +84,22 @@ const inputProblem = (input, limits) => {
     if (limits.retry !== undefined && typeof limits.retry !== 'function' && (typeof limits.retry !== 'object' || limits.retry === null || Array.isArray(limits.retry))) return new TypeError('retry must be a function or an object')
     // 阈值必须落在 (0, 1]：0 会每轮都压缩，大于 1 则永远触发不了。
     if (!(typeof limits.compactThreshold === 'number' && Number.isFinite(limits.compactThreshold) && limits.compactThreshold > 0 && limits.compactThreshold <= 1)) return new RangeError('compactThreshold must be a number in (0, 1]')
+    // 压缩保留策略：轮数是非负整数（0 = 这一段不留），占比落在 [0, 1]；写错了只会在压缩那一刻静默生效，
+    // 所以在入口一次说清楚。不传就完全跳过，用默认值。
+    const keep = limits.contextKeep
+    if (keep !== undefined) {
+        if (keep === null || typeof keep !== 'object' || Array.isArray(keep)) return new TypeError('contextKeep must be an object')
+        for (const name of ['firstTurns', 'recentTurns']) if (keep[name] !== undefined && !(Number.isInteger(keep[name]) && keep[name] >= 0)) return new RangeError(`contextKeep.${name} must be a non-negative integer`)
+        for (const name of ['firstShare', 'recentShare']) if (keep[name] !== undefined && !(typeof keep[name] === 'number' && Number.isFinite(keep[name]) && keep[name] >= 0 && keep[name] <= 1)) return new RangeError(`contextKeep.${name} must be a number in [0, 1]`)
+    }
     if (!['native', 'text', 'auto'].includes(limits.toolMode)) return new TypeError("toolMode must be 'native', 'text' or 'auto'") // 拼错的 toolMode 会被默默当成 native。
     return null
 }
 
 // --- 一次 send 传入的 config 合并进 Agent 当前配置 ---
 // provider 和 retry 整份替换（调用方给了就整份用它的，凭据和过滤规则不该和历史残留混在一起）；
-// capabilities 和 compact 按字段叠加（它们是嵌套配置，只传其中一项不该把另一项丢掉）。其余字段覆盖。
+// capabilities、compact 和 contextKeep 按字段叠加（它们是嵌套配置，只传其中一项不该把另一项丢掉）。其余字段覆盖。
+const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const mergeConfig = (current, override) => ({
     ...current,
     ...override,
@@ -98,6 +107,8 @@ const mergeConfig = (current, override) => ({
     retry: 'retry' in override ? override.retry : current.retry,
     capabilities: 'capabilities' in override ? { ...current.capabilities, ...override.capabilities } : current.capabilities,
     compact: 'compact' in override ? { ...current.compact, ...override.compact } : current.compact,
+    // 非对象原样留着交给入口校验：直接展开会把 'x' 变成 {0:'x'}，错误就被藏起来了。
+    contextKeep: 'contextKeep' in override ? (plainObject(override.contextKeep) ? { ...current.contextKeep, ...override.contextKeep } : override.contextKeep) : current.contextKeep,
 })
 
 
@@ -209,7 +220,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             return Loop.run({
                 agent,                      // 活对象：Loop 每一轮都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效。
                 history: agent.history,     // 数据固定这一个数组：循环只往里追加，不换目标。
-                buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
+                buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
                 // 压缩发生在哪一轮，就用那一刻的 compact 配置——宿主运行中换了压缩模型也照样跟上。
                 compact: request => {
                     const llm = buildCompact(agent.config)
@@ -244,7 +255,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             return Loop.run({
                 agent,                      // 和 send 同一条路：每轮现读宿主的配置、system 和工具表。
                 history: agent.history,
-                buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }),
+                buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
                 compact: request => {
                     const llm = buildCompact(agent.config)
                     return Compact.run({ ...request, llm, stream: llm.stream })
@@ -274,7 +285,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     // compact：手动跑一次上下文压缩，把结果作为一条 compact 消息追加进历史，并返回压缩出的文本。
     // 和 send 走同一个 start，所以同样会先停掉上一次运行，也接受外部取消信号。
     agent.compact = ({ onCompact = agent.callbacks.onCompact, onRetry = agent.callbacks.onRetry, ...options } = {}) => start(agent, async signal => {
-        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio: meter.ratio(modelKey(agent.config)), capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback }) // 工具表和 send 保持一致：关掉工具能力时这里也不带。
+        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio: meter.ratio(modelKey(agent.config)), capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }) // 工具表和保留策略都和 send 保持一致：关掉工具能力时不带，手动压缩也遵守同一份 contextKeep。
         const compactLLM = buildCompact(agent.config)
         const { content } = await Compact.run({
             ...options,

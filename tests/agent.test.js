@@ -49,6 +49,21 @@ describe('Agent 入口', () => {
         expect(agent.history.length).toBe(0) // 坏块没进只增不删的历史。
     })
 
+    test('contextKeep 在入口校验：0 合法，负数、小数、越界占比当场拒绝', async () => {
+        const agent = Agent.create({ config: config() })
+        await expect(agent.send({ input: 'x', config: { contextKeep: { firstTurns: -1 } } })).rejects.toThrow('contextKeep.firstTurns')
+        await expect(agent.send({ input: 'x', config: { contextKeep: { recentTurns: 1.5 } } })).rejects.toThrow('contextKeep.recentTurns')
+        await expect(agent.send({ input: 'x', config: { contextKeep: { firstShare: 2 } } })).rejects.toThrow('contextKeep.firstShare')
+        await expect(agent.send({ input: 'x', config: { contextKeep: 'x' } })).rejects.toThrow('contextKeep must be an object')
+        expect(agent.history.length).toBe(0) // 全被拦在写历史之前。
+    })
+
+    test('按次传入的 contextKeep 只覆盖写了的字段', async () => {
+        const agent = Agent.create({ config: config({ contextKeep: { firstTurns: 5, recentTurns: 8 } }) })
+        await agent.send({ input: '你好', config: { contextKeep: { firstTurns: 0 } } })
+        expect(agent.config.contextKeep).toEqual({ firstTurns: 0, recentTurns: 8 }) // 没写的 recentTurns 继续保留。
+    })
+
     test('config 里的 provider 是浅拷一层，两个 Agent 不共享同一个对象', () => {
         const shared = { temperature: 0.2 }
         const first = Agent.create({ config: { provider: shared } })

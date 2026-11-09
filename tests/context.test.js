@@ -250,3 +250,63 @@ describe('token 估算', () => {
         expect(JSON.stringify(messages)).toContain('看这张图') // 最近的用户消息还在。
     })
 })
+
+
+describe('压缩保留策略可配', () => {
+    // issue #23：压缩后保留多少总结之前的原文，原来写死 3 轮 / 3 轮 / 20% / 30%；
+    // 现在可以用 Context.build 的 keep（对应 config.contextKeep）覆盖。
+    // 典型需求是 firstTurns: 0：只信总结 + 最近现场，别让过时的原始目标和新总结打架。
+    const history = () => {
+        const list = [History.user({ content: '最初目标' })]
+        for (let i = 1; i <= 8; i += 1) {
+            list.push(History.user({ content: `中段用户 ${i}` }))
+            list.push(History.assistant({ content: `中段助手 ${i}` }))
+        }
+        list.push(History.compact({ content: '【总结】已完成 ABC' }))
+        list.push(History.user({ content: '总结后 A' }))
+        list.push(History.assistant({ content: '总结后助手 A' }))
+        list.push(History.user({ content: '总结后 B' }))
+        return list
+    }
+
+    test('不传 keep 时保持原来的默认：开场 3 个用户回合', () => {
+        const { messages } = Context.build({ history: history(), system: 'SYS', budget: 100000, ratio: 1 })
+        const text = JSON.stringify(messages)
+
+        expect(text).toContain('最初目标')
+        expect(text).toContain('中段用户 2')     // 第 3 个用户回合，刚好在默认上限内。
+        expect(text).not.toContain('中段用户 3') // 第 4 个超出上限，只可能来自最近现场（最后 3 回合），这里不在。
+    })
+
+    test('firstTurns: 0 —— 总结之前的开场原文一段都不留', () => {
+        const { messages } = Context.build({ history: history(), system: 'SYS', budget: 100000, ratio: 1, keep: { firstTurns: 0 } })
+        const text = JSON.stringify(messages)
+
+        expect(text).not.toContain('最初目标')   // 这正是 issue 想要的行为。
+        expect(text).not.toContain('中段用户 1')
+        expect(messages[0].content).toContain('【总结】') // 总结仍在 system 里，事实一条没少。
+        expect(text).toContain('中段用户 8')     // 最近现场还在。
+        expect(text).toContain('总结后 B')       // 总结之后的全部还在。
+    })
+
+    test('firstTurns: 5 —— 开场放宽到 5 个用户回合', () => {
+        const { messages } = Context.build({ history: history(), system: 'SYS', budget: 100000, ratio: 1, keep: { firstTurns: 5 } })
+        const text = JSON.stringify(messages)
+
+        expect(text).toContain('中段用户 4')     // 第 5 个用户回合。
+        expect(text).not.toContain('中段用户 5')
+    })
+
+    test('recentTurns: 0 —— 不带总结前的助手回合，但本次用户输入仍然保留', () => {
+        const { messages } = Context.build({ history: history(), system: 'SYS', budget: 100000, ratio: 1, keep: { firstTurns: 0, recentTurns: 0 } })
+        const text = JSON.stringify(messages)
+
+        expect(text).not.toContain('中段助手 8') // 最近现场整段关掉。
+        expect(text).toContain('中段用户 8')     // 但最后一条用户回合是"当前任务"，无论如何都留。
+    })
+
+    test('firstShare: 0 —— 开场按预算也留不下', () => {
+        const { messages } = Context.build({ history: history(), system: 'SYS', budget: 100000, ratio: 1, keep: { firstShare: 0 } })
+        expect(JSON.stringify(messages)).not.toContain('最初目标')
+    })
+})

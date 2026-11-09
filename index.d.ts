@@ -57,6 +57,7 @@ export interface Config {
     maxContextTokens?: number     // 上下文预算；估算的上下文达到它的 compactThreshold 比例时自动压缩。默认 128000，设 Infinity 关闭自动压缩。
     compactThreshold?: number
     compact?: Partial<Config>
+    contextKeep?: ContextKeep
     output?: any
     maxToolConcurrency?: number
     retryBaseDelay?: number
@@ -67,6 +68,15 @@ export interface Config {
     noToolPrompt?: string
     noToolRounds?: number
     [key: string]: any
+}
+
+// 压缩后保留多少总结之前的原文。不写就用默认值（3 轮 / 3 轮 / 20% / 30%）；
+// 轮数是上限，还要受占比和预算约束。0 是合法值：表示这一段一段都不留。
+export interface ContextKeep {
+    firstTurns?: number     // 开场最多保留几个用户回合（最初目标）；默认 3
+    recentTurns?: number    // 总结前最多保留几个回合（最近现场）；默认 3
+    firstShare?: number     // 开场最多占多少预算，[0,1]；默认 0.2
+    recentShare?: number    // 总结前现场最多占多少预算，[0,1]；默认 0.3
 }
 
 // --- 用量与返回值 ---
@@ -184,7 +194,7 @@ export interface HistoryModule {
 
 // --- 上下文、压缩、底层 LLM ---
 export interface ContextModule {
-    build: (options: { history: Message[]; system?: string; tools?: Record<string, any>; budget?: number; ratio?: number; capabilities?: Capabilities; mediaFallback?: 'error' | 'strip' }) => { messages: any[]; readonly token: number }
+    build: (options: { history: Message[]; system?: string; tools?: Record<string, any>; budget?: number; ratio?: number; capabilities?: Capabilities; mediaFallback?: 'error' | 'strip'; keep?: ContextKeep }) => { messages: any[]; readonly token: number }
 }
 export interface CompactModule {
     // 返回总结文本和这一笔压缩请求的用量（0.27 起带 usage：压缩也是真实请求，钱要计进合计）。

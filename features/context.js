@@ -32,15 +32,13 @@ build() 一进来就把平铺历史读成回合：工具结果按 toolCallId 回
 import History from './history.js' // 「什么是一个回合」由 History 定义，这里只是它的使用者
 import { estimate, textChars, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
 
-// 开场留住用户最初说过的话（按用户回合数），总结前留住当前任务的最近现场（按回合数）。
-// 这两个数字是上限，真正能留多少还要看预算——光按条数留，一条巨大的消息就能让压缩永远收敛不了。
-const KEEP_FIRST = 3
-const KEEP_BEFORE_SUMMARY = 3
-
-// 旧内容最多能占掉预算的多少。总结之后的新回合不受限——那是当前正在推进的工作，
-// 它涨起来是正常的，Loop 会在下一次超阈值时再压一次。
-const GOAL_SHARE = 0.2
-const RECENT_SHARE = 0.3
+// 压缩后保留多少总结之前的原文。下面四个数是默认值，宿主可以用 config.contextKeep 覆盖：
+// - firstTurns：开场最多留几个用户回合（= 最初目标）
+// - recentTurns：总结前最多留几个回合（= 最近现场）
+// - firstShare / recentShare：这两段最多各占多少预算
+// 轮数是上限，真正能留多少还要看预算——光按条数留，一条巨大的消息就能让压缩永远收敛不了。
+// 0 是合法值，表示"这一段一段都不留"（见 build 里用 ?? 取默认值的原因）。
+const KEEP = { firstTurns: 3, recentTurns: 3, firstShare: 0.2, recentShare: 0.3 }
 
 // 一个回合有多大。用字符数而不是 token：裁剪要对每个候选回合都量一次，
 // 逐条估算 token 是没必要的开销。字符数用来在候选回合之间分预算足够了。
@@ -72,7 +70,14 @@ const brief = (system, summary) => summary
 
 // History 只比 AI SDK 多了 id、compact 这些顶层内部字段，兼容规则交给 History.model 集中处理。
 // 默认去掉思考和未完成的工具调用；切换到支持它们的模型时只改 capabilities，不改裁剪流程。
-const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO, capabilities = {}, mediaFallback = 'error' }) => {
+const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO, capabilities = {}, mediaFallback = 'error', keep = {} }) => {
+    // 这四个数取宿主的配置，没配就用默认值。必须用 ?? 而不是 ||：0 是合法值（= 这一段一点都不留），
+    // 用 || 会把 0 当成"没填"，宿主设了 firstTurns: 0 却仍然留下开场原文。
+    const firstTurns = keep.firstTurns ?? KEEP.firstTurns
+    const recentTurns = keep.recentTurns ?? KEEP.recentTurns
+    const firstShare = keep.firstShare ?? KEEP.firstShare
+    const recentShare = keep.recentShare ?? KEEP.recentShare
+
     // --- 还原回合：从这里开始，历史只以回合为单位被处理 ---
     const turns = History.turns(history)                 // 一个回合 = 一次用户发言，或模型的一次响应连同它的工具调用和结果。
 
@@ -92,12 +97,12 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
         // 用户第一条消息就粘一大段日志时，光按条数留会让压缩永远收敛不了（实测 120/120 轮压完仍超限）。
         // 超预算时整条不留，不是把目标弄丢了：总结本身就被要求保留"用户最初的目标"（见 Compact 的指令），
         // 而总结在 system 里，永远不会被裁掉。钉在这里的原文只是便宜时的加分项。
-        const goal = within(before.filter(turn => turn[0].role === 'user' && !turn[0].compact).slice(0, KEEP_FIRST), room * GOAL_SHARE)
+        const goal = within(before.filter(turn => turn[0].role === 'user' && !turn[0].compact).slice(0, firstTurns), room * firstShare)
 
         // 最近现场：从离总结最近的往回收，预算不够就丢更老的——
         // 这样"用户上一轮刚说的那句话"一定在，而不是只剩三天前的开场白。
-        const pool = before.slice(Math.max(covered + 1, summaryIndex - KEEP_BEFORE_SUMMARY)).filter(turn => !goal.includes(turn)) // 上一条总结之后的、且没被目标选走的回合。
-        const recent = within([...pool].reverse(), room * RECENT_SHARE).reverse()                              // 从最近的往回收，再正回时间顺序。
+        const pool = before.slice(Math.max(covered + 1, summaryIndex - recentTurns)).filter(turn => !goal.includes(turn)) // 上一条总结之后的、且没被目标选走的回合。
+        const recent = within([...pool].reverse(), room * recentShare).reverse()                              // 从最近的往回收，再正回时间顺序。
 
         // 挑出来的三段（最初目标 / 最近现场 / 总结后的新回合）各自有序，但直接相接会打乱时间顺序：
         // 目标取的是最早的几个用户回合，最近现场取的是靠后的窗口，中间夹着没被选中的、早于目标的回合。

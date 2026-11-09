@@ -1081,3 +1081,61 @@ describe('宿主注入临时提示（onInject）', () => {
         } finally { mock.stop(true) }
     })
 })
+
+
+describe('压缩保留策略接到配置上', () => {
+    // issue #23 的验收：config.contextKeep 要同时作用于 send 和手动压缩（自动压缩走同一条 buildContext）。
+    const summarized = () => {
+        const list = [History.user({ content: '最初目标' })]
+        for (let i = 1; i <= 8; i += 1) {
+            list.push(History.user({ content: `中段用户 ${i}` }))
+            list.push(History.assistant({ content: `中段助手 ${i}` }))
+        }
+        list.push(History.compact({ content: '【总结】已完成 ABC' }))
+        list.push(History.user({ content: '继续' }))
+        return list
+    }
+    const recording = () => {
+        const bodies = []
+        const mock = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                bodies.push(await request.json())
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '好' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        return { bodies, mock }
+    }
+
+    test('send 挑上下文时用 config.contextKeep', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                history: summarized(),
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, contextKeep: { firstTurns: 0 } },
+            })
+
+            await agent.send('做事')
+
+            const text = JSON.stringify(bodies[0].messages)
+            expect(text).not.toContain('最初目标')  // 配置生效：开场原文不带。
+            expect(text).toContain('【总结】')      // 总结还在 system 里。
+        } finally { mock.stop(true) }
+    })
+
+    test('手动压缩也遵守同一份 contextKeep', async () => {
+        const { bodies, mock } = recording()
+        try {
+            const agent = Agent.create({
+                history: summarized(),
+                config: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'k', model: 'm', stream: false, contextKeep: { firstTurns: 0 } },
+            })
+
+            await agent.compact()
+
+            const text = JSON.stringify(bodies[0].messages)
+            expect(text).not.toContain('最初目标')          // 压缩请求也不带过时的开场原文。
+            expect(text).toContain('压缩成一段总结')        // 压缩指令照常在最后。
+        } finally { mock.stop(true) }
+    })
+})
