@@ -1222,6 +1222,32 @@ describe('压缩触发的诊断信息', () => {
         } finally { server.stop(true) }
     })
 
+    test('宿主 seed 在第一次估算前生效：不该压的上下文不会被误压', async () => {
+        // issue #25：进程重启恢复大 history 时，第一个 send 用的是默认 0.6，容易多压一次。
+        // 传 config.contextRatio 后，第一次估算就该用它。
+        const server = mock()
+        const makeHistory = () => [History.user({ content: 'a'.repeat(7000) })]
+        try {
+            const unseeded = []
+            const plain = Agent.create({
+                history: makeHistory(),
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxContextTokens: 4000, compactThreshold: 0.9 },
+                callbacks: { onCompact: event => unseeded.push(event) },
+            })
+            await plain.send('继续')
+            expect(unseeded.some(event => event.type === 'compact-start')).toBe(true) // 0.6 估出 4200+ > 3600，压了。
+
+            const seeded = []
+            const agent = Agent.create({
+                history: makeHistory(),
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, contextRatio: 0.3, maxContextTokens: 4000, compactThreshold: 0.9 },
+                callbacks: { onCompact: event => seeded.push(event) },
+            })
+            await agent.send('继续')
+            expect(seeded).toHaveLength(0) // 0.3 估出 2100 < 3600，第一次请求直接发出去。
+        } finally { server.stop(true) }
+    })
+
     test('直接调 Compact.run 不传 trigger：事件形状和以前一样，不多字段', async () => {
         const events = []
         await Compact.run({

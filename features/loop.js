@@ -165,6 +165,7 @@ const run = async ({
         // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
         // 工具表只读宿主手上那份，不重新扫描目录——扫描是宿主的事（Tool.from / scan）。
         // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
+        meter.seed(agent.config.contextRatio)                                          // 宿主可能运行中改了冷启动倍率；学到的真实值仍然优先于它。
         const llm = buildLLM(agent.config)                                                // 模型、生成参数、能力开关、限额、重试都在里面。
         const system = agent.config.system                                                // 系统提示词。
         const tools = agent.config.capabilities.tools === false ? {} : agent.tools.schema // 这一轮给模型看的工具表。
@@ -181,7 +182,7 @@ const run = async ({
             // trigger 让 compact-start 能回答"为什么压、估算多少"——排查"上下文才 35% 就压了"这类问题时，
             // token / budget / compactThreshold / ratio 四个数缺一不可；chars / media 是 token 的两个组成部分，
             // calibrated 说明 ratio 到底是学出来的还是默认值（进程重启后第一个 send 一定是默认值）。
-            const trigger = { reason: 'automatic', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), chars: context.chars, media: context.media, calibrated: meter.known(key) }
+            const trigger = { reason: 'automatic', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) }
             const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
             add(usage, summary.usage)                                         // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
             history.push(History.compact({ content: summary.content }))        // 总结写回 history。
@@ -193,7 +194,7 @@ const run = async ({
 
         // --- 宿主想临时插一句吗：每轮请求前问一次，放在压缩之后，拿到的才是这一轮真正要用的估算 ---
         // 典型用法：上下文快到压缩点了，提醒模型这一轮收口。这句只挂在这一笔请求上，不写进 history。
-        const injected = onInject ? await askInject(onInject, { tokens: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold }) : ''
+        const injected = onInject ? await askInject(onInject, { tokens: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), ratioSource: meter.source(key) }) : ''
 
         // --- 请求模型 ---
         // 重试不在这里：它是 LLM.chat 自带的，压缩那次请求走的是同一条路、同一套退避。
@@ -214,7 +215,7 @@ const run = async ({
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
-                const trigger = { reason: 'overflow-retry', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), chars: context.chars, media: context.media, calibrated: meter.known(key) } // 模型说窗口装不下，强制压一次再重发。
+                const trigger = { reason: 'overflow-retry', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) } // 模型说窗口装不下，强制压一次再重发。
                 const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 强制压缩一次。
                 add(usage, summary.usage)                                     // 超长重压同样计费用量。
                 history.push(History.compact({ content: summary.content }))   // 总结写回 history（只增不删）。

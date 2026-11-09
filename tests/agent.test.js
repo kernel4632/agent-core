@@ -49,6 +49,23 @@ describe('Agent 入口', () => {
         expect(agent.history.length).toBe(0) // 坏块没进只增不删的历史。
     })
 
+    test('getContextRatio / setContextRatio：宿主能持久化和恢复倍率', () => {
+        const agent = Agent.create({ config: config({ contextRatio: 0.3 }) })
+        expect(agent.getContextRatio()).toEqual({ ratio: 0.3, calibrated: false, source: 'host' })
+
+        expect(agent.setContextRatio(0.25)).toEqual({ ratio: 0.25, calibrated: false, source: 'host' })
+        expect(agent.config.contextRatio).toBe(0.25) // 写回配置，Loop 每轮读活配置。
+        expect(() => agent.setContextRatio(0)).toThrow('contextRatio')
+        expect(() => agent.setContextRatio('0.3')).toThrow('contextRatio')
+    })
+
+    test('contextRatio 在入口校验', async () => {
+        const agent = Agent.create({ config: config() })
+        await expect(agent.send({ input: 'x', config: { contextRatio: 0 } })).rejects.toThrow('contextRatio')
+        await expect(agent.send({ input: 'x', config: { contextRatio: '0.3' } })).rejects.toThrow('contextRatio')
+        expect(agent.history.length).toBe(0)
+    })
+
     test('contextKeep 在入口校验：0 合法，负数、小数、越界占比当场拒绝', async () => {
         const agent = Agent.create({ config: config() })
         await expect(agent.send({ input: 'x', config: { contextKeep: { firstTurns: -1 } } })).rejects.toThrow('contextKeep.firstTurns')

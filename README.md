@@ -654,6 +654,7 @@ import Agent from '@kernel4632/agent-core'
 | `maxTokens` | `undefined` | 单次生成的最大输出 token，映射到请求体的 `maxOutputTokens`；不设＝不限。`provider.maxOutputTokens` 显式设置时优先于它 |
 | `compactThreshold` | `0.8` | 压缩触发比例，0.8 表示到达 80% 时压缩 |
 | `compact` | `undefined` | 压缩单独用一套模型时写在这里，例如 `{ model: '便宜的小模型' }`；不写就和主模型共用 |
+| `contextRatio` | `undefined` | 冷启动的估算倍率（每字符多少 token）。进程重启后第一个 `send` 用它估算，不用默认 0.6；真实 usage 到达后仍会覆盖它 |
 | `output` | `undefined` | 结构化输出格式，例如 `Agent.output.object({ schema })`；不写就返回普通文字 |
 | `maxToolConcurrency` | `undefined` | 默认不限制**文件工具**的并发；主动设置后超出的排队。内存工具（`Agent.tool.adopt` / MCP）在主进程直接跑，不受这个上限约束 |
 | `retryBaseDelay` | `5000` | 第一次退避的基数（毫秒），之后每次 ×2：5s、10s、20s…（照抄 Roo Code） |
@@ -822,11 +823,37 @@ console.log(answer.text)
 | `compactThreshold` | 触发比例 |
 | `ratio` | 这次用的"每字符多少 token"比例（按模型自校准的那个值） |
 | `chars` / `media` | `token` 的两个组成部分：文字字符数、媒体块数（`token = ceil(chars × ratio) + media × 1200`） |
-| `calibrated` | `ratio` 是不是从真实 usage 学来的。`false` = 还在用默认值 |
+| `calibrated` | `ratio` 是不是从真实 usage 学来的。`false` = 还在用默认值或宿主 seed |
+| `ratioSource` | `'usage'` / `'host'` / `'default'`，直接说明这个比例是谁给的 |
 
 判断"是不是估算误判"就看 `token` 和 `budget × compactThreshold` 的关系，以及 `ratio` 是不是明显偏离你的内容（中文 ≈ 1，英文 ≈ 0.25）。注意 `token` 是**这一轮开始时**的估算：上一次真实请求之后又写进来的工具结果也在里面，所以它会比"上一次请求的 input"大。
 
 `calibrated: false` 有两个常见原因：一是进程刚起、还没成功跑完过一笔请求；二是上游没在响应里回 `usage`（流式请求需要 `stream_options.include_usage`，个别中转站不支持，可以用 `capabilities.usage: false` 关掉这个字段，但那样估算就只能一直用默认比例）。**校准是每个进程从零开始的**：重启后恢复一份很大的 history 时，第一个 `send` 用的仍是默认比例，可能因此多压一次——把 `token / chars / ratio` 记下来就能确认。想据此折算真实比例：`真实 token ÷ chars`。
+
+#### 冷启动的估算倍率（`contextRatio`）
+
+上面那个"重启后第一个 send 多压一次"可以直接消掉：宿主把上次学到的倍率存起来，恢复会话时传回去，第一次估算就用它。
+
+```js
+// 进程 A：跑过之后把倍率存起来（宿主自己存，core 不碰磁盘）
+const { ratio, source } = agent.getContextRatio()
+if (source === 'usage') await save(`${provider}:${model}`, ratio)
+
+// 进程 B：恢复会话时先传回去，第一个 send 就用它估，而不是默认 0.6
+const agent = Agent.create({
+    history,
+    config: { contextRatio: await load(`${provider}:${model}`) },
+})
+
+// 也可以运行中改：立刻生效，之后真实 usage 到达仍会覆盖它
+agent.setContextRatio(0.297)
+```
+
+- 优先级：**真实 usage 学到的 > `contextRatio`（宿主 seed）> 默认 0.6**。
+- `getContextRatio()` 返回 `{ ratio, calibrated, source }`，`source` 是 `'usage'` / `'host'` / `'default'`。
+- `onCompact` 的 `compact-start.ratioSource`、`onInject` 的参数里也能看到当前来源。
+- 上游不返回 usage 时，宿主 seed 会一直有效（不会被打回默认值）；`setContextRatio` 之后的第一笔真实 usage 仍会重新校准。
+- 按 `provider + model` 存：换模型后比例本来就不一样，这台 Agent 的估算器也是按模型分开记的。
 
 #### 宿主注入临时提示（`onInject`）
 

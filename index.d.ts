@@ -57,6 +57,9 @@ export interface Config {
     maxContextTokens?: number     // 上下文预算；估算的上下文达到它的 compactThreshold 比例时自动压缩。默认 128000，设 Infinity 关闭自动压缩。
     compactThreshold?: number
     compact?: Partial<Config>
+    // 冷启动的估算倍率（每字符多少 token）。进程重启、恢复大 history 时，第一次估算就用它，
+    // 不用默认 0.6；之后真实 usage 到达仍会覆盖它。宿主按 provider + model 自己持久化。
+    contextRatio?: number
     contextKeep?: ContextKeep
     output?: any
     maxToolConcurrency?: number
@@ -78,6 +81,9 @@ export interface ContextKeep {
     firstShare?: number     // 开场最多占多少预算，[0,1]；默认 0.2
     recentShare?: number    // 总结前现场最多占多少预算，[0,1]；默认 0.3
 }
+
+// 估算倍率现在是谁给的：真实 usage 校准出来的 / 宿主传的冷启动值 / 默认值。
+export type RatioSource = 'usage' | 'host' | 'default'
 
 // --- 用量与返回值 ---
 export interface Usage {
@@ -108,7 +114,7 @@ export interface Callbacks {
     onRetry?: (info: { attempt: number; error: Error; delay: number }) => void
     // 每轮请求前调用；返回字符串就临时附在这次请求末尾（role:'user'，不写进 history），返回其它值不注入。
     // tokens 是这一轮压缩之后的估算值。去重由宿主负责：核心每轮都会问，"只提醒一次"是业务策略。
-    onInject?: (info: { tokens: number; budget: number; compactThreshold: number }) => string | undefined | null | Promise<string | undefined | null>
+    onInject?: (info: { tokens: number; budget: number; compactThreshold: number; ratio: number; ratioSource: RatioSource }) => string | undefined | null | Promise<string | undefined | null>
     onToolCall?: (call: { toolCallId: string; toolName: string; input: any; type?: string; title?: string; providerExecuted?: boolean; providerMetadata?: Record<string, any> }) => void | Promise<void>
     onToolOutput?: (output: { toolName: string; stream: string; data: unknown; toolCallId: string; input?: any }) => void
     onToolResult?: (result: { toolCallId: string; toolName: string; input?: any; output: any; result?: any; error?: string; type?: string; title?: string; providerExecuted?: boolean; providerMetadata?: Record<string, any> }) => void | Promise<void>
@@ -246,6 +252,10 @@ export interface AgentInstance {
     resume: (options?: Omit<SendOptions, 'input'>) => Promise<Answer>   // 不发新消息，用现有历史末尾续跑（历史末尾须是 assistant/tool）
     stop: () => Promise<{ ok: boolean }>
     compact: (options?: { onCompact?: Callbacks['onCompact']; onRetry?: Callbacks['onRetry']; signal?: AbortSignal }) => Promise<string>
+    // 当前模型用的估算倍率，宿主可以持久化；calibrated=false 表示还是 seed 或默认值。
+    getContextRatio: () => { ratio: number; calibrated: boolean; source: RatioSource }
+    // 设一个冷启动倍率：立刻生效（忘掉之前学到的值），之后真实 usage 仍会覆盖它。
+    setContextRatio: (ratio: number) => { ratio: number; calibrated: boolean; source: RatioSource }
 }
 
 export interface CreateOptions {

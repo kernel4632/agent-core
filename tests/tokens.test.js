@@ -79,13 +79,40 @@ describe('token 估算器', () => {
         expect(details.media).toBe(0)
     })
 
-    test('meter.known：没观测过是 false，观测一次后变 true', () => {
+    test('meter.calibrated：没观测过是 false，观测一次后变 true', () => {
         const meter = createMeter()
         const payload = { messages: [{ role: 'user', content: 'a'.repeat(1000) }] }
 
-        expect(meter.known('k')).toBe(false) // 还是默认比例，说明没拿到真实 usage 校准过。
+        expect(meter.calibrated('k')).toBe(false) // 还是默认比例，说明没拿到真实 usage 校准过。
         meter.observe('k', payload, Math.round(JSON.stringify(payload).length * 0.25))
-        expect(meter.known('k')).toBe(true)
+        expect(meter.calibrated('k')).toBe(true)
+    })
+
+    test('宿主 seed：没学到之前用它，学到之后被覆盖；source 反映来源', () => {
+        const meter = createMeter()
+        const payload = { messages: [{ role: 'user', content: 'a'.repeat(1000) }] }
+
+        expect(meter.ratio('k')).toBe(DEFAULT_RATIO)
+        expect(meter.source('k')).toBe('default')
+
+        meter.seed(0.3)                       // 宿主持久化的冷启动倍率。
+        expect(meter.ratio('k')).toBe(0.3)
+        expect(meter.source('k')).toBe('host')
+
+        meter.observe('k', payload, Math.round(JSON.stringify(payload).length * 0.2))
+        expect(meter.calibrated('k')).toBe(true)
+        expect(meter.source('k')).toBe('usage')
+        expect(meter.ratio('k')).toBeCloseTo(0.2, 2) // 真实值覆盖 seed。
+    })
+
+    test('seed 猜错了也不会挡住真实校准', () => {
+        const meter = createMeter()
+        const payload = { messages: [{ role: 'user', content: 'a'.repeat(1000) }] }
+        meter.seed(0.9) // 宿主猜得偏高。
+
+        meter.observe('k', payload, Math.round(JSON.stringify(payload).length * 0.2))
+        expect(meter.calibrated('k')).toBe(true) // 离群判据只和"学到的值"比，不该把第一个真实样本丢掉。
+        expect(meter.ratio('k')).toBeCloseTo(0.2, 2)
     })
 })
 

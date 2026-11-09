@@ -84,6 +84,8 @@ const inputProblem = (input, limits) => {
     if (limits.retry !== undefined && typeof limits.retry !== 'function' && (typeof limits.retry !== 'object' || limits.retry === null || Array.isArray(limits.retry))) return new TypeError('retry must be a function or an object')
     // 阈值必须落在 (0, 1]：0 会每轮都压缩，大于 1 则永远触发不了。
     if (!(typeof limits.compactThreshold === 'number' && Number.isFinite(limits.compactThreshold) && limits.compactThreshold > 0 && limits.compactThreshold <= 1)) return new RangeError('compactThreshold must be a number in (0, 1]')
+    // 冷启动的估算倍率：必须是正数，写错了整个上下文估算都会偏。
+    if (limits.contextRatio !== undefined && !(typeof limits.contextRatio === 'number' && Number.isFinite(limits.contextRatio) && limits.contextRatio > 0)) return new RangeError('contextRatio must be a positive number')
     // 压缩保留策略：轮数是非负整数（0 = 这一段不留），占比落在 [0, 1]；写错了只会在压缩那一刻静默生效，
     // 所以在入口一次说清楚。不传就完全跳过，用默认值。
     const keep = limits.contextKeep
@@ -150,6 +152,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     if (!Array.isArray(history)) throw new TypeError('history must be an array')
     if (callbacks === null || typeof callbacks !== 'object' || Array.isArray(callbacks)) throw new TypeError('callbacks must be an object')
     const meter = createMeter()   // 这台 Agent 的 token 估算器：按模型自校准，跨 send 复用。
+    meter.seed(config.contextRatio) // 宿主持久化的冷启动倍率：没学到真实值之前先用它，重启后第一次估算就不会用默认 0.6。
     // 放闭包里、不挂到 agent 上，是因为它属于内部记账细节，暴露出去只会让公开状态更难预测。
     const agent = {
         id,
@@ -164,6 +167,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             mediaFallback: 'error',
             maxToolOutput: undefined,
             maxToolConcurrency: undefined,
+            contextRatio: undefined,    // 冷启动估算倍率（每字符多少 token）；没学到真实 usage 之前用它。
             retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；照抄 Roo Code 的 5 秒。
             retryMaxDelay: 600000,      // 单次退避上限（毫秒）；照抄 Roo Code 的 600 秒封顶。
             retryMaxElapsed: undefined, // 不限重试总时长（Roo 没有总上限）；可设毫秒数收口。
@@ -285,6 +289,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     // compact：手动跑一次上下文压缩，把结果作为一条 compact 消息追加进历史，并返回压缩出的文本。
     // 和 send 走同一个 start，所以同样会先停掉上一次运行，也接受外部取消信号。
     agent.compact = ({ onCompact = agent.callbacks.onCompact, onRetry = agent.callbacks.onRetry, ...options } = {}) => start(agent, async signal => {
+        meter.seed(agent.config.contextRatio)         // 宿主可能在上次运行里改过倍率，压缩前同步一次。
         const key = modelKey(agent.config)             // 估算按模型记账，这里和 Loop 用同一个键。
         const ratio = meter.ratio(key)                 // 这次压缩用的估算比例，一并放进 compact-start 方便诊断。
         const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }) // 工具表和保留策略都和 send 保持一致：关掉工具能力时不带，手动压缩也遵守同一份 contextKeep。
@@ -298,11 +303,28 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             onRetry,
             signal,
             // 手动压缩没有"触发阈值"这回事，但把当时的估算和配置一起带上，和自动压缩的事件字段保持同一种形状。
-            trigger: { reason: 'manual', token: context.token, budget: agent.config.maxContextTokens, compactThreshold: agent.config.compactThreshold, ratio, chars: context.chars, media: context.media, calibrated: meter.known(key) },
+            trigger: { reason: 'manual', token: context.token, budget: agent.config.maxContextTokens, compactThreshold: agent.config.compactThreshold, ratio, ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) },
         })
         agent.history.push(History.compact({ content }))
         return content
     }, options.signal) // 手动压缩也接受外部取消信号，和 send 一致。
+
+
+    // --- 估算倍率的持久化入口：宿主按自己（provider + model）存，core 不碰磁盘 ---
+    // 读当前模型用的倍率，宿主可以存起来；calibrated=false 说明还是 seed 或默认值。
+    agent.getContextRatio = () => {
+        const key = modelKey(agent.config)
+        return { ratio: meter.ratio(key), calibrated: meter.calibrated(key), source: meter.source(key) }
+    }
+
+    // 显式设一个倍率：立刻生效（忘掉之前学到的值），之后真实 usage 到达仍会覆盖它。
+    agent.setContextRatio = ratio => {
+        if (!(typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0)) throw new TypeError('contextRatio must be a positive number')
+        agent.config = { ...agent.config, contextRatio: ratio } // 写回配置：Loop 每轮会读它，和别的配置一样是活的。
+        meter.forget(modelKey(agent.config))                    // 让新倍率立刻生效，而不是被之前学到的值挡住。
+        meter.seed(ratio)
+        return agent.getContextRatio()
+    }
 
     return agent
 }
