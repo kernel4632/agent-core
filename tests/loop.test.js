@@ -287,6 +287,7 @@ describe('压缩这条路径', () => {
     test('上下文超长：强制压缩一次后重发这笔请求（照抄 Roo Code）', async () => {
         let calls = 0
         const compacts = []
+        const events = []
         const server = Bun.serve({
             port: 0,
             async fetch(request) {
@@ -302,11 +303,12 @@ describe('压缩这条路径', () => {
         try {
             const agent = Agent.create({
                 config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, retryMaxElapsed: 0 }, // 超长不靠重试，靠 Loop 压缩。
-                callbacks: { onCompact: event => compacts.push(event.type) },
+                callbacks: { onCompact: event => { compacts.push(event.type); events.push(event) } },
             })
             const answer = await agent.send('你好')
             expect(answer.text).toBe('最终回答')                                      // 压缩后重发这笔请求成功。
             expect(compacts.filter(type => type === 'compact-finish')).toHaveLength(1) // 压缩确实被调用过一次。
+            expect(events.find(event => event.type === 'compact-start')).toMatchObject({ reason: 'overflow-retry' }) // 能看出这次是超长逼出来的。
         } finally { server.stop(true) }
     })
 })
@@ -1137,5 +1139,62 @@ describe('压缩保留策略接到配置上', () => {
             expect(text).not.toContain('最初目标')          // 压缩请求也不带过时的开场原文。
             expect(text).toContain('压缩成一段总结')        // 压缩指令照常在最后。
         } finally { mock.stop(true) }
+    })
+})
+
+
+describe('压缩触发的诊断信息', () => {
+    // issue #24：compact-start 原来只有 messages，分不清"估算误判、配置写错还是手动触发"。
+    // 现在带上 token / budget / compactThreshold / ratio / reason，事件本身就是解释。
+    const mock = () => Bun.serve({ port: 0, async fetch() { return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '好' }, finish_reason: 'stop' }], usage: {} }) } })
+
+    test('自动压缩：带触发时的估算、预算、阈值、比例和原因', async () => {
+        const events = []
+        const server = mock()
+        try {
+            const agent = Agent.create({
+                history: [History.user({ content: '很长的历史'.repeat(200) })],
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxContextTokens: 200, compactThreshold: 0.5 },
+                callbacks: { onCompact: event => events.push(event) },
+            })
+
+            await agent.send('继续')
+
+            const start = events.find(event => event.type === 'compact-start')
+            expect(start).toMatchObject({ reason: 'automatic', budget: 200, compactThreshold: 0.5 })
+            expect(start.token).toBeGreaterThanOrEqual(100) // 200 × 0.5，过了阈值才压。
+            expect(start.ratio).toBeGreaterThan(0)          // 这次用的估算比例；排查"估多了"就看它。
+        } finally { server.stop(true) }
+    })
+
+    test('手动压缩：reason 是 manual，字段形状和自动压缩一致', async () => {
+        const events = []
+        const server = mock()
+        try {
+            const agent = Agent.create({
+                history: [History.user({ content: '之前的工作' })],
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1` },
+                callbacks: { onCompact: event => events.push(event) },
+            })
+
+            await agent.compact()
+
+            const start = events.find(event => event.type === 'compact-start')
+            expect(start).toMatchObject({ reason: 'manual', budget: 128000, compactThreshold: 0.8 }) // 没配就是默认值。
+            expect(start.token).toBeGreaterThan(0)
+            expect(typeof start.ratio).toBe('number')
+        } finally { server.stop(true) }
+    })
+
+    test('直接调 Compact.run 不传 trigger：事件形状和以前一样，不多字段', async () => {
+        const events = []
+        await Compact.run({
+            messages: [{ role: 'user', content: '要压缩的内容' }],
+            llm: { baseURL: config.baseURL, apiKey: 'k', model: 'm' },
+            stream: false,
+            onCompact: event => events.push(event),
+        })
+
+        expect(events[0]).toEqual({ type: 'compact-start', messages: [{ role: 'user', content: '要压缩的内容' }] })
     })
 })

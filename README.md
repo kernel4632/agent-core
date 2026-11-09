@@ -808,9 +808,21 @@ console.log(answer.text)
 | `onStep` | 一轮模型和工具都完成后 | `{ step, result, toolCalls, toolResults }`；`toolResults` 是完整结果对象（`call` + `output`），和 `onToolResult` 同一种形状 |
 | `onRetry` | 请求失败重试 | `{ attempt, error, delay }`（主请求和压缩请求共用） |
 | `onInject` | 每轮请求前（压缩之后） | `{ tokens, budget, compactThreshold }` → 返回字符串就临时附在本次请求末尾；返回其它值不注入 |
-| `onCompact` | 上下文压缩 | `compact-start` / AI SDK 事件（统一带 `request: 'compact'` 标记）/ `compact-finish`（带 `usage`，即压缩这一笔的用量） |
+| `onCompact` | 上下文压缩 | `compact-start`（`messages` + `reason` / `token` / `budget` / `compactThreshold` / `ratio`）/ AI SDK 事件（统一带 `request: 'compact'` 标记）/ `compact-finish`（带 `usage`，即压缩这一笔的用量） |
 
 除了 `onPermission` 和 `onInject`，所有回调都只是通知：回调自己抛错会被忽略，任务照常进行，工具结果也不会被改写。`onPermission` 的返回值决定放不放行，所以它抛错时这次 `send` 会失败，交给你的 `.catch()`。注意它按"非 `true` 即拒绝"处理：**每个分支都要显式 `return true`**，忘了返回会让那次工具被拒。`onInject` 抛错只当这一轮不注入，不打断任务。
+
+**为什么压？** `compact-start` 把判断依据一起带出来：
+
+| 字段 | 含义 |
+|------|------|
+| `reason` | `'automatic'`（估算过了阈值）/ `'overflow-retry'`（模型报上下文超长，强制压一次重发）/ `'manual'`（`agent.compact()`） |
+| `token` | 这一轮压缩前的上下文估算值（和触发判断用的是同一个数） |
+| `budget` | `config.maxContextTokens`（上下文预算，不是模型窗口） |
+| `compactThreshold` | 触发比例 |
+| `ratio` | 这次用的"每字符多少 token"比例（按模型自校准的那个值） |
+
+判断"是不是估算误判"就看 `token` 和 `budget × compactThreshold` 的关系，以及 `ratio` 是不是明显偏离你的内容（中文 ≈ 1，英文 ≈ 0.25）。注意 `token` 是**这一轮开始时**的估算：上一次真实请求之后又写进来的工具结果也在里面，所以它会比"上一次请求的 input"大。
 
 #### 宿主注入临时提示（`onInject`）
 

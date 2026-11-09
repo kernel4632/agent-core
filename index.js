@@ -285,7 +285,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     // compact：手动跑一次上下文压缩，把结果作为一条 compact 消息追加进历史，并返回压缩出的文本。
     // 和 send 走同一个 start，所以同样会先停掉上一次运行，也接受外部取消信号。
     agent.compact = ({ onCompact = agent.callbacks.onCompact, onRetry = agent.callbacks.onRetry, ...options } = {}) => start(agent, async signal => {
-        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio: meter.ratio(modelKey(agent.config)), capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }) // 工具表和保留策略都和 send 保持一致：关掉工具能力时不带，手动压缩也遵守同一份 contextKeep。
+        const ratio = meter.ratio(modelKey(agent.config)) // 这次压缩用的估算比例，一并放进 compact-start 方便诊断。
+        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }) // 工具表和保留策略都和 send 保持一致：关掉工具能力时不带，手动压缩也遵守同一份 contextKeep。
         const compactLLM = buildCompact(agent.config)
         const { content } = await Compact.run({
             ...options,
@@ -295,6 +296,8 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             onCompact,
             onRetry,
             signal,
+            // 手动压缩没有"触发阈值"这回事，但把当时的估算和配置一起带上，和自动压缩的事件字段保持同一种形状。
+            trigger: { reason: 'manual', token: context.token, budget: agent.config.maxContextTokens, compactThreshold: agent.config.compactThreshold, ratio },
         })
         agent.history.push(History.compact({ content }))
         return content
