@@ -8,7 +8,7 @@
 */
 
 import { expect, test, describe } from 'bun:test'
-import { estimate, createMeter, modelKey, DEFAULT_RATIO, MEDIA_TOKENS } from '../utils/tokens.js'
+import { estimate, estimateDetails, createMeter, modelKey, DEFAULT_RATIO, MEDIA_TOKENS } from '../utils/tokens.js'
 
 describe('token 估算器', () => {
     test('估算随内容增长，默认比例偏高', () => {
@@ -68,6 +68,24 @@ describe('token 估算器', () => {
         expect(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm' })).not.toBe(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm2' }))
         expect(modelKey({ protocol: 'chat', baseURL: 'u', model: 'm' })).not.toBe(modelKey({ protocol: 'anthropic', baseURL: 'u', model: 'm' }))
         expect(modelKey({ model: { provider: 'openai', modelId: 'gpt' } })).toBe('openai|gpt')
+    })
+
+    test('estimateDetails 给出 token 的两个组成部分，和 estimate 一致', () => {
+        const payload = { messages: [{ role: 'user', content: 'a'.repeat(1000) }] }
+        const details = estimateDetails(payload, 0.25)
+
+        expect(details.token).toBe(estimate(payload, 0.25))
+        expect(details.chars).toBeGreaterThan(1000) // 含 JSON 结构本身的字符。
+        expect(details.media).toBe(0)
+    })
+
+    test('meter.known：没观测过是 false，观测一次后变 true', () => {
+        const meter = createMeter()
+        const payload = { messages: [{ role: 'user', content: 'a'.repeat(1000) }] }
+
+        expect(meter.known('k')).toBe(false) // 还是默认比例，说明没拿到真实 usage 校准过。
+        meter.observe('k', payload, Math.round(JSON.stringify(payload).length * 0.25))
+        expect(meter.known('k')).toBe(true)
     })
 })
 

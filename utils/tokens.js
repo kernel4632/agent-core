@@ -70,11 +70,16 @@ const measure = payload => {
     return { chars: JSON.stringify(walk(payload)).length, media }
 }
 
-// 估一段内容的 token：文字按字符数 × 比例，媒体按块数 × 固定值。
-export const estimate = (payload, ratio = DEFAULT_RATIO) => {
+// 估一段内容：token 和它的两个组成部分一起返回。
+// chars / media 是给诊断用的：token = ceil(chars × ratio) + media × MEDIA_TOKENS，
+// 排查"怎么估出这么多"时，看这两个数就知道是内容多还是比例高。
+export const estimateDetails = (payload, ratio = DEFAULT_RATIO) => {
     const { chars, media } = measure(payload)
-    return Math.ceil(chars * clamp(ratio)) + media * MEDIA_TOKENS
+    return { token: Math.ceil(chars * clamp(ratio)) + media * MEDIA_TOKENS, chars, media }
 }
+
+// 估一段内容的 token：文字按字符数 × 比例，媒体按块数 × 固定值。
+export const estimate = (payload, ratio = DEFAULT_RATIO) => estimateDetails(payload, ratio).token
 
 // 只数文字有多少字符，媒体载荷不算。Context 按字符给回合分预算时也用这一份，
 // 否则一张图会把整轮算成"超大的回合"，在压缩后被整个丢掉。
@@ -86,6 +91,9 @@ export const createMeter = () => {
 
     return {
         ratio: key => ratios.get(key) ?? DEFAULT_RATIO,
+        // 这个模型有没有被真实 usage 校准过。还是 false 就说明一直在用默认比例——
+        // 多半是上游没在流式响应里回 usage，或者上次进程重启后又是一个新估算器。
+        known: key => ratios.has(key),
         // 观测一次真实结果：payload 是这次发出去的内容，real 是模型回的真实输入 token 数。
         observe: (key, payload, real) => {
             if (!key || !Number.isFinite(real) || real <= 0) return

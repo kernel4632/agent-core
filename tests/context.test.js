@@ -249,6 +249,15 @@ describe('token 估算', () => {
 
         expect(JSON.stringify(messages)).toContain('看这张图') // 最近的用户消息还在。
     })
+
+    test('token 能拆成 chars × ratio 和媒体块，诊断时可直接读', () => {
+        const history = [History.user({ content: 'a'.repeat(1000) })]
+        const context = Context.build({ history, ratio: 0.5 })
+
+        expect(context.token).toBe(Math.ceil(context.chars * 0.5)) // 纯文字：token = chars × ratio。
+        expect(context.media).toBe(0)
+        expect(context.chars).toBeGreaterThan(1000)
+    })
 })
 
 

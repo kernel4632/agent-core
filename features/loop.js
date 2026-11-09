@@ -179,8 +179,9 @@ const run = async ({
         let context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })
         if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * llm.compactThreshold) {
             // trigger 让 compact-start 能回答"为什么压、估算多少"——排查"上下文才 35% 就压了"这类问题时，
-            // token / budget / compactThreshold / ratio 四个数缺一不可。
-            const trigger = { reason: 'automatic', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key) }
+            // token / budget / compactThreshold / ratio 四个数缺一不可；chars / media 是 token 的两个组成部分，
+            // calibrated 说明 ratio 到底是学出来的还是默认值（进程重启后第一个 send 一定是默认值）。
+            const trigger = { reason: 'automatic', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), chars: context.chars, media: context.media, calibrated: meter.known(key) }
             const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
             add(usage, summary.usage)                                         // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
             history.push(History.compact({ content: summary.content }))        // 总结写回 history。
@@ -213,7 +214,7 @@ const run = async ({
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
-                const trigger = { reason: 'overflow-retry', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key) } // 模型说窗口装不下，强制压一次再重发。
+                const trigger = { reason: 'overflow-retry', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), chars: context.chars, media: context.media, calibrated: meter.known(key) } // 模型说窗口装不下，强制压一次再重发。
                 const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 强制压缩一次。
                 add(usage, summary.usage)                                     // 超长重压同样计费用量。
                 history.push(History.compact({ content: summary.content }))   // 总结写回 history（只增不删）。

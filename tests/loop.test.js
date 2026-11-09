@@ -1164,6 +1164,9 @@ describe('压缩触发的诊断信息', () => {
             expect(start).toMatchObject({ reason: 'automatic', budget: 200, compactThreshold: 0.5 })
             expect(start.token).toBeGreaterThanOrEqual(100) // 200 × 0.5，过了阈值才压。
             expect(start.ratio).toBeGreaterThan(0)          // 这次用的估算比例；排查"估多了"就看它。
+            expect(start.chars).toBeGreaterThan(0)          // token 的两个组成部分：字符数和媒体块数。
+            expect(start.media).toBe(0)
+            expect(start.calibrated).toBe(false)            // 新估算器还没拿到真实 usage，用的是默认比例。
         } finally { server.stop(true) }
     })
 
@@ -1183,6 +1186,39 @@ describe('压缩触发的诊断信息', () => {
             expect(start).toMatchObject({ reason: 'manual', budget: 128000, compactThreshold: 0.8 }) // 没配就是默认值。
             expect(start.token).toBeGreaterThan(0)
             expect(typeof start.ratio).toBe('number')
+            expect(start.calibrated).toBe(false) // 同上：还没拿到真实 usage。
+        } finally { server.stop(true) }
+    })
+
+    test('拿到真实 usage 后 ratio 会校准，下一次压缩的 calibrated 变 true', async () => {
+        // 排查 issue #24 用的：证明"比例是学出来的"这条路能走通，而不是永远停在默认 0.6。
+        const events = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                const compacting = JSON.stringify(body.messages).includes('压缩成一段总结')
+                return Response.json({
+                    choices: [{ index: 0, message: { role: 'assistant', content: compacting ? '总结' : '好' }, finish_reason: 'stop' }],
+                    usage: compacting ? {} : { prompt_tokens: 500, completion_tokens: 5, total_tokens: 505 }, // 只给正常请求用量。
+                })
+            },
+        })
+        try {
+            const agent = Agent.create({
+                history: [History.user({ content: 'x'.repeat(3000) })],
+                config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1`, maxContextTokens: 100, compactThreshold: 0.5, noToolRounds: 1 },
+                tools: Agent.tool.adopt({ ping: { description: 'ping', inputSchema: { type: 'object', properties: {} }, execute: async () => 'pong' } }),
+                callbacks: { onCompact: event => events.push(event) },
+            })
+
+            await agent.send('第一轮')  // 压缩一次 → 请求成功 → 用真实 usage 校准。
+            await agent.send('第二轮')  // 再压一次时就应该看到 calibrated: true。
+
+            const starts = events.filter(event => event.type === 'compact-start')
+            expect(starts[0].calibrated).toBe(false)      // 第一次还是默认比例。
+            expect(starts[1].calibrated).toBe(true)       // 第二次已经用真实用量校准过。
+            expect(starts[1].ratio).not.toBe(starts[0].ratio) // 比例确实变了（500 token / 几千字符）。
         } finally { server.stop(true) }
     })
 

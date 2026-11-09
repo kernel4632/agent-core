@@ -30,7 +30,7 @@ build() 一进来就把平铺历史读成回合：工具结果按 toolCallId 回
 */
 
 import History from './history.js' // 「什么是一个回合」由 History 定义，这里只是它的使用者
-import { estimate, textChars, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
+import { estimateDetails, textChars, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
 
 // 压缩后保留多少总结之前的原文。下面四个数是默认值，宿主可以用 config.contextKeep 覆盖：
 // - firstTurns：开场最多留几个用户回合（= 最初目标）
@@ -135,13 +135,14 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
 
     // Token 只在真的有人读的时候才算：没设 maxContextTokens 时 Loop 压根不看它。
     // 估算只是一次字符计数（毫秒级），但这份惰性语义保留着，调用方不读就不算。
-    let counted
+    // chars / media 是 token 的两个组成部分，诊断"为什么估这么多"时看它们。
+    let details
+    const info = () => (details ??= estimateDetails({ messages, tools }, ratio)) // 工具定义不属于 messages，但模型请求仍会携带它们，所以估算时一并计入。
     return {
-        messages,                                                            // 这次要发给模型的完整消息。
-        get token() {                                                        // 估出来的 token 数，第一次读的时候才算。
-            counted ??= estimate({ messages, tools }, ratio)                 // 工具定义不属于 messages，但模型请求仍会携带它们，所以估算时一并计入。
-            return counted
-        },
+        messages,                                   // 这次要发给模型的完整消息。
+        get token() { return info().token },        // 估出来的 token 数，第一次读的时候才算。
+        get chars() { return info().chars },        // 其中文字占的字符数。
+        get media() { return info().media },        // 其中媒体块的个数（每块按固定 token 计）。
     }
 }
 

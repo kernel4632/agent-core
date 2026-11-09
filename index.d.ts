@@ -194,7 +194,8 @@ export interface HistoryModule {
 
 // --- 上下文、压缩、底层 LLM ---
 export interface ContextModule {
-    build: (options: { history: Message[]; system?: string; tools?: Record<string, any>; budget?: number; ratio?: number; capabilities?: Capabilities; mediaFallback?: 'error' | 'strip'; keep?: ContextKeep }) => { messages: any[]; readonly token: number }
+    build: (options: { history: Message[]; system?: string; tools?: Record<string, any>; budget?: number; ratio?: number; capabilities?: Capabilities; mediaFallback?: 'error' | 'strip'; keep?: ContextKeep }) =>
+        { messages: any[]; readonly token: number; readonly chars: number; readonly media: number } // chars / media 是 token 的两个组成部分，诊断估算时用。
 }
 export interface CompactModule {
     // 返回总结文本和这一笔压缩请求的用量（0.27 起带 usage：压缩也是真实请求，钱要计进合计）。
