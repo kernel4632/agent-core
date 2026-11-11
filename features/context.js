@@ -29,7 +29,7 @@ build() 一进来就把平铺历史读成回合：工具结果按 toolCallId 回
 剩下的 messages 顺序是：最初目标 → 总结前的最近现场 → 总结之后的全部新回合。
 */
 
-import History from './history.js' // 「什么是一个回合」由 History 定义，这里只是它的使用者
+import History, { MODEL_ROLES } from './history.js' // 「什么是一个回合」由 History 定义，这里只是它的使用者
 import { estimateDetails, textChars, DEFAULT_RATIO } from '../utils/tokens.js' // token 估算：字符数 × 每字符 token 比（比例由 Loop 从真实 usage 自校准）
 
 // 压缩后保留多少总结之前的原文。下面四个数是默认值，宿主可以用 config.contextKeep 覆盖：
@@ -70,7 +70,20 @@ const brief = (system, summary) => summary
 
 // History 只比 AI SDK 多了 id、compact 这些顶层内部字段，兼容规则交给 History.model 集中处理。
 // 默认去掉思考和未完成的工具调用；切换到支持它们的模型时只改 capabilities，不改裁剪流程。
+
+// 模型只认 user / assistant / tool；role:'error' 这类宿主记录被丢掉是预期行为（History.error 就是给它用的）。
+// 其他没见过的 role 同样丢掉，但先警告一次——那多半是宿主自己写错了字段，静默丢弃会很难查。
+const warnedRoles = new Set()
+const warnUnknownRoles = history => {
+    for (const message of history) {
+        if (message.role === 'error' || MODEL_ROLES.has(message.role) || warnedRoles.has(message.role)) continue
+        warnedRoles.add(message.role)
+        console.warn(`history 里有模型不认识的 role ${JSON.stringify(message.role)}，已跳过；只有 user / assistant / tool 会发给模型。`)
+    }
+}
+
 const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO, capabilities = {}, mediaFallback = 'error', keep = {} }) => {
+    warnUnknownRoles(history)                            // 宿主记录不进模型；没见过的 role 提醒一次。
     // 这四个数取宿主的配置，没配就用默认值。必须用 ?? 而不是 ||：0 是合法值（= 这一段一点都不留），
     // 用 || 会把 0 当成"没填"，宿主设了 firstTurns: 0 却仍然留下开场原文。
     const firstTurns = keep.firstTurns ?? KEEP.firstTurns

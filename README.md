@@ -1255,7 +1255,12 @@ History.user({ content: [{ type: 'text', text: '这是什么' }, { type: 'image'
 History.assistant({ content: '你好', toolCalls: [{ id: 'call-1', name: 'add', arguments: { a: 1, b: 2 } }] })
 History.tool({ toolCallId: 'call-1', toolName: 'add', content: '3' })
 History.compact({ content: '之前的对话总结...' })
+
+// 只给宿主看的失败记录：存进 history、刷新后还能渲染，但模型永远收不到，也不占上下文预算。
+History.error({ content: '请求失败：500', request: { model: 'claude', ms: 1234, error: 'boom' } })
 ```
+
+**失败记录（`role:'error'`）**：它不参与回合、不参与工具配对、不参与压缩，`Context.build()` 会整条丢掉；`render()` 仍然把正文渲染出来，`request` 原样保存在这条消息上，宿主可以放自己的审计信息（模型、耗时、错误原因）。只有 `user` / `assistant` / `tool` 会发给模型——history 里出现别的 role，会跳过并 `console.warn` 一次（`error` 除外，那是预期用法）。
 
 **读历史**——渲染给用户看、数聊了几轮，这两件事的知识本来就在核心里，不用你照着内部结构重写：
 
@@ -1392,7 +1397,7 @@ const agent = Agent.create({ config: { /* ... */ }, tools })
 | `Agent.version` | 包版本，排查问题时报得出来 |
 | `Agent.create(...)` | 创建 Agent 实例 |
 | `Agent.tool` | `.from()` / `.scan()` / `.adopt()` / `.execute()` / `.merge()` / `.pick()` / `.omit()` |
-| `Agent.history` | `.user()` / `.assistant()` / `.tool()` / `.compact()` 造消息块；`.turns()` / `.render()` 读历史 |
+| `Agent.history` | `.user()` / `.assistant()` / `.tool()` / `.compact()` / `.error()` 造消息块；`.turns()` / `.render()` 读历史 |
 | `Agent.context` | `.build()` |
 | `Agent.compact` | `.run()` |
 | `Agent.llm` | `.chat()` |

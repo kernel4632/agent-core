@@ -223,6 +223,59 @@ describe('总结怎么进上下文', () => {
 })
 
 
+describe('宿主记录不进模型', () => {
+    // issue #27：宿主想把"模型请求失败"那一笔也存进 history（刷新后还要能看见），
+    // 于是用 role:'error'。这类记录不能被发给模型，也不该占上下文预算。
+    test('role:error 被丢掉，前后正常回合完整', () => {
+        const history = [
+            History.user({ content: '第一条' }),
+            History.assistant({ content: '回答一' }),
+            History.error({ content: '请求失败：500', request: { model: 'm', ms: 12 } }),
+            History.user({ content: '第二条' }),
+            History.assistant({ content: '回答二' }),
+        ]
+        const { messages } = Context.build({ history, system: 'SYS' })
+        const text = JSON.stringify(messages)
+
+        expect(messages.some(message => message.role === 'error')).toBe(false)     // 模型看不到这条记录。
+        expect(messages.every(message => ['system', 'user', 'assistant', 'tool'].includes(message.role))).toBe(true)
+        expect(text).toContain('第一条')                                           // 前后的正常回合一条没少。
+        expect(text).toContain('回答二')
+    })
+
+    test('宿主记录不占上下文预算', () => {
+        const base = [History.user({ content: 'x'.repeat(1000) })]
+        const withError = [...base, History.error({ content: 'e'.repeat(5000) })]
+
+        expect(Context.build({ history: withError }).token).toBe(Context.build({ history: base }).token)
+    })
+
+    test('工具调用不会被宿主记录切断', () => {
+        const history = [
+            History.user({ content: '开始' }),
+            History.assistant({ content: null, toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] }),
+            History.error({ content: '插在调用和结果之间' }),
+            History.tool({ toolCallId: 'c1', toolName: 'read', content: '读到的内容' }),
+        ]
+        const { messages } = Context.build({ history })
+
+        expect(pairing(messages)).toEqual({ ok: true }) // 调用和结果仍然配对。
+    })
+
+    test('没见过的 role 会被跳过并警告一次', () => {
+        const warnings = []
+        const original = console.warn
+        console.warn = message => warnings.push(message)
+        try {
+            Context.build({ history: [{ role: 'weird-role-for-test', content: 'x' }] })
+            Context.build({ history: [{ role: 'weird-role-for-test', content: 'y' }] })
+        } finally { console.warn = original }
+
+        expect(warnings).toHaveLength(1) // 同一个 role 只提醒一次，别每次 build 都刷屏。
+    })
+})
+
+
 describe('token 估算', () => {
     test('带大图的历史不会把估算撑爆', () => {
         // 实战：一张 1MB 的截图让 JSON 从 100 万字符涨到 4700 万字符，旧算法估出 80 万+ token，

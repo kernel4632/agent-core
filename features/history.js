@@ -100,6 +100,15 @@ const tool = ({ id, toolCallId, toolName, content }) => ({
 // 创建压缩总结块；它仍然是 user 角色，但 compact 标记让 Context 识别最新总结。
 const compact = ({ id, content }) => ({ id: messageId(id), role: 'user', content: text(content, 'content'), compact: true })
 
+// 创建一条只给宿主看的失败记录：模型看不到（Context 会整条丢掉），但能存进 history、刷新后还能渲染。
+// request 是宿主自己的审计信息（provider / model / 耗时 / 错误原因……），原样保存，不参与任何模型逻辑。
+const error = ({ id, content, request }) => ({
+    id: messageId(id),
+    role: 'error',
+    content: text(content, 'content'),
+    ...(request === undefined ? {} : { request }),
+})
+
 // --- 把外部来的消息收进历史时补上 id ---
 // AI SDK 返回的 assistant 消息没有 id，而 history 里的每条消息都该有 id（前端靠它定位和更新）。
 // 所以模型产出在写入 history 之前统一在这里贴一个，其它字段原样保留——包括厂商的思考签名。
@@ -213,11 +222,16 @@ const model = (message, { answered = new Set(), capabilities = DEFAULTS.capabili
 }
 
 
+// 模型只认这三种 role；其他（比如宿主的失败记录 role:'error'）属于宿主数据，不参与回合。
+export const MODEL_ROLES = new Set(['user', 'assistant', 'tool'])
+
 // --- 把平铺历史折成回合 ---
 // 一个回合 = 用户的一次发言，或模型的一次响应连同它发起的全部工具调用与结果。
 // 工具结果认的是发起它的 toolCallId，不是它在数组里排在谁后面，所以先把回合拼出来、
 // 登记完每个回合欠下的调用，第二趟再统一分配结果——一趟边填边查会退化成"只有排在调用
 // 后面的结果才认得出来"，历史被外部乱序拼接或按 id 从库里恢复时，结果会被悄悄丢掉。
+//
+// 宿主记录（role:'error' 这类模型不消费的消息）不是回合：直接跳过，既不进上下文，也不占预算。
 //
 // Context 裁剪上下文用它，上层要数"聊了几轮"、"取最近三个来回"也用它。
 // 这条规则微妙，不暴露出去的话每个调用方都会自己推一遍，而且大概率推错。
@@ -228,6 +242,7 @@ const turns = history => {
 
     // --- 第一趟：拼回合，并登记每个回合欠下的工具调用 ---
     for (const message of history) {
+        if (!MODEL_ROLES.has(message.role)) continue                                  // 宿主记录不是对话，模型看不到它。
         if (message.role === 'tool') { open = null; continue }                        // 工具结果自己不开回合，但它意味着上一轮响应已经说完了。
 
         if (message.role === 'assistant' && open) open.push(message)                  // 同一次响应拆成的多条 assistant（思考、文字、调用）属于同一个回合。
@@ -280,4 +295,4 @@ const render = history => history
     .join('\n')
 
 
-export default { user, assistant, tool, compact, stored, turns, render, model, parts, answeredCalls, mediaDefaults }
+export default { user, assistant, tool, compact, error, stored, turns, render, model, parts, answeredCalls, mediaDefaults }

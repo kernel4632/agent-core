@@ -176,12 +176,14 @@ export interface ToolModule {
 }
 
 // --- 历史块 ---
-export type Role = 'user' | 'assistant' | 'tool'
+// 前三种是模型能读的对话；'error' 是宿主自己的失败记录（History.error），模型永远看不到。
+export type Role = 'user' | 'assistant' | 'tool' | 'error'
 export interface Message {
     id: string
     role: Role
     content: string | any[] | null
     compact?: boolean
+    request?: any     // 只有 role:'error' 会带：宿主自己的审计信息（model / 耗时 / 错误原因等），原样保存。
 }
 
 export interface HistoryModule {
@@ -189,6 +191,8 @@ export interface HistoryModule {
     assistant: (options: { id?: string; content?: string | any[] | null; toolCalls?: Array<{ id: string; name: string; arguments?: any; input?: any }> }) => Message
     tool: (options: { id?: string; toolCallId: string; toolName: string; content: any }) => Message
     compact: (options: { id?: string; content: string }) => Message
+    // 只给宿主看的失败记录：存进 history、能渲染、刷新后还在，但不发给模型、不占上下文预算。
+    error: (options: { id?: string; content: string; request?: any }) => Message
     stored: (message: any) => Message
     turns: (history: Message[]) => Message[][]
     render: (history: Message[]) => string

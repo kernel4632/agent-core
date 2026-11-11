@@ -77,6 +77,16 @@ describe('可嵌入性', () => {
         expect(typeof Agent.history.render).toBe('function')
     })
 
+    test('History.error：只给宿主看的失败记录，能存能渲染，但不是对话回合', () => {
+        // issue #27：宿主想把失败请求也留在 history 里（刷新后还能看见），又不希望模型收到它。
+        const record = History.error({ content: '请求失败：500', request: { model: 'm', ms: 12 } })
+
+        expect(record).toMatchObject({ role: 'error', content: '请求失败：500', request: { model: 'm', ms: 12 } })
+        expect(typeof record.id).toBe('string')                                          // 和其它历史块一样有 id。
+        expect(Agent.history.turns([History.user({ content: '你好' }), record])).toHaveLength(1) // 不是回合。
+        expect(Agent.history.render([History.user({ content: '你好' }), record])).toContain('请求失败：500') // UI 读得到。
+    })
+
     test('turns 把工具结果归到发起它的回合，排在哪都认得出', () => {
         const call = History.assistant({ content: '我来读', toolCalls: [{ id: 'c1', name: 'read', arguments: { path: 'a' } }] })
         const result = History.tool({ toolCallId: 'c1', toolName: 'read', content: '内容' })
