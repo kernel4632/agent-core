@@ -38,6 +38,7 @@ const result = await LLM.chat({
     retryBaseDelay: 5000,           // 第一次退避的基数；默认 5000，之后每次 ×2 递增（照抄 Roo Code）
     retryMaxDelay: 600000,          // 单次退避上限；默认 600000（10 分钟封顶，照抄 Roo Code）
     retryMaxElapsed: undefined,     // 不限重试总时长；调用方可主动设置毫秒数
+    retryMaxTries: undefined,       // 不限重试次数；0 = 不重试，正整数 = 最多再重试几次
     retry: undefined,               // 调用方过滤不想重试的错误：函数，或 { skipCodes, skipText, skipKinds, shouldRetry }
 
     // --- 控制信号 ---
@@ -270,6 +271,7 @@ const chat = async ({
     retryBaseDelay,       // 第一次退避基数（毫秒）。
     retryMaxDelay,        // 重试退避上限（毫秒）。
     retryMaxElapsed,      // 重试总时长上限（毫秒）。
+    retryMaxTries,        // 最多再重试几次；不设＝不限，0＝不重试。
     retry,                // 调用方过滤不想重试的错误。
     signal,               // 取消信号。
     provider = {},        // AI SDK 生成参数整包，headers / body 单独取出来。
@@ -343,7 +345,7 @@ const chat = async ({
                 catch (error) { throw classifyError(error, attempt) } // 分类只在这里做一次，流式和非流式共用同一个出口。
             },
             signal, onRetry,
-            baseDelay: retryBaseDelay, maxDelay: retryMaxDelay, maxElapsed: retryMaxElapsed, retry,
+            baseDelay: retryBaseDelay, maxDelay: retryMaxDelay, maxElapsed: retryMaxElapsed, maxTries: retryMaxTries ?? Infinity, retry,
         })
     } catch (error) { throw classifyError(error, null) } // 退避等待期被取消时，p-retry 直接抛 AbortError，不经过 operation；这里别再拿上一笔的旧限时信号判成 timeout。
 }

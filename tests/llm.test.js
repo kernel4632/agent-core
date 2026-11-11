@@ -527,6 +527,46 @@ describe('重试规则', () => {
         } finally { server.stop(true) }
     })
 
+    test('retryMaxTries：最多再重试几次，到顶就把错误交出来', async () => {
+        const { server, count } = repeat(500)
+        try {
+            const error = await LLM.chat(req(server.port, { retryMaxTries: 2 })).catch(caught => caught)
+            expect(error.statusCode).toBe(500)
+            expect(count()).toBe(3) // 1 次首发 + 2 次重试。
+        } finally { server.stop(true) }
+    })
+
+    test('retryMaxTries: 0 表示一次都不重试', async () => {
+        const { server, count } = repeat(500)
+        try {
+            const error = await LLM.chat(req(server.port, { retryMaxTries: 0 })).catch(caught => caught)
+            expect(error.statusCode).toBe(500)
+            expect(count()).toBe(1)
+        } finally { server.stop(true) }
+    })
+
+    test('onRetry 能拿到次数上限和当前第几次', async () => {
+        const { server, count } = repeat(500)
+        const seen = []
+        try {
+            await LLM.chat(req(server.port, { retryMaxTries: 1, onRetry: info => seen.push(info) })).catch(() => {})
+            expect(count()).toBe(2)
+            expect(seen).toHaveLength(1)
+            expect(seen[0].maxTries).toBe(1)          // 宿主可以直接显示"第 1 / 1 次重试"。
+            expect(seen[0].attempt).toBeGreaterThanOrEqual(1)
+        } finally { server.stop(true) }
+    })
+
+    test('不设 retryMaxTries 时仍然不限次数（默认行为不变）', async () => {
+        const { server, count } = repeat(500)
+        try {
+            // 用 retryMaxElapsed 收口，证明"没设次数上限时是时长在起作用的"。
+            const error = await LLM.chat(req(server.port, { retryMaxElapsed: 60, retryBaseDelay: 10 })).catch(caught => caught)
+            expect(error.statusCode).toBe(500)
+            expect(count()).toBeGreaterThanOrEqual(2) // 至少重试过一次，且不是靠次数停的。
+        } finally { server.stop(true) }
+    })
+
     test('retry 传函数：返回 false 的错误不重试', async () => {
         const { server, count } = repeat(400)
         try {

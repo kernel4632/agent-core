@@ -80,6 +80,8 @@ const inputProblem = (input, limits) => {
     if (!nonNegative(limits.retryBaseDelay)) return new RangeError('retryBaseDelay must be a non-negative integer')
     if (!nonNegative(limits.retryMaxDelay, false)) return new RangeError('retryMaxDelay must be a non-negative integer or Infinity')
     if (!nonNegative(limits.retryMaxElapsed, false)) return new RangeError('retryMaxElapsed must be a non-negative integer or Infinity')
+    // retryMaxTries 是"最多再重试几次"：0 表示不重试；缺省 / null / Infinity 表示不限。
+    if (!(limits.retryMaxTries === undefined || limits.retryMaxTries === null || limits.retryMaxTries === Infinity || (Number.isInteger(limits.retryMaxTries) && limits.retryMaxTries >= 0))) return new RangeError('retryMaxTries must be a non-negative integer or Infinity')
     // retry 是调用方的过滤开关：函数，或 { skipCodes, skipText, skipKinds, shouldRetry } 对象。
     if (limits.retry !== undefined && typeof limits.retry !== 'function' && (typeof limits.retry !== 'object' || limits.retry === null || Array.isArray(limits.retry))) return new TypeError('retry must be a function or an object')
     // 阈值必须落在 (0, 1]：0 会每轮都压缩，大于 1 则永远触发不了。
@@ -171,6 +173,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；照抄 Roo Code 的 5 秒。
             retryMaxDelay: 600000,      // 单次退避上限（毫秒）；照抄 Roo Code 的 600 秒封顶。
             retryMaxElapsed: undefined, // 不限重试总时长（Roo 没有总上限）；可设毫秒数收口。
+            retryMaxTries: undefined,   // 不限重试次数；0＝不重试，正整数＝最多再重试几次。
             retry: undefined,           // 调用方过滤不想重试的错误；不设＝默认全重试。
             requestTimeout: undefined,
             noToolPrompt: DEFAULT_NO_TOOL_PROMPT,

@@ -660,6 +660,7 @@ import Agent from '@kernel4632/agent-core'
 | `retryBaseDelay` | `5000` | 第一次退避的基数（毫秒），之后每次 ×2：5s、10s、20s…（照抄 Roo Code） |
 | `retryMaxDelay` | `600000` | 单次退避上限（毫秒），到顶就按这个值等待、不再增长（默认 10 分钟，照抄 Roo Code） |
 | `retryMaxElapsed` | `undefined` | 默认不限重试总时长；主动设置毫秒数后，到点把错误交给上层 |
+| `retryMaxTries` | `undefined` | 默认不限重试次数；设 `0` 是一次都不重试，设正整数是最多再重试几次。和 `retryMaxElapsed` 同时设时，谁先到谁停 |
 | `retry` | `undefined` | 调用方过滤不想重试的错误，见下方「重试规则」。不设＝默认全重试 |
 | `requestTimeout` | `undefined` | 默认不限制单笔请求时长；主动设置毫秒数后，卡住的一笔会被中断 |
 | `noToolPrompt` | 一条"请继续使用工具"的提醒 | 有工具但模型连续不调时，在结束前一轮临时发给模型；只挂在那一次请求上，不写进 `history`。设成 `''` 就不提醒 |
@@ -670,7 +671,7 @@ import Agent from '@kernel4632/agent-core'
 
 失败的重试由底层统一处理，默认行为照抄 Roo Code：**除"取消"和"上下文超长"外，任何错误都会重试**（401、400、格式错误都算），次数不限，也不设总时长上限；退避按 `retryBaseDelay × 2` 增长，单次最长到 `retryMaxDelay` 封顶。上下文超长不走重试，而是先压缩上下文再重发这笔请求，最多 3 次。取消（`agent.stop()` 或传 `signal`）永远不重试。
 
-想收口或过滤，用三个配置：
+想收口或过滤，用这几个配置：
 
 ```js
 const agent = Agent.create({
@@ -678,6 +679,7 @@ const agent = Agent.create({
         retryBaseDelay: 5000,      // 第一次等待 5s，之后 10s、20s…（默认）
         retryMaxDelay: 600000,     // 单次等待最多 10 分钟（默认）
         retryMaxElapsed: 120000,   // 一直失败最多再试 2 分钟，到点把错误交给上层（默认不限）
+        retryMaxTries: 5,          // 最多再重试 5 次（默认不限）；0＝不重试；和上面那条谁先到谁停
         // 只对"不想重试的错误"下手，命中即不重试：
         retry: {
             skipCodes: [400, 401],       // 按状态码
@@ -690,7 +692,7 @@ const agent = Agent.create({
 })
 ```
 
-`retry` 属于 **整份替换**（和 `provider` 一样，本次传了就用本次的整份，不与上次合并）。
+`retry` 属于 **整份替换**（和 `provider` 一样，本次传了就用本次的整份，不与上次合并）。`onRetry` 会收到 `{ attempt, maxTries, error, delay }`，宿主可以直接显示"第几 / 最多几次"。
 
 陌生中转站建议先使用默认能力。遇到只支持文字、但接口声称兼容 OpenAI 的模型，可以按能力关闭：
 
@@ -807,7 +809,7 @@ console.log(answer.text)
 | `onToolOutput` | 工具有流式输出 | `{ toolName, stream, data, toolCallId, input? }`；`data` 是工具 yield / 打印出来的原值，类型不定 |
 | `onToolResult` | 工具执行完成（拒绝/取消/无效调用也触发） | `{ toolName, toolCallId, output, ... }` |
 | `onStep` | 一轮模型和工具都完成后 | `{ step, result, toolCalls, toolResults }`；`toolResults` 是完整结果对象（`call` + `output`），和 `onToolResult` 同一种形状 |
-| `onRetry` | 请求失败重试 | `{ attempt, error, delay }`（主请求和压缩请求共用） |
+| `onRetry` | 请求失败重试 | `{ attempt, maxTries, error, delay }`（主请求和压缩请求共用） |
 | `onInject` | 每轮请求前（压缩之后） | `{ tokens, budget, compactThreshold }` → 返回字符串就临时附在本次请求末尾；返回其它值不注入 |
 | `onCompact` | 上下文压缩 | `compact-start`（`messages` + `reason` / `token` / `budget` / `compactThreshold` / `ratio` / `chars` / `media` / `calibrated`）/ AI SDK 事件（统一带 `request: 'compact'` 标记）/ `compact-finish`（带 `usage`，即压缩这一笔的用量） |
 

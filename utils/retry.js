@@ -50,7 +50,7 @@ const declines = (retry, error) => {
 
 // --- 决策顺序照抄 Roo Code ---
 // 1. 取消 → 不重试；2. 上下文超长 → 不在这里重试（抛上去由 Loop 压缩后重发）；
-// 3. 调用方过滤说停 → 不重试；4. 其余一律重试（没有 isRetryable 这套分类，也没有总次数上限）。
+// 3. 调用方过滤说停 → 不重试；4. 次数/总时长到顶 → 不重试；5. 其余一律重试。
 const shouldRetry = (error, retry) => {
     if (isAbort(error)) return false
     if (isContextWindowError(error)) return false
@@ -58,18 +58,19 @@ const shouldRetry = (error, retry) => {
     return true
 }
 
-const run = async ({ operation, signal, onRetry, baseDelay = 5000, maxDelay = 600000, maxElapsed = Infinity, retry }) => {
-    // 次数不设限，上界交给 maxElapsed（Roo 就是"一直重试直到被取消或上下文超长"）。
+const run = async ({ operation, signal, onRetry, baseDelay = 5000, maxDelay = 600000, maxElapsed = Infinity, maxTries = Infinity, retry }) => {
+    // 次数上界有两条：maxTries（最多重试几次）和 maxElapsed（最多再试多久），谁先到谁收手。
+    // 默认都是 Infinity（一直重试直到被取消、上下文超长，或调用方过滤）；maxTries: 0 表示一次都不重试。
     // 退避用 p-retry 的指数公式：min(round(base × 2^(n-1)), maxDelay)，正好是 5、10、20…直到封顶。
     const options = {
-        retries: Infinity,                        // 次数不设限，由 maxElapsed 收口（默认 Infinity＝不限）。
+        retries: maxTries,                        // p-retry 的 retries 就是"再重试几次"，Infinity＝不限。
         signal,                                   // p-retry 会在请求之间和等待期间响应用户取消。
         minTimeout: baseDelay,                    // 第一次等待的基数（默认 5000ms）。
         factor: 2,                                // 后续每次等待翻倍。
         maxRetryTime: maxElapsed,                 // 一直失败最多再试多久；Infinity 表示不限。
         shouldRetry: async ({ error, attemptNumber, retryDelay }) => {
             if (!shouldRetry(error, retry)) return false // 取消、上下文超长、调用方过滤都立刻收手，把原始错误交给上层。
-            await Notify.tell(onRetry, { attempt: attemptNumber, error, delay: retryDelay }) // 让上层能显示"正在重试第几次"。
+            await Notify.tell(onRetry, { attempt: attemptNumber, maxTries, error, delay: retryDelay }) // 让上层能显示"正在重试第几次 / 最多几次"。
             return true
         },
     }

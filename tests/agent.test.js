@@ -66,6 +66,14 @@ describe('Agent 入口', () => {
         expect(agent.history.length).toBe(0)
     })
 
+    test('retryMaxTries 在入口校验：0 合法，负数 / 小数 / 字符串拒绝', async () => {
+        const agent = Agent.create({ config: config() })
+        await expect(agent.send({ input: 'x', config: { retryMaxTries: -1 } })).rejects.toThrow('retryMaxTries')
+        await expect(agent.send({ input: 'x', config: { retryMaxTries: 1.5 } })).rejects.toThrow('retryMaxTries')
+        await expect(agent.send({ input: 'x', config: { retryMaxTries: '3' } })).rejects.toThrow('retryMaxTries')
+        expect(agent.history.length).toBe(0)
+    })
+
     test('contextKeep 在入口校验：0 合法，负数、小数、越界占比当场拒绝', async () => {
         const agent = Agent.create({ config: config() })
         await expect(agent.send({ input: 'x', config: { contextKeep: { firstTurns: -1 } } })).rejects.toThrow('contextKeep.firstTurns')
