@@ -189,6 +189,15 @@ const request = async ({ input, stream, requestTimeout, markAttempt, onLLMEvent,
     const text = [] // 单独收集文字，兼容部分 Provider 的事件字段差异。
     let failure = null // 供应商在流中途报的错。
 
+    // 先把所有"最后才结算"的 promise 都挂上一个兜底 catch（不改变 await 的行为：真正的错误仍在 await 处抛出）。
+    // 流中途出错时（比如上游 SSE 里出现第二个 message_start），AI SDK 会同时让这些 promise 一起 reject；
+    // 我们只 await 其中一部分，没被 await 到的（尤其是 steps / output 这种根本不用的）就成了未处理拒绝——
+    // Bun 对未处理拒绝的退出码是 1，宿主进程直接被带走，send 的 catch 和 retry 都轮不到（issue #26）。
+    // 挂上 catch 之后，它们只是安静的拒绝，错误照常走 retry / 错误终态。
+    for (const settled of [result.text, result.toolCalls, result.finishReason, result.usage, result.warnings, result.responseMessages, result.steps, result.output]) {
+        settled?.catch?.(() => {})
+    }
+
     try {
         for await (const event of result.stream) {
             await Notify.tell(onLLMEvent, event) // 不过滤事件，文字、思考、工具和错误都交给上层。

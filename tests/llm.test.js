@@ -585,3 +585,60 @@ describe('重试规则', () => {
         } finally { server.stop(true) }
     })
 })
+
+
+describe('上游流格式错误', () => {
+    // issue #26：Anthropic 流里出现第二个 message_start（上一条还没 message_stop）时，
+    // AI SDK 会同时让 text / toolCalls / finishReason / usage / responseMessages … 一起 reject。
+    // 只 await 其中一部分，剩下的就是未处理拒绝——Bun 会把它当进程级错误，整个宿主退出。
+    const sse = events => events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('')
+    const open = id => ({
+        type: 'message_start',
+        message: { id, type: 'message', role: 'assistant', model: 'm', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } },
+    })
+    const broken = () => Bun.serve({
+        port: 0,
+        fetch() {
+            const body = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(sse([
+                        open('msg_A'),
+                        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+                        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } },
+                        open('msg_B'), // 非法：A 还没 message_stop。
+                    ])))
+                    controller.close()
+                },
+            })
+            return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+        },
+    })
+
+    test('第二个 message_start：这次请求失败并进入重试，没有背后的未处理拒绝', async () => {
+        const unhandled = []
+        const retries = []
+        const listener = error => unhandled.push(error)
+        process.on('unhandledRejection', listener) // 自己接住，才能断言"一个都没有"。
+        const server = broken()
+        try {
+            let failures = 0
+            const agent = Agent.create({
+                // 只允许重试一次，第二次失败就把错误交给调用方（用 retry 过滤，不依赖时长，测试更稳）。
+                config: { baseURL: `http://127.0.0.1:${server.port}`, apiKey: 'k', model: 'claude-x', protocol: 'anthropic', stream: true, retryBaseDelay: 10, retry: () => { failures += 1; return failures < 2 } },
+                callbacks: { onRetry: info => retries.push(info) },
+            })
+
+            const error = await agent.send('hi').catch(caught => caught)
+
+            expect(error).toBeInstanceOf(Error)
+            expect(String(error.name)).toContain('InvalidResponseData') // 原始错误没被吞掉，调用方能看见。
+            expect(retries.length).toBeGreaterThan(0)                   // 进入了现有重试流程，而不是绕过它。
+            await Bun.sleep(30)                                         // 给潜在的未处理拒绝一个触发窗口。
+            expect(unhandled).toEqual([])                               // 关键：没有 promise 在背后炸掉进程。
+            expect(agent.history).toHaveLength(1)                       // 只留下用户那条，没有残缺的 assistant / tool。
+        } finally {
+            process.off('unhandledRejection', listener)
+            server.stop(true)
+        }
+    })
+})
