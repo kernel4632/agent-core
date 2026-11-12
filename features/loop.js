@@ -1,58 +1,27 @@
 /*
-目标被调用形式（绝对不可修改）：
-const result = await Loop.run({
-    // --- 宿主的活对象（每一笔请求前现读，不缓存）---
-    // Loop 每一笔请求（含重试）前都把 agent.config 和 agent.tools 重新读一遍，再拼这一笔请求：
-    // 宿主运行中改模型 / 思考强度 / system / 限额，或者把 agent.tools 换成另一份集合，
-    // 下一笔请求就用新值，不用停掉当前任务，也不用重建 Agent。
-    agent: {
-        // config 的字段含义见 README 的「config 字段」；这里只列 Loop 会用到的那几项。
-        config: {
-            baseURL: "https://中转站/v1", apiKey: "sk-xxx", model: "model-name", protocol: "chat",
-            provider: { temperature: 0.3, headers: {}, body: {} }, // AI SDK 生成参数
-            system: "你是编程助手",      // 系统提示词
-            capabilities: { tools: true, image: true, reasoning: false }, // 能力开关
-            maxContextTokens: 128000,   // 上下文预算；设 Infinity 关闭自动压缩
-            compactThreshold: 0.8,      // 达到预算的这个比例时压缩
-            stream: true,               // 主请求和压缩都流式输出
-            noToolPrompt: "请继续使用工具", // 有工具却连续不调时的提醒（只挂在那次请求上）
-            noToolRounds: 3,            // 连续多少轮不调工具就好结束；Infinity 表示永不因此结束
-            retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2
-            retryMaxDelay: 600000,      // 重试退避上限（毫秒）
-        },
-        tools: { schema: {} },          // 当前的工具集合（Tool.from / scan / adopt 的返回值），只读不扫描
-    },
+主循环：反复「请求模型 → 执行工具」，直到模型不再要工具、工具要求停止，或连续 noToolRounds 轮不调工具。
 
-    // --- 数据 ---
-    history: [],                        // 完整历史消息列表；只有这一个数组，循环只往里追加，不换目标
+调用：
+    const result = await Loop.run({
+        agent,                // 宿主的活对象：每一笔请求前现读 config / system / tools
+        history,              // 完整历史；只追加，不换目标
+        meter,                // token 估算器（可选，默认新建）
+        signal,               // 取消信号（可选）
+        ...callbacks,         // onStart / onLLMStart / onToolCall / onStep ...
+    })
+    const { content, usage } = await Loop.compact({ agent, history, meter, reason: 'manual', signal })
 
-    // --- 功能模块（必填，平齐的功能模块作为参数传）---
-    buildContext: Context.build,       // 上下文构建模块
-    compact: Compact.run,             // 上下文压缩模块
-    executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers }), // 工具执行模块，handlers 由调用方补上
-    sessionId: "session-1",               // 压缩和工具输出使用的会话
+    result = { reason: 'finished' | 'no-tool' | 'tool-stop', text, steps, usage }
+    content = 压缩出的总结文本；usage = 这一笔压缩请求的用量
 
-    // --- 控制（可选）---
-    signal: abortSignal,           // 取消信号
+每一笔请求（包括重试）前都用 agent 此刻的状态重新拼：模型、system、工具表、messages。
+轮次只做有副作用的决定：要不要压缩、要不要注入提醒、连续几轮没调工具。
+*/
 
-    // --- 回调（全部可选）---
-    onStart: () => { },                    // 循环开始
-    onLLMStart: (request) => { },          // 每次实际请求模型前
-    onLLMFinish: (result) => { },          // 本次模型请求完成，返回完整 result
-    onLLMEvent: event => {},               // 原样接收 AI SDK 的所有流事件
-    onRetry: (info) => { },                // 请求失败重试中
-    onPermission: async (permission) => { }, // 工具权限询问；必须严格返回 true 才放行，其它任何值都按拒绝
-    onInject: async ({ tokens, budget, compactThreshold }) => '', // 每轮请求前问一次：返回字符串就临时附在本次请求末尾（不写进 history）
-    onToolCall: (call) => { },              // 工具调用开始
-    onToolOutput: (output) => { },          // 工具实时输出
-    onToolResult: (result) => { },         // 工具执行完
-    onStep: (step) => { },                 // 一轮模型和工具都完成后
-    onCompact: (event) => { },             // 压缩过程通知
- })
- // result = { reason: 'finished' | 'no-tool' | 'tool-stop', text: '最后一轮模型生成的文字', steps: 模型轮数, usage: { inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens } }
- */
-
+import Context from './context.js'
+import Compact from './compact.js'
 import History from './history.js'
+import Tool from './tool.js'
 import LLM, { buildLLM } from './llm.js'
 import TextTools from './text-tools.js'
 import Notify from '../utils/notify.js'
@@ -115,6 +84,49 @@ const add = (total, usage = {}) => {
 }
 
 
+// --- 用 agent 此刻的状态建一份上下文 ---
+// run 和 compact 都走这里；agent 的哪个字段对应 Context 的哪个参数，只在这一处翻译。
+// 同时把这一份工具表一起拿出来：上下文和工具表必须来自同一刻的 agent 状态。
+const build = (agent, history, ratio) => {
+    const tools = agent.config.capabilities.tools === false ? {} : agent.tools.schema
+    return {
+        tools,
+        context: Context.build({
+            history,
+            system: agent.config.system,
+            tools,
+            budget: agent.config.maxContextTokens,
+            ratio,
+            capabilities: agent.config.capabilities,
+            mediaFallback: agent.config.mediaFallback,
+            keep: agent.config.contextKeep,
+        }),
+    }
+}
+
+
+// --- 压一次历史：手动压缩和循环里的自动压缩走同一条路 ---
+// 只追加一条总结，永远不删历史。调用方已经建好 context 就传进来，省一次重建。
+const compact = async ({ agent, history, meter, reason, context, signal, onCompact, onRetry }) => {
+    const key = modelKey(agent.config)                                  // 估算比例按主模型记
+    context ??= build(agent, history, meter.ratio(key)).context         // 循环里已经建过就直接用
+    const llm = buildLLM(agent.config, agent.config.compact)            // 用哪套模型压，也在这里定
+    const { content, usage } = await Compact.run({
+        messages: context.messages,
+        llm, stream: llm.stream,
+        onCompact, onRetry, signal,
+        detail: {                                                       // 诊断信息只在压缩这一处拼，字段不会和事件脱节
+            reason,
+            token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold,
+            ratio: meter.ratio(key), ratioSource: meter.source(key),
+            chars: context.chars, media: context.media, calibrated: meter.calibrated(key),
+        },
+    })
+    history.push(History.compact({ content }))                         // 总结写回历史，只增不删
+    return { content, usage }
+}
+
+
 // --- 问一次模型：工具走哪条路由 toolMode 决定 ---
 //   native（默认）：工具描述放在接口的 tools 字段里，system 一个字都不多。
 //   text：纯对话模型。工具说明写进 system，历史里的工具记录改写成文字，调用从回复文字里读回。
@@ -123,8 +135,8 @@ const add = (total, usage = {}) => {
 // build 是"现拼这一笔请求"的函数：每一次尝试（含重试）都调它一次，拿的是宿主此刻的状态。
 // record 记下真正发出去的那一份，Loop 用它做 token 校准（重试可能已经换了模型）。
 // 协议模式（textual / auto 的降级）在每轮开始时定下，重试不会中途换协议。
-const ask = async ({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry }) => {
-    const first = build()                          // 先拼一次，用来判断协议和工具表；真正发出去的那几笔还会再拼。
+const ask = async ({ request, record, llm, signal, onLLMEvent, onLLMStart, onRetry }) => {
+    const first = request()                        // 先拼一次，用来判断协议和工具表；真正发出去的那几笔还会再拼。
     const tools = first.tools
     const hasTools = Boolean(tools && Object.keys(tools).length)
     const textual = hasTools && (llm.toolMode === 'text' || (llm.toolMode === 'auto' && TextTools.remembered(llm)))
@@ -134,7 +146,7 @@ const ask = async ({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry
     const byText = async () => {
         let used = spec
         const refresh = async () => {
-            const next = build()
+            const next = request()
             used = await TextTools.prepare(next.tools)                                                  // 工具表可能在重试期间变了，说明书跟着重写。
             const final = { ...next, messages: TextTools.wrap(next.messages, used), tools: undefined }  // 说明书并进 system，工具记录改写成文字。
             record(final)
@@ -154,7 +166,7 @@ const ask = async ({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry
         : {}
     try {
         const refresh = () => {
-            const next = build()                 // 每一笔都现拼：重试期间宿主改了配置，下一笔就用新的。
+            const next = request()               // 每一笔都现拼：重试期间宿主改了配置，下一笔就用新的。
             record(next)
             return next
         }
@@ -169,7 +181,7 @@ const ask = async ({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry
 }
 
 const run = async ({
-    agent, history, buildContext, compact, executeTool, sessionId, signal, meter = createMeter(),                                    // 宿主活对象、数据、功能模块、取消信号、token 估算器
+    agent, history, signal, meter = createMeter(),                                    // 宿主活对象、数据、取消信号、token 估算器
     onStart, onLLMStart, onLLMFinish, onPermission, onLLMEvent, onRetry, onInject, onToolCall, onToolOutput, onToolResult, onStep, onCompact, // 全部回调，没传的自动跳过
 }) => {
     await Notify.tell(onStart) // 外部需要时知道循环已经开始了。
@@ -183,7 +195,7 @@ const run = async ({
         if (signal?.aborted) throw aborted()
 
         // --- 这一轮先用一份快照做决策：压缩、注入、轮次计数 ---
-        // 真正发请求时还会再拼一次（见下面 build），所以这里快照旧了也不会写进请求；
+        // 真正发请求时还会再拼一次（见下面 request），所以这里快照旧了也不会写进请求；
         // 它只用于"这一轮要不要压缩、要不要提醒"这类有副作用的决定。
         // agent 是活对象：宿主运行中改 agent.config、换 agent.tools，下一笔请求就用新值。
         // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
@@ -191,8 +203,6 @@ const run = async ({
         // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
         meter.seed(agent.config.contextRatio)                                          // 宿主可能运行中改了冷启动倍率；学到的真实值仍然优先于它。
         const llm = buildLLM(agent.config)                                                // 模型、生成参数、能力开关、限额、重试都在里面。
-        const system = agent.config.system                                                // 系统提示词。
-        const tools = agent.config.capabilities.tools === false ? {} : agent.tools.schema // 这一轮给模型看的工具表。
         const key = modelKey(llm)
 
         // --- 构建上下文，Token 超限时压一次 ---
@@ -201,16 +211,11 @@ const run = async ({
         // 循环只会一轮一轮地烧钱——实测 maxContextTokens 配小时能烧到 5500 次请求，
         // 每轮降一点点的情况下加了"没变小就停"的护栏也还能烧 122 次。
         // 压一次之后仍然超限就照常发出去，由模型服务判断收不收；下一轮如果还超，自然会再压一次。
-        let context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })
+        let { context, tools } = build(agent, history, meter.ratio(key))                 // 这一轮的上下文和工具表来自同一刻的 agent 状态。
         if (Number.isFinite(llm.maxContextTokens) && context.token >= llm.maxContextTokens * llm.compactThreshold) {
-            // trigger 让 compact-start 能回答"为什么压、估算多少"——排查"上下文才 35% 就压了"这类问题时，
-            // token / budget / compactThreshold / ratio 四个数缺一不可；chars / media 是 token 的两个组成部分，
-            // calibrated 说明 ratio 到底是学出来的还是默认值（进程重启后第一个 send 一定是默认值）。
-            const trigger = { reason: 'automatic', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) }
-            const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 自动压缩只在接近上限时触发；Compact 本身不判断上下文大小。
-            add(usage, summary.usage)                                         // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
-            history.push(History.compact({ content: summary.content }))        // 总结写回 history。
-            context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) })                // 用压缩后的历史重建上下文。
+            const summary = await compact({ agent, history, meter, reason: 'automatic', context, signal, onCompact, onRetry }) // 自动压缩只在接近上限时触发。
+            add(usage, summary.usage)                                                    // 压缩也是一次真实模型请求，token 计进整次 send 的合计。
+            ;({ context, tools } = build(agent, history, meter.ratio(key)))              // 用压缩后的历史重建上下文。
         }
         // 压缩只往 history 里追加一条总结，永远不删任何东西：
         // history 是这个项目唯一的权威数据来源，该保留多少由持有它的上层决定，核心包无权替它丢数据。
@@ -230,16 +235,14 @@ const run = async ({
         // 只重拼请求内容，不重做轮次级的决定（压缩、注入、轮次计数）：那些有副作用，属于"这一轮怎么决策"。
         // 已经发出去、正在流式的那一笔不打断；它由 LLM.chat 负责。
         let last = null   // 最近一笔真正发出去的请求：token 校准要用它（重试可能已经换了模型）。
-        const record = request => { last = { key: modelKey(request), messages: request.messages, tools: request.tools } }
-        const build = () => {
+        const record = sent => { last = { key: modelKey(sent), messages: sent.messages, tools: sent.tools } }
+        const request = () => {
             meter.seed(agent.config.contextRatio)                                                       // 宿主的冷启动倍率也可能在重试期间被改。
             const current = buildLLM(agent.config)                                                     // 连接、生成参数、能力开关、限额，全是此刻的值。
-            const currentSystem = agent.config.system                                                  // 系统提示词也在这时候读。
-            const currentTools = agent.config.capabilities.tools === false ? {} : agent.tools.schema    // 工具表读宿主手上那份，不重新扫描目录。
-            const built = buildContext({ history, system: currentSystem, tools: currentTools, budget: current.maxContextTokens, ratio: meter.ratio(modelKey(current)) }) // messages 从 history 现推。
+            const built = build(agent, history, meter.ratio(modelKey(current)))                         // messages 和工具表一起现推。
             const prompt = [temporaryPrompt, injected].filter(Boolean).join('\n\n')                     // 核心的提醒 + 宿主注入的那句。
-            const messages = prompt ? [...built.messages, History.user({ content: prompt })] : built.messages
-            return { ...current, messages, tools: currentTools }
+            const messages = prompt ? [...built.context.messages, History.user({ content: prompt })] : built.context.messages
+            return { ...current, messages, tools: built.tools }
         }
 
         // 上下文超长专项（照抄 Roo Code）：模型说"窗口放不下"时，先强制压缩一次再把这一笔请求重发，
@@ -247,15 +250,13 @@ const run = async ({
         let result
         for (let attempt = 0; ; attempt += 1) {
             try {
-                result = await ask({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry })
+                result = await ask({ request, record, llm, signal, onLLMEvent, onLLMStart, onRetry })
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
-                const trigger = { reason: 'overflow-retry', token: context.token, budget: llm.maxContextTokens, compactThreshold: llm.compactThreshold, ratio: meter.ratio(key), ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) } // 模型说窗口装不下，强制压一次再重发。
-                const summary = await compact({ messages: context.messages, llm, stream: llm.stream, onCompact, onRetry, signal, trigger }) // 强制压缩一次。
+                const summary = await compact({ agent, history, meter, reason: 'overflow-retry', context, signal, onCompact, onRetry }) // 模型说窗口装不下，强制压一次再重发。
                 add(usage, summary.usage)                                     // 超长重压同样计费用量。
-                history.push(History.compact({ content: summary.content }))   // 总结写回 history（只增不删）。
-                context = buildContext({ history, system, tools, budget: llm.maxContextTokens, ratio: meter.ratio(key) }) // 用压缩后的历史重建上下文。
+                ;({ context, tools } = build(agent, history, meter.ratio(key))) // 用压缩后的历史重建上下文。
             }
         }
         steps += 1            // 模型完整回答后才算这一轮，失败重试由 LLM.chat 自己处理。
@@ -301,7 +302,7 @@ const run = async ({
             // 模型已经产生了完整工具调用。即使此刻被取消，也要给它补一条取消结果。
             if (signal?.aborted) return denied({ type: 'error-text', value: '工具执行已取消' }, { stop: true })
 
-            const allowed = await checkPermission(onPermission, { sessionId, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input, signal }, signal) // 没权限回调时按无人值守模式直接放行；有回调时严格 true 才放行，取消不吊死。
+            const allowed = await checkPermission(onPermission, { sessionId: agent.id, toolCallId: call.toolCallId, toolName: call.toolName, input: call.input, signal }, signal) // 没权限回调时按无人值守模式直接放行；有回调时严格 true 才放行，取消不吊死。
             // 等待期间被取消：也按"已取消"结算，别写成"用户拒绝"——拒绝和取消是两回事，历史只增不删，写错了会永远留着。
             if (signal?.aborted) return denied({ type: 'error-text', value: '工具执行已取消' }, { stop: true })
             if (!allowed) return denied({ type: 'execution-denied', reason: '工具执行被用户拒绝' }) // 拒绝也是一条结果，模型需要知道。
@@ -309,7 +310,7 @@ const run = async ({
             let value
             try {
                 // onToolOutput 是高频流式回调，这里不等它：等一下就等于给模型输出加了一道节流阀。
-                value = await executeTool({ name: call.toolName, input: call.input, toolCallId: call.toolCallId, signal, onOutput: output => onToolOutput?.({ ...output, ...call }) }) // Loop 只说要执行哪个工具，怎么找到它由调用方负责。
+                value = await Tool.execute({ name: call.toolName, input: call.input, toolCallId: call.toolCallId, handlers: agent.tools.handlers, limit: agent.config.maxToolOutput, signal, onOutput: output => onToolOutput?.({ ...output, ...call }) }) // 执行时现读 handlers 和输出上限，和发请求用的是同一刻的 agent 状态。
             } catch (error) {
                 // 工具失败属于工具结果，不能让一次工具失败打断整个 Agent 循环。
                 // 取消路径由 tool.js 用 resolve 处理，不会走到这里；这里接的是"工具名不在表里"这类调用错误。
@@ -336,4 +337,4 @@ const run = async ({
     }
 }
 
-export default { run }
+export default { run, compact }

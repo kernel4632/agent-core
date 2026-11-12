@@ -16,7 +16,7 @@ const content = await Compact.run({
 })
 // content = "压缩后的总结文本"
 // onCompact compact-start: { type, messages, reason?, token?, budget?, compactThreshold?, ratio? }，压缩开始
-//   后四个由调用方通过 trigger 传进来，用来判断"为什么压、估算多少"；
+//   后面几个由调用方通过 detail 传进来，用来判断"为什么压、估算多少"；
 //   自动压缩 reason='automatic'，上下文超长重压='overflow-retry'，手动='manual'，直接调 Compact.run 时没有。
 // onCompact: 接收 AI SDK 原生事件，统一带 request: 'compact' 标记——靠它区分总结增量和回答增量
 // onCompact compact-finish: { type, content, usage }，压缩完成，带这一笔的用量
@@ -34,10 +34,10 @@ const SUMMARIZE = `请把以上对话压缩成一段总结，供你自己后续�
 // Compact 只负责把上下文变成总结文本，是否需要压缩由调用方决定。
 // 返回 { content, usage }：usage 是压缩这一笔请求的用量（AI SDK 原始形状），
 // 交给 Loop 加进整次 send 的合计——压缩也是真实的模型请求，钱不该在账外。
-// trigger 是"为什么压"的诊断信息，调用方知道就传：{ reason, token, budget, compactThreshold, ratio }，
+// detail 是"为什么压"的诊断信息，调用方知道就传：{ reason, token, budget, compactThreshold, ratio }，
 // 会原样并进 compact-start 事件。自动压缩、超长重压、手动压缩各自带上自己的 reason。
-const run = async ({ messages, llm, stream = true, onCompact, onRetry, signal, trigger }) => {
-    await Notify.tell(onCompact, { type: 'compact-start', messages, ...trigger })                 // 告诉上层：压缩开始了，以及为什么、按什么估算触发的。
+const run = async ({ messages, llm, stream = true, onCompact, onRetry, signal, detail }) => {
+    await Notify.tell(onCompact, { type: 'compact-start', messages, ...detail })                 // 告诉上层：压缩开始了，以及为什么、按什么估算触发的。
 
     // 原来的 system 里折着上一次的总结（见 Context 的 brief）。直接丢掉它，第二次压缩就看不到第一次总结过的事实，
     // 跑得越久忘得越多。所以把它作为背景并进压缩专用的 system，而不是夹在对话中间。

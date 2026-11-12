@@ -26,18 +26,12 @@ import Context from './features/context.js'   // 负责把历史消息裁剪成�
 import Compact from './features/compact.js'   // 负责把上下文压缩成总结文本
 import Loop from './features/loop.js'         // 负责驱动"请求模型 → 执行工具"的主循环
 import Tool from './features/tool.js'         // 负责扫描、接纳和执行工具
-import LLM, { buildLLM } from './features/llm.js' // 底层请求封装（对外只暴露 chat）+ 「Agent 配置 → 一次请求参数」的翻译（内部用）
+import LLM from './features/llm.js'           // 底层请求封装（对外只暴露 chat）
 import TextTools from './features/text-tools.js' // 纯对话模型的文字工具协议，直接用 LLM.chat 时也能自己调
 import History from './features/history.js'   // 负责创建标准格式的历史消息块
 import { createMeter, modelKey } from './utils/tokens.js' // 本地 token 估算器：按模型记账，用真实 usage 自校准
 import { badPart, PART } from './utils/shape.js' // 内容块形状校验：send 的用户输入也用它挡一下，别让坏块进只增不删的历史
 import { version } from './package.json'      // 版本号只在 package.json 里写一次，打包时会被内联进产物
-
-
-// --- 压缩用的模型配置 ---
-// 压缩复用主模型那套连接信息（baseURL / apiKey / provider …），
-// 只把 config.compact 里显式给的字段叠上去，想换更便宜的小模型压历史时只写一个 model 就够。
-const buildCompact = config => buildLLM(config, config.compact)
 
 
 // --- 默认值只有这一处 ---
@@ -230,16 +224,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             return Loop.run({
                 agent,                      // 活对象：Loop 每一笔请求前都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效（重试也算）。
                 history: agent.history,     // 数据固定这一个数组：循环只往里追加，不换目标。
-                buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
-                // 压缩发生在哪一轮，就用那一刻的 compact 配置——宿主运行中换了压缩模型也照样跟上。
-                compact: request => {
-                    const llm = buildCompact(agent.config)
-                    return Compact.run({ ...request, llm, stream: llm.stream })
-                },
-                // 执行时现读 handlers：和执行模型看到的那张工具表是同一时刻的来源，这一轮里刚换过也拿得到。
-                executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers, limit: agent.config.maxToolOutput }),
-                sessionId: agent.id,
-                meter,                            // token 估算器：跨 send 复用，按模型记住自校准的比例。
+                meter,                      // token 估算器：跨 send 复用，按模型记住自校准的比例。
                 ...callbacks,
                 signal,
             })
@@ -262,23 +247,11 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     // compact：手动跑一次上下文压缩，把结果作为一条 compact 消息追加进历史，并返回压缩出的文本。
     // 和 send 走同一个 start，所以同样会先停掉上一次运行，也接受外部取消信号。
     agent.compact = ({ onCompact = agent.callbacks.onCompact, onRetry = agent.callbacks.onRetry, ...options } = {}) => start(agent, async signal => {
-        meter.seed(agent.config.contextRatio)         // 宿主可能在上次运行里改过倍率，压缩前同步一次。
-        const key = modelKey(agent.config)             // 估算按模型记账，这里和 Loop 用同一个键。
-        const ratio = meter.ratio(key)                 // 这次压缩用的估算比例，一并放进 compact-start 方便诊断。
-        const context = Context.build({ history: agent.history, system: agent.config.system, tools: agent.config.capabilities.tools === false ? {} : agent.tools.schema, ratio, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }) // 工具表和保留策略都和 send 保持一致：关掉工具能力时不带，手动压缩也遵守同一份 contextKeep。
-        const compactLLM = buildCompact(agent.config)
-        const { content } = await Compact.run({
-            ...options,
-            messages: context.messages,
-            llm: compactLLM,
-            stream: compactLLM.stream,
-            onCompact,
-            onRetry,
-            signal,
-            // 手动压缩没有"触发阈值"这回事，但把当时的估算和配置一起带上，和自动压缩的事件字段保持同一种形状。
-            trigger: { reason: 'manual', token: context.token, budget: agent.config.maxContextTokens, compactThreshold: agent.config.compactThreshold, ratio, ratioSource: meter.source(key), chars: context.chars, media: context.media, calibrated: meter.calibrated(key) },
+        const { content } = await Loop.compact({
+            agent, history: agent.history, meter,
+            reason: 'manual',
+            signal, onCompact, onRetry,
         })
-        agent.history.push(History.compact({ content }))
         return content
     }, options.signal) // 手动压缩也接受外部取消信号，和 send 一致。
 
