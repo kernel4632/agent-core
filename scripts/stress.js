@@ -17,7 +17,7 @@
       模型主请求数、压缩请求数、工具调用数（证明真的走到了多轮工具和 compact 路径）；
       每台会话 history 的长度，以及是否只包含自己的编号（串台检查）；
       内存增量：分两批跑，比较两批的 heapUsed 增量，再看释放引用并 GC 后能否回落；
-      工具子进程数量：跑前 / 两批之后各测一次（进程池最多留 8 个空闲进程，数量不随批次增长才算正常）。
+      工具子进程数量：跑前 / 两批之后各测一次（工具进程用完就杀，数量不随批次增长才算正常）。
 */
 
 import Agent from '../index.js'
@@ -109,7 +109,7 @@ const server = Bun.serve({
     },
 })
 
-// --- 临时工具文件：走真实的工具子进程池（不是主进程内存工具） ---
+// --- 临时工具文件：走真实的工具子进程（不是主进程内存工具） ---
 const makeTempToolDir = async () => {
     const dir = join(tmpdir(), 'opencode', `agent-core-stress-${process.pid}-${Date.now()}`)
     await mkdir(dir, { recursive: true })

@@ -8,7 +8,7 @@
 import { expect, test, describe } from 'bun:test'
 import Tool from '../features/tool.js'
 import { BLOCK } from '../utils/shape.js'
-import { BROKEN, CYCLIC_FORMAT, PROTO, TOOLS } from './helpers.js'
+import { BROKEN, CYCLIC_FORMAT, LIMITS, PROTO, TOOLS } from './helpers.js'
 
 // 工具进程不能 import（它是从 stdin 喂进去的匿名程序），BLOCK 这个"认不认得成形的输出块"的表两边各有一份。
 // 校验本身只有一处（主线程的 utils/shape.js，子进程不做校验），这里只盯住 BLOCK 别悄悄跑偏。
@@ -152,13 +152,17 @@ describe('Tool 执行', () => {
         expect(Date.now() - started).toBeLessThan(2000) // 进程内的 await 永远做不到这件事，所以工具必须跑在独立进程里。
     })
 
-    test('同一套工具复用一个工具进程，不再按次新建 Worker', async () => {
-        const tools = await Tool.scan(TOOLS)
+    test('每次调用都是新进程、跑完就杀：不复用，内存也不累积', async () => {
+        const tools = await Tool.scan(LIMITS, TOOLS)
+        const ids = []
+        for (let i = 0; i < 3; i += 1) ids.push((await Tool.execute({ name: 'wid', input: { hold: 0 }, handlers: tools.handlers })).output.value)
+        expect(new Set(ids).size).toBe(3) // 三个独立进程：不复用，也就不存在"上一次的工具状态漏给下一次"。
+
         const before = process.memoryUsage.rss()
-        for (let i = 0; i < 40; i += 1) await Tool.execute({ name: 'echo', input: { value: String(i) }, handlers: tools.handlers })
+        for (let i = 0; i < 20; i += 1) await Tool.execute({ name: 'echo', input: { value: String(i) }, handlers: tools.handlers })
         const grew = (process.memoryUsage.rss() - before) / 1048576
 
-        expect(grew).toBeLessThan(200) // 按次新建 Worker 时每个留下约 22MB；换成子进程后杀多少次都不累积。
+        expect(grew).toBeLessThan(200) // 进程用完就杀，跑多少次主进程都不累积（常驻复用反而会一直占着）。
     })
 
     test('signal 进来之前就已经取消时，这次调用立刻结算而不是永远挂着', async () => {
@@ -189,7 +193,7 @@ describe('Tool 执行', () => {
     })
 
     test('跑过工具之后进程还能正常退出', async () => {
-        // 池里的工具进程如果不 unref，事件循环永远不空，任何用了这个包的 CLI 都会卡在退出这一步。
+        // 工具进程跑完就杀、不留常驻进程，所以事件循环一定能在调用结束后变空。
         const child = Bun.spawn(['bun', '-e', `
             import Tool from '${new URL('../features/tool.js', import.meta.url).href}'
             const tools = await Tool.scan('./tests/fixtures/tools')
@@ -205,7 +209,7 @@ describe('Tool 执行', () => {
 
     test('工具进程起不来时立刻返回错误，而不是永远挂着', async () => {
         // spawn 会失败：bun 不在 PATH、系统进程数满。以前这次调用永远不结算，
-        // 整个 Agent 无声卡死。用子进程跑，避免前面的用例把进程池灌满（池里有空闲就借不到空位）。
+        // 整个 Agent 无声卡死。用子进程跑，避免前面的用例留下还在跑的进程干扰计时。
         const child = Bun.spawn(['bun', '-e', `
             import Tool from '${new URL('../features/tool.js', import.meta.url).href}'
             const tools = await Tool.scan('./tests/fixtures/tools')

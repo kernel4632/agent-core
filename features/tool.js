@@ -49,9 +49,13 @@
 两笔账会一直累积。换成子进程后实测 200 次「起→用→杀」主进程只涨 2MB（Worker 版是 4.4GB），
 孙进程一起带走，而且主进程退出时工具进程全部跟着死，不留孤儿。
 
-工具进程是一池、全进程共用，用完还池。一次调用独占一个工具进程，所以并发跑的两个工具
+**一次调用一个工具进程：起、用、杀，不复用。** 一次调用独占一个进程，所以并发跑的两个工具
 不会把 console 输出串到一起。取消只杀 signal 相同的那些——Loop 给同一轮所有并行工具的
 本来就是同一个 signal，"取消"在语义上就是"这一轮全部取消"，别的 Agent 不会被连坐。
+
+为什么不做进程池：复用能省约 35ms（冷启动 ~50ms，复用 ~15ms），代价是每个待命进程常驻一份
+Bun 运行时（实测 WorkingSet 约 70MB，宿主空闲时也一直占着）。对代理循环来说这点延迟不划算，
+所以用完就杀；要低延迟的宿主可以在工具层自己缓存，核心不替它做这个取舍。
 
 工具想要超时保护，自己在工具文件里写 timeout（毫秒）。这个包没有全局超时，
 因为阻塞型工具（等 IM 消息、盯文件变化）是它支持的正常用法，全局超时会把这类工具全废掉。
@@ -72,10 +76,9 @@ import shape, { outputProblem } from '../utils/shape.js'
 // 判反的代价不对称，退回去只是回到最普通的做法，判错了却会让 app 自我重入。
 const runtime = /^bun(\.exe)?$/i.test(basename(process.execPath)) ? process.execPath : 'bun'
 
-// 一池工具进程，全进程共用。不按工具集合分池：取消已经按 signal 精确到轮次了，
-// 再按集合分池只会让每次 Tool.scan 都新建一池、旧池的空闲进程永远没人回收。
-// 工具在忙时按各自的 signal 控制并发；空闲进程最多留 8 个，避免多个 Agent 跑完后长期占内存。
-const pool = { live: new Set(), idle: [], busy: new Map(), limit: 8 }
+// 正在跑的调用：child → call。IPC 靠它认领结果，取消时靠它精确杀掉对应那一轮的进程。
+// 没有"空闲池"——进程跑完就杀，见 release。
+const pool = { busy: new Map() }
 let sequence = 0
 
 
@@ -227,24 +230,15 @@ const buffer = limit => {
 }
 
 
-// --- 一个工具进程空出来了：先还池，再让排队的人去借 ---
+// --- 一次调用结束：把进程杀掉，不再留给下一次 ---
 const release = child => {
-    child.unref()
-    pool.idle.push(child)
-    if (pool.idle.length > pool.limit) {
-        const extra = pool.idle.shift()
-        pool.live.delete(extra)
-        extra.kill()
-    }
+    if (!pool.busy.delete(child)) return
+    child.kill()
 }
 
 
-// --- 一个工具进程废了：它不能再被借出去 ---
-const retire = child => {
-    if (!pool.live.delete(child)) return
-    pool.busy.delete(child)
-    pool.idle = pool.idle.filter(one => one !== child)
-}
+// --- 进程已经退出/废了：清掉它欠着的那次调用（调用方会从 exited 收到通知） ---
+const retire = child => pool.busy.delete(child)
 
 
 // --- 开一个新工具进程 ---
@@ -268,14 +262,12 @@ const open = () => {
                 return
             }
 
-            pool.busy.delete(child)
-            release(child)
+            release(child) // 结果到了：这次调用结束，进程杀掉。
             if (message.type === 'error') call.finish({ output: { type: 'error-text', value: `工具执行失败：${message.message}` }, error: message.message })
             else call.finish({ output: message.output, stop: message.stop })
         },
     })
 
-    pool.live.add(child)
     child.stdin.write(toolProcessSource)
     child.stdin.end()
 
@@ -290,10 +282,10 @@ const open = () => {
 }
 
 
-// --- 借一个工具进程 ---
+// --- 起一个新的工具进程 ---
+// 不复用：每次调用一个独立进程，跑完由 release 杀掉。
 const borrow = async () => {
-    const free = pool.idle.pop()
-    const child = free ? (free.ref(), free) : await open()
+    const child = await open()
     if (!child) throw new Error('工具进程启动失败：进程在握手完成前就退出了')
     return child
 }
