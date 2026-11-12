@@ -567,6 +567,17 @@ describe('重试规则', () => {
         } finally { server.stop(true) }
     })
 
+    test('refresh 只在重试前调用：第一笔直接用静态参数', async () => {
+        const { server, count } = okAfter(500)
+        let refreshed = 0
+        try {
+            const result = await LLM.chat(req(server.port, { refresh: () => { refreshed += 1; return {} } }))
+            expect(result.text).toBe('好了')
+            expect(count()).toBe(2)      // 第一笔 500，重试成功。
+            expect(refreshed).toBe(1)    // 只在重试那一笔现拼，第一笔不白拼一次。
+        } finally { server.stop(true) }
+    })
+
     test('retry 传函数：返回 false 的错误不重试', async () => {
         const { server, count } = repeat(400)
         try {

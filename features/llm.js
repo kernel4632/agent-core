@@ -46,7 +46,7 @@ const result = await LLM.chat({
     requestTimeout: undefined,      // 单笔请求最多等多久（毫秒）；不设就不限时
 
     // --- 内部选项（Agent 的 Loop 用；直接调 LLM.chat 时不需要）---
-    refresh: undefined,             // 每次尝试（含重试）前调用一次，用返回的参数覆盖上面的静态值
+    refresh: undefined,             // 重试前调用一次，返回这一笔的新参数；第一笔直接用传进来的静态参数
 
     // --- 提示词缓存（默认开启）---
     cache: true,                    // true 使用默认键；{ key, retention, body } 自定义；false 完全关闭
@@ -341,13 +341,18 @@ const send = async ({
 // 重试包在这里，而不是让每个调用方各自包一层：这样"发一次模型请求"在整个项目里只有一条路，
 // 主循环和上下文压缩自动走同一套重试、同一套退避、同一个 onRetry 通知。
 //
-// refresh 是给 Agent 用的：传了它就每次尝试前调用一次，用返回值覆盖静态参数。
+// refresh 是给 Agent 用的：传了它，重试前会调用一次，用返回值覆盖静态参数。
 // 为什么要有它——重试之间隔着退避，宿主完全可能在这段时间里改了 agent.config / agent.tools；
 // 如果每一笔请求都复用开局那份快照，切换后的模型永远等不到机会（issue #29）。
-// 直接调 Agent.llm.chat 的调用方不传 refresh，行为和以前完全一样。
+// 第一笔直接用调用方给的静态参数，不白拼一次；直接调 Agent.llm.chat 的调用方不传 refresh，行为和以前完全一样。
 const chat = async options => {
     const { refresh } = options
-    const operation = async () => send(refresh ? { ...options, ...(await refresh()) } : options)
+    let first = true                                        // 第一笔用静态参数，重试才现拼。
+    const operation = async () => {
+        const attempt = first || !refresh ? options : { ...options, ...(await refresh()) }
+        first = false
+        return send(attempt)
+    }
 
     // 外面再包一次 label：退避等待期间被取消时，p-retry 直接抛 AbortError、不经过 operation 的分类，
     // 从这里兜住，保证"取消一定带 kind=aborted"这条承诺没有缺口。

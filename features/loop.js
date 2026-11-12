@@ -132,28 +132,27 @@ const compact = async ({ agent, history, meter, reason, context, signal, onCompa
 //   text：纯对话模型。工具说明写进 system，历史里的工具记录改写成文字，调用从回复文字里读回。
 //   auto：先试原生；接口拒收工具字段就记住这个模型、改用文字协议重发。原生模型把调用写成了文字，也读回来。
 //
-// build 是"现拼这一笔请求"的函数：每一次尝试（含重试）都调它一次，拿的是宿主此刻的状态。
-// record 记下真正发出去的那一份，Loop 用它做 token 校准（重试可能已经换了模型）。
+// request 是"现拼这一笔请求"的函数：重试前才调，拿的是宿主此刻的状态。
+// 第一笔用 ask 一开始拼的那份，不白拼两次。返回 { result, request }，Loop 用 request 做 token 校准。
 // 协议模式（textual / auto 的降级）在每轮开始时定下，重试不会中途换协议。
-const ask = async ({ request, record, llm, signal, onLLMEvent, onLLMStart, onRetry }) => {
-    const first = request()                        // 先拼一次，用来判断协议和工具表；真正发出去的那几笔还会再拼。
+const ask = async ({ request, llm, signal, onLLMEvent, onLLMStart, onRetry }) => {
+    const first = request()                        // 第一笔请求：直接用它。
     const tools = first.tools
     const hasTools = Boolean(tools && Object.keys(tools).length)
     const textual = hasTools && (llm.toolMode === 'text' || (llm.toolMode === 'auto' && TextTools.remembered(llm)))
     const spec = hasTools && llm.toolMode !== 'native' ? await TextTools.prepare(tools) : null // 只有可能用到文字协议时才写说明书。
 
-    // 文字协议：每笔尝试前用最新的 messages / tools 重写一遍说明书，接口上不带 tools 字段。
+    // 文字协议：第一笔和重试都用最新的 messages / tools 重写一遍说明书，接口上不带 tools 字段。
     const byText = async () => {
-        let used = spec
+        let used = await TextTools.prepare(first.tools)                                          // 这一笔的说明书
+        let sent = { ...first, messages: TextTools.wrap(first.messages, used), tools: undefined } // 说明书并进 system，工具记录改写成文字。
         const refresh = async () => {
             const next = request()
-            used = await TextTools.prepare(next.tools)                                                  // 工具表可能在重试期间变了，说明书跟着重写。
-            const final = { ...next, messages: TextTools.wrap(next.messages, used), tools: undefined }  // 说明书并进 system，工具记录改写成文字。
-            record(final)
-            return final
+            used = await TextTools.prepare(next.tools)                                           // 工具表可能在重试期间变了，说明书跟着重写。
+            return (sent = { ...next, messages: TextTools.wrap(next.messages, used), tools: undefined })
         }
-        const result = await LLM.chat({ ...llm, signal, onLLMEvent, onLLMStart, onRetry, refresh })
-        return TextTools.read(result, used, { loose: true })                                            // 从回复文字里读回工具调用。
+        const result = await LLM.chat({ ...llm, ...sent, signal, onLLMEvent, onLLMStart, onRetry, refresh })
+        return { result: TextTools.read(result, used, { loose: true }), request: sent }           // 从回复文字里读回工具调用。
     }
 
     if (textual) return byText()
@@ -164,19 +163,16 @@ const ask = async ({ request, record, llm, signal, onLLMEvent, onLLMStart, onRet
     const autoRetry = llm.toolMode === 'auto' && spec
         ? { retry: error => !TextTools.refused(error) && !Retry.declines(llm.retry, error) }
         : {}
+    let sent = first
+    const refresh = () => (sent = request())       // 重试前现拼：退避期间宿主改了配置，下一笔就用新的。
     try {
-        const refresh = () => {
-            const next = request()               // 每一笔都现拼：重试期间宿主改了配置，下一笔就用新的。
-            record(next)
-            return next
-        }
-        const result = await LLM.chat({ ...llm, signal, onLLMEvent, onLLMStart, onRetry, ...autoRetry, refresh })
-        return spec ? TextTools.read(result, spec) : result // auto 下原生没给调用时，模型可能把调用写成了文字。
+        const result = await LLM.chat({ ...llm, ...first, signal, onLLMEvent, onLLMStart, onRetry, ...autoRetry, refresh })
+        return { result: spec ? TextTools.read(result, spec) : result, request: sent } // auto 下原生没给调用时，模型可能把调用写成了文字。
     } catch (error) {
         if (llm.toolMode !== 'auto' || !spec || signal?.aborted || !TextTools.refused(error)) throw error
-        const result = await byText()
+        const done = await byText()
         TextTools.remember(llm) // 文字协议真的跑通了才记住；上下文超长这类和工具无关的 400，换协议也会失败，不能把模型永久降级。
-        return result
+        return done
     }
 }
 
@@ -234,8 +230,7 @@ const run = async ({
         // 下一笔就必须用新值——否则切了模型却一直卡在旧模型上重试（issue #29）。
         // 只重拼请求内容，不重做轮次级的决定（压缩、注入、轮次计数）：那些有副作用，属于"这一轮怎么决策"。
         // 已经发出去、正在流式的那一笔不打断；它由 LLM.chat 负责。
-        let last = null   // 最近一笔真正发出去的请求：token 校准要用它（重试可能已经换了模型）。
-        const record = sent => { last = { key: modelKey(sent), messages: sent.messages, tools: sent.tools } }
+        let sent = null   // 最近一笔真正发出去的请求：token 校准要用它（重试可能已经换了模型）。
         const request = () => {
             meter.seed(agent.config.contextRatio)                                                       // 宿主的冷启动倍率也可能在重试期间被改。
             const current = buildLLM(agent.config)                                                     // 连接、生成参数、能力开关、限额，全是此刻的值。
@@ -250,7 +245,9 @@ const run = async ({
         let result
         for (let attempt = 0; ; attempt += 1) {
             try {
-                result = await ask({ request, record, llm, signal, onLLMEvent, onLLMStart, onRetry })
+                const answer = await ask({ request, llm, signal, onLLMEvent, onLLMStart, onRetry })
+                result = answer.result
+                sent = answer.request                       // 真正发出去的那一份，校准和日志都以它为准。
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
@@ -261,7 +258,7 @@ const run = async ({
         }
         steps += 1            // 模型完整回答后才算这一轮，失败重试由 LLM.chat 自己处理。
         add(usage, result.usage)
-        meter.observe(last.key, { messages: last.messages, tools: last.tools }, result.usage?.inputTokens) // 用真正发出去那一笔的真实用量校准，越用越准。
+        meter.observe(modelKey(sent), { messages: sent.messages, tools: sent.tools }, result.usage?.inputTokens) // 用真正发出去那一笔的真实用量校准，越用越准。
         await Notify.tell(onLLMFinish, result) // 上层拿到完整 result，自行选择 usage 或其他字段。
         const answer = { text: result.text, ...('output' in result ? { output: result.output } : {}), steps, usage: { ...usage } } // 最终对象和文字来自同一轮，不能从旧历史猜结果。用量是到这一轮为止的合计。
         temporaryPrompt = null      // 提示已经用过，下一轮默认不再携带。
