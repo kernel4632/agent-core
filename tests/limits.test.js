@@ -1,5 +1,5 @@
 /*
-盯住"能不能长期不停机地跑下去"：输出上限、超时、并发上限、内存不累积。
+盯住"能不能长期不停机地跑下去"：输出上限、超时、内存不累积。
 
 常驻 agent 的失败方式和一次性脚本不同：不是某次调用报错，而是几十小时之后
 内存涨到几个 GB、或者某次打断往 history 里写进 356 万字符、或者 tool 进程塌了
@@ -33,59 +33,6 @@ describe('常驻加固', () => {
             History.tool({ toolCallId: 'c1', toolName: 'big', content: result.output }),
         ]
         expect(Context.build({ history }).token).toBeLessThan(20000) // 截断前实测 314,656。
-    })
-
-    test('并发再多也不会超过池子上限', async () => {
-        const tools = await Tool.scan(LIMITS)
-        const ids = await Promise.all(Array.from({ length: 30 }, () =>
-            Tool.execute({ name: 'wid', input: {}, handlers: tools.handlers, concurrency: 8 }).then(result => result.output.value)))
-
-        expect(ids.filter(Boolean).length).toBe(30)        // 排队的一个都不能丢。
-        expect(new Set(ids).size).toBeLessThanOrEqual(8)   // 不设上限时这里会瞬间起 30 个工具进程，实测 20 个就占 466MB。
-    })
-
-    test('并发上限按次生效，传进去的值就是这一次的上限', async () => {
-        // 一批 = 同一个 signal，这正是 Loop 给同一轮工具调用的形状。
-        // 用总耗时判断：12 个活、每个 150ms、上限 3，要跑 4 轮，约 600ms；只受池子上限 8 约束时 2 轮，约 300ms。
-        // 工具进程各自计时，没法可靠地算跨进程的重叠，总耗时是最稳的代理量。
-        const tools = await Tool.scan(LIMITS)
-        const round = new AbortController()
-        const started = Date.now()
-        const results = await Promise.all(Array.from({ length: 12 }, () =>
-            Tool.execute({ name: 'span', input: { hold: 150 }, handlers: tools.handlers, signal: round.signal, concurrency: 3 })))
-        const elapsed = Date.now() - started
-
-        expect(results.filter(result => !result.error).length).toBe(12) // 排队的一个都不能丢。
-        expect(elapsed).toBeGreaterThan(550)                            // 不到 4 轮说明上限没生效。
-    })
-
-    test('上限调到 8 以上时不会被共享池悄悄截回 8', async () => {
-        const tools = await Tool.scan(LIMITS)
-        const round = new AbortController()
-        const ids = await Promise.all(Array.from({ length: 12 }, () =>
-            Tool.execute({ name: 'wid', input: { hold: 200 }, handlers: tools.handlers, signal: round.signal, concurrency: 12 })
-                .then(result => result.output.value)))
-
-        expect(new Set(ids).size).toBe(12) // 同一时刻借出 12 个独占进程，才算真正尊重 12 这个设置。
-    })
-
-    test('一台 Agent 调并发上限，不会改到另一台 Agent', async () => {
-        // 以前是 pool.limit = concurrency 直接改全局：宽的一进来就把窄的撑到 6，窄的 9 个活只要 2 轮。
-        // 现在窄的那批只看自己的名额：9 个活、上限 2，要跑 5 轮，约 750ms。
-        const tools = await Tool.scan(LIMITS)
-        const mine = new AbortController()
-        const theirs = new AbortController()
-        const started = Date.now()
-        const narrow = Promise.all(Array.from({ length: 9 }, () =>
-            Tool.execute({ name: 'span', input: { hold: 150 }, handlers: tools.handlers, signal: mine.signal, concurrency: 2 })))
-        await Bun.sleep(80) // 让窄的这一批先跑起来，宽的这一批这时候才进来。
-        const wide = Promise.all(Array.from({ length: 6 }, () =>
-            Tool.execute({ name: 'span', input: { hold: 150 }, handlers: tools.handlers, signal: theirs.signal, concurrency: 6 })))
-        await narrow
-        const elapsed = Date.now() - started
-        await wide
-
-        expect(elapsed).toBeGreaterThan(600) // 至少跑了 4 轮，说明窄的上限没被宽的那批顶掉。
     })
 
     test('工具自己声明的 timeout 会按时把它杀掉', async () => {

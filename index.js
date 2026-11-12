@@ -12,7 +12,7 @@
 
 一次运行的完整生命周期：
 1. create 建出 Agent，把默认配置和工具归一化后存好；
-2. send 先把用户输入推进只增不删的历史，再交给 start 启动；
+2. send 有输入就把它推进只增不删的历史（没有输入就是"继续"），再交给 start 启动；
 3. start 停掉上一次还在跑的运行，合入外部取消信号，然后执行本轮工作；
 4. 工作里由 Loop 反复「请求模型 → 执行工具」，上下文接近预算时调 Compact 压缩；
    每一笔请求（包括同一轮里的每次重试）前都会重新取一次配置、system 和工具表，所以运行中改这些东西，下一笔请求就生效；
@@ -58,21 +58,23 @@ const DEFAULT_NO_TOOL_PROMPT = '[错误] 你刚才的响应中没有使用工具
 // 为什么放在最外层统一查：历史只增不删，一个坏值一旦写进去，以后每次 send 都会被 AI SDK 本地拒收，
 // 等于把这个会话永久毒化。宁可在入口报一个带原因的错，也不放它进去。config / history / callbacks 同理。
 const inputProblem = (input, limits) => {
-    const empty = typeof input === 'string' ? !input.trim() : !Array.isArray(input) || !input.length
     const positive = (value, finite = true) => value === undefined || (finite ? Number.isInteger(value) && value >= 1 : value === Infinity || Number.isInteger(value) && value >= 1)
-    if (empty) return new TypeError('input must be a non-empty string or a non-empty content array')
-    // 内容块数组也当边界查一次：形状坏的块写进只增不删的历史后，之后每次 send 都会被 AI SDK 本地拒收。
-    if (Array.isArray(input)) {
-        const bad = input.find(part => PART.has(part?.type) && badPart(part))
-        if (bad) return new TypeError(`内容块的 ${JSON.stringify(bad.type)} 形状不合法：媒体要 mediaType 且值是字符串 / URL / 二进制`)
+    // input 省略表示"从当前历史接着跑"（见 send），只有真给了输入才校验它。
+    if (input !== undefined) {
+        const empty = typeof input === 'string' ? !input.trim() : !Array.isArray(input) || !input.length
+        if (empty) return new TypeError('input must be a non-empty string or a non-empty content array')
+        // 内容块数组也当边界查一次：形状坏的块写进只增不删的历史后，之后每次 send 都会被 AI SDK 本地拒收。
+        if (Array.isArray(input)) {
+            const bad = input.find(part => PART.has(part?.type) && badPart(part))
+            if (bad) return new TypeError(`内容块的 ${JSON.stringify(bad.type)} 形状不合法：媒体要 mediaType 且值是字符串 / URL / 二进制`)
+        }
     }
     // maxContextTokens 是上下文预算，允许 Infinity 表示关闭自动压缩；字符串 '1000' 会让压缩永远不触发。
     if (!positive(limits.maxContextTokens, false)) return new RangeError('maxContextTokens must be a positive integer or Infinity')
     // maxTokens 是单次生成的最大输出 token；不设（undefined）跳过，设了就必须是正整数。
     if (!positive(limits.maxTokens)) return new RangeError('maxTokens must be a positive integer')
-    // noToolRounds / maxToolConcurrency 允许 Infinity，表示“永远提醒 / 不限制并发”。
+    // noToolRounds 允许 Infinity，表示“永远提醒”。
     if (!positive(limits.noToolRounds, false)) return new RangeError('noToolRounds must be a positive integer or Infinity')
-    if (!positive(limits.maxToolConcurrency, false)) return new RangeError('maxToolConcurrency must be a positive integer or Infinity')
     if (!positive(limits.maxToolOutput, false)) return new RangeError('maxToolOutput must be a positive integer or Infinity') // 0/负数会把工具输出静默截成空。
     // 重试参数：退避基数和上限是毫秒数（允许 0，等于不等待）；总时长可设 Infinity。
     // 这里用"非负整数"而不是"正整数"，因为 0 是常用做法（测试和"不想等待"的场景），p-retry 也接受 0。
@@ -168,7 +170,6 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             cache: true,
             mediaFallback: 'error',
             maxToolOutput: undefined,
-            maxToolConcurrency: undefined,
             contextRatio: undefined,    // 冷启动估算倍率（每字符多少 token）；没学到真实 usage 之前用它。
             retryBaseDelay: 5000,       // 第一次退避基数（毫秒），之后 ×2；照抄 Roo Code 的 5 秒。
             retryMaxDelay: 600000,      // 单次退避上限（毫秒）；照抄 Roo Code 的 600 秒封顶。
@@ -198,10 +199,12 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     }
 
     // send：把一次用户输入推进历史并跑完整个循环，返回最终回答。
-    // 支持 send('文本') 和 send({ input, config, tools, history, callbacks, signal }) 两种写法。
+    // 两种写法：send('文本') / send({ input, config, tools, history, callbacks, signal })。
+    // **不带输入就是"继续"**：直接把当前历史交给循环（末尾是 user 就回答它，是 assistant/tool 就接着说，
+    // 空历史也行）。"继续"和"发新消息"是同一个动作的两种起始状态，不分成两个方法。
     // 边界上先查 config / history / callbacks 和 input 本身，坏值绝不写进 Agent 状态。
     agent.send = (input, options = {}) => {
-        if (typeof input === 'object' && input !== null && !Array.isArray(input)) ({ input, ...options } = input)
+        if (typeof input === 'object' && input !== null && !Array.isArray(input)) ({ input, ...options } = input) // send({ input, ... })：对象写法里没写 input 就是继续。
 
         const badConfig = 'config' in options && (typeof options.config !== 'object' || options.config === null || Array.isArray(options.config))
         const badHistory = 'history' in options && !Array.isArray(options.history) // 覆盖会写回 Agent，坏值必须先挡在门外，否则这台 Agent 之后每次 send 都崩。
@@ -222,7 +225,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
             const callbacks = { ...agent.callbacks }
 
-            agent.history.push(History.user({ content: input }))
+            if (input !== undefined) agent.history.push(History.user({ content: input })) // 不带输入（继续）：不追加任何消息。
 
             return Loop.run({
                 agent,                      // 活对象：Loop 每一笔请求前都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效（重试也算）。
@@ -234,42 +237,9 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
                     return Compact.run({ ...request, llm, stream: llm.stream })
                 },
                 // 执行时现读 handlers：和执行模型看到的那张工具表是同一时刻的来源，这一轮里刚换过也拿得到。
-                executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers, limit: agent.config.maxToolOutput, concurrency: agent.config.maxToolConcurrency }),
+                executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers, limit: agent.config.maxToolOutput }),
                 sessionId: agent.id,
                 meter,                            // token 估算器：跨 send 复用，按模型记住自校准的比例。
-                ...callbacks,
-                signal,
-            })
-        }, options.signal)
-    }
-
-
-    // resume：不发新消息，用现有 history 的末尾接着跑（比如停止后继续被中断的回复）。
-    // 实战里应用为了续跑，被迫塞一条假用户消息、再在 onStart 里偷偷删掉——那是绕过"历史只增不删"的补丁；
-    // 这个入口让续跑成为一等能力：不 push 任何消息，模型看到的历史末尾就是中断前的最后一条。
-    agent.resume = (options = {}) => {
-        if ('input' in options) return Promise.reject(new TypeError('resume 不接受 input；要发新消息用 send')) // 续跑的语义就是"接着说"，混进新输入说明调用场景想用的是 send。
-        const badCallbacks = 'callbacks' in options && (typeof options.callbacks !== 'object' || options.callbacks === null || Array.isArray(options.callbacks))
-        if (badCallbacks) return Promise.reject(new TypeError('callbacks must be an object'))
-        const last = agent.history.at(-1)
-        const ready = last && last.role !== 'user' // 末尾是 assistant 或 tool 才有"没说完的话"。
-        if (!ready) return Promise.reject(new Error('history 末尾不是 assistant / tool 消息，没有可继续的内容；发新消息请用 send'))
-
-        return start(agent, async signal => {
-            if ('config' in options) agent.config = mergeConfig(agent.config, options.config)
-            if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
-            const callbacks = { ...agent.callbacks }
-            return Loop.run({
-                agent,                      // 和 send 同一条路：每笔请求前现读宿主的配置、system 和工具表。
-                history: agent.history,
-                buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
-                compact: request => {
-                    const llm = buildCompact(agent.config)
-                    return Compact.run({ ...request, llm, stream: llm.stream })
-                },
-                executeTool: request => Tool.execute({ ...request, handlers: agent.tools.handlers, limit: agent.config.maxToolOutput, concurrency: agent.config.maxToolConcurrency }),
-                sessionId: agent.id,
-                meter,
                 ...callbacks,
                 signal,
             })

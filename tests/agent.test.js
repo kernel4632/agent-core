@@ -133,15 +133,18 @@ describe('Agent 入口', () => {
         expect(recorded.at(-1).temperature).toBe(0.4)
     })
 
-    test('空输入当场拒绝，而不是发出一轮空请求', async () => {
+    test('空的输入仍然拒绝，但"不带输入"是合法的继续', async () => {
         const agent = Agent.create({ config: config() })
 
         // 出错方式只有一种：返回的 Promise 拒绝。调用方不需要额外写同步的 try/catch。
         await expect(agent.send('')).rejects.toThrow('input must be')
         await expect(agent.send('   ')).rejects.toThrow('input must be')  // 只有空白也算空。
         await expect(agent.send([])).rejects.toThrow('input must be')
-        await expect(agent.send({})).rejects.toThrow('input must be')     // 完整形式漏了 input 也一样。
         expect(agent.history.length).toBe(0)                              // 被拒绝的输入不写进历史。
+
+        // 完全不给输入不是错误：那是"从当前历史继续"。空历史也能跑（模型至少看到 system）。
+        await expect(agent.send()).resolves.toMatchObject({ text: '好' })
+        await expect(agent.send({})).resolves.toMatchObject({ text: '好' })
     })
 
     test('非法配置和非法 signal 也走 Promise 拒绝，不抛出同步异常', async () => {
@@ -155,17 +158,10 @@ describe('Agent 入口', () => {
         expect(badSignal).toBeInstanceOf(Promise)
         await expect(badConfig).rejects.toThrow('config must be an object')
         await expect(badSignal).rejects.toThrow('signal must be an AbortSignal')
-        await expect(agent.send({ input: 'x', config: { maxToolConcurrency: 0 } })).rejects.toThrow('maxToolConcurrency')
         await expect(agent.send({ input: 'x', config: { noToolRounds: 0 } })).rejects.toThrow('noToolRounds')
         await expect(agent.send({ input: 'x', config: { compactThreshold: undefined } })).rejects.toThrow('compactThreshold') // undefined 会让压缩永远不触发。
         await expect(agent.send({ input: 'x', config: { compactThreshold: 0 } })).rejects.toThrow('compactThreshold')       // 0 会让每轮都触发。
         await expect(agent.send({ input: 'x', config: { maxContextTokens: '1000' } })).rejects.toThrow('maxContextTokens')       // 字符串会让压缩算不出来。
-    })
-
-    test('maxToolConcurrency 设成 Infinity 是合法的', async () => {
-        const agent = Agent.create({ config: config({ maxToolConcurrency: Infinity }) })
-        await agent.send('不限并发')
-        expect(agent.config.maxToolConcurrency).toBe(Infinity)
     })
 
     test('send 被后来的指令顶掉时，它的 history/config 覆盖不会留下', async () => {

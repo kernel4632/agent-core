@@ -21,7 +21,6 @@
         signal: abortSignal,         // 触发即杀，工具瞬间死（文件工具）/ 透传（内存工具）
         onOutput: output => {},      // 工具产生一段输出时调用，调用方决定如何展示或转发
         limit: Infinity,             // 不设输出上限；需要保护上下文时由调用方主动设置
-        concurrency: 8,              // 这一轮最多同时跑几个文件工具，超出的排队
     })
     // result = { output, stop }            工具正常结束
     // result = { output, error }           工具抛错了，错误也作为一条结果交给模型
@@ -35,8 +34,12 @@
     const noShell = Tool.omit(all, ['shell'])           // 去掉 shell，其余全留
 
 工具集合里的条目有两种执行方式，execute 一处分开：
-  文件工具   → handler 带 url，交给工具子进程（见 tool-process.js），排队、取消、超时都在这里管；
+  文件工具   → handler 带 url，交给工具子进程（见 tool-process.js），取消、超时在这里管；
   内存工具   → handler 带 execute 函数，在主进程直接调，结果经过和文件工具一致的成形规则。
+
+**并行不设上限。** 模型在一轮里同时点几个工具，就是在说"这几件事互相独立、一起做"；
+核心给它们排队等于擅自改变语义，所以这里没有并发上限（也不再有 maxToolConcurrency 这种开关）。
+需要保护资源的宿主，自己少给工具、在工具里限流，或者在权限门上拦。
 
 文件工具跑在独立的 bun 子进程里，所以工具碰不到 Agent 的任何状态，
 死循环的工具也能被一刀杀掉——进程内的 await 永远做不到这一点。
@@ -56,7 +59,6 @@
 
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { basename } from 'node:path'
-import PQueue from 'p-queue'
 import toolProcessSource from './tool-process.js' with { type: 'text' }
 import Notify from '../utils/notify.js'
 import normalizeInputSchema from '../utils/schema.js'
@@ -74,27 +76,7 @@ const runtime = /^bun(\.exe)?$/i.test(basename(process.execPath)) ? process.exec
 // 再按集合分池只会让每次 Tool.scan 都新建一池、旧池的空闲进程永远没人回收。
 // 工具在忙时按各自的 signal 控制并发；空闲进程最多留 8 个，避免多个 Agent 跑完后长期占内存。
 const pool = { live: new Set(), idle: [], busy: new Map(), limit: 8 }
-const DEFAULT_CONCURRENCY = 8 // 一次调用没指定上限时用的并发数。和 pool.limit 是两个概念，只是数值恰好相同。
 let sequence = 0
-
-// 每次运行一个队列：p-queue 保证同一队列内同时最多跑 concurrency 个，超出的自己排队。
-// 有 signal 的（Loop 的一轮）各用各的队列；没有 signal 的直接调用，按并发数各用各的队列——
-// 不能共用一个再改它的 concurrency，那样两次并发调用会互相顶掉对方的上限。
-const queues = new WeakMap()
-const directs = new Map() // 并发数 → 那个并发数专用的队列。
-
-const queueOf = (signal, concurrency) => {
-    if (!signal) {
-        const limit = concurrency ?? DEFAULT_CONCURRENCY
-        let queue = directs.get(limit)
-        if (!queue) { queue = new PQueue({ concurrency: limit }); directs.set(limit, queue) }
-        return queue
-    }
-    let queue = queues.get(signal)
-    if (!queue) { queue = new PQueue({ concurrency: Infinity }); queues.set(signal, queue) }
-    queue.concurrency = concurrency ?? Infinity
-    return queue
-}
 
 
 // --- 扫描工具目录，返回一份完全独立的工具集合 ---
@@ -334,12 +316,12 @@ const cutOutput = (output, limit) => {
 
 // --- 执行一个工具 ---
 // handler.execute（内存工具）→ 主进程直接调；handler.url（文件工具）→ 工具子进程。
-const execute = async ({ name, input, toolCallId, handlers, signal, onOutput, limit = Infinity, concurrency }) => {
+const execute = async ({ name, input, toolCallId, handlers, signal, onOutput, limit = Infinity }) => {
     const handler = handlers?.[name]
     if (!handler?.execute && !handler?.url) throw new Error(`Tool ${name} was not found in handlers`)
     const result = handler.execute
         ? await inProcess({ name, input, toolCallId, handler, signal, onOutput, limit })
-        : await runInSubprocess({ name, input, toolCallId, handler, signal, onOutput, limit, concurrency })
+        : await runInSubprocess({ name, input, toolCallId, handler, signal, onOutput, limit })
     // 形状校验只在这一处做（内存工具和文件工具都过这里）：非法块变成一条正常的工具失败，绝不写进只增不删的 history。
     const problem = outputProblem(result.output)
     if (problem) return { output: { type: 'error-text', value: problem }, error: problem }
@@ -402,9 +384,8 @@ const inProcess = async ({ name, input, toolCallId, handler, signal, onOutput, l
 
 
 // --- 在工具进程里执行一个文件工具 ---
-const runInSubprocess = ({ name, input, toolCallId, handler, signal, onOutput, limit, concurrency }) => {
+const runInSubprocess = ({ name, input, toolCallId, handler, signal, onOutput, limit }) => {
     const call = { id: String(++sequence), name, signal, onOutput, output: buffer(limit), done: false }
-    const queue = queueOf(signal, concurrency)
 
     return new Promise(resolve => {
         const interrupted = one => ({ output: { type: 'error-text', value: `${one.output.text()}\n工具执行已中断` }, interrupted: true })
@@ -424,7 +405,6 @@ const runInSubprocess = ({ name, input, toolCallId, handler, signal, onOutput, l
             call.done = true
             clearTimeout(call.timer)
             signal?.removeEventListener('abort', stop)
-            call.releaseSlot?.() // 告诉队列这次调用真的结束了，名额可以让给同批的下一个。
             resolve(result)
         }
 
@@ -448,13 +428,11 @@ const runInSubprocess = ({ name, input, toolCallId, handler, signal, onOutput, l
         signal?.addEventListener('abort', stop, { once: true })
         if (signal?.aborted) return stop()
 
-        queue.add(async () => {
-            let child
-            try { child = await borrow() }
-            catch (error) { return call.finish({ output: { type: 'error-text', value: `工具执行失败：工具进程启动失败（${error.message}）` }, error: error.message }) }
-            if (call.done) return release(child)
-            await new Promise(done => { call.releaseSlot = done; start(child) }) // 等这次调用结算，队列才知道可以让下一个上。
-        })
+        // 不排队：模型一轮里点几个工具，就是让它们同时跑。资源保护是宿主的事（少给工具 / 工具内限流 / 权限门）。
+        borrow().then(
+            child => { if (call.done) release(child); else start(child) },
+            error => call.finish({ output: { type: 'error-text', value: `工具执行失败：工具进程启动失败（${error.message}）` }, error: error.message }),
+        )
     })
 }
 

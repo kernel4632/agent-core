@@ -457,8 +457,8 @@ describe('Loop', () => {
         } finally { server.stop(true) }
     })
 
-    test('resume：不发新消息，用历史末尾续跑', async () => {
-        // 实战反馈：应用为了续跑被迫塞假用户消息再偷偷删掉。现在 resume 是一等入口。
+    test('send() 不带输入：从当前历史接着跑，不追加用户消息', async () => {
+        // "继续"和"发新消息"是同一个动作的两种起始状态：一个带输入、一个不带。不再分成两个方法。
         const seen = []
         const server = Bun.serve({
             port: 0,
@@ -471,19 +471,35 @@ describe('Loop', () => {
             const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1` } })
             await agent.send('你好')
             const before = agent.history.length
-            const answer = await agent.resume()
+
+            const answer = await agent.send()
+
             expect(answer.text).toBe('接着说')
-            expect(agent.history.length).toBe(before + 1)             // 只追加了 assistant 回复，没有任何用户消息。
-            expect(seen[1].messages.at(-1).role).toBe('assistant')    // 发给模型的末尾就是中断前的回复，不是新输入。
+            expect(agent.history.length).toBe(before + 1)          // 只追加了 assistant 回复，没有任何用户消息。
+            expect(seen[1].messages.at(-1).role).toBe('assistant') // 发给模型的末尾就是中断前的回复，不是新输入。
         } finally { server.stop(true) }
     })
 
-    test('resume：历史末尾是用户消息时拒绝，混入 input 也拒绝', async () => {
-        const agent = Agent.create({ config })
-        await expect(agent.resume()).rejects.toThrow(/没有可继续/)      // 空 history：没有可继续的内容。
-        agent.history.push(History.user({ content: '没人回答' }))
-        await expect(agent.resume()).rejects.toThrow(/没有可继续/)      // 末尾是 user：没有半截回复可续。
-        await expect(agent.resume({ input: '新输入' })).rejects.toThrow(/send/) // 想发新消息应该用 send，不接收 input。
+    test('send() 不带输入也能作用于任意历史末尾（用户消息、空历史都行）', async () => {
+        // 循环只做"对当前历史发请求"，末尾是哪种 role 是状态，不是方法的分界。
+        const seen = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                seen.push(await request.json())
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '回答' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        try {
+            const agent = Agent.create({ config: { ...config, baseURL: `http://127.0.0.1:${server.port}/v1` } })
+
+            await agent.send()                                        // 空历史也照样跑：模型至少能看到 system。
+            expect(agent.history).toHaveLength(1)
+
+            agent.history.push(History.user({ content: '没人回答的消息' }))
+            await agent.send()                                        // 末尾是 user：就是"回答它"。
+            expect(seen.at(-1).messages.at(-1).content).toBe('没人回答的消息')
+        } finally { server.stop(true) }
     })
 
     test('工具返回 stop: true 时结束循环，reason 是 tool-stop', async () => {

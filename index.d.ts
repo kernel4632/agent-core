@@ -62,7 +62,6 @@ export interface Config {
     contextRatio?: number
     contextKeep?: ContextKeep
     output?: any
-    maxToolConcurrency?: number
     retryBaseDelay?: number
     retryMaxDelay?: number
     retryMaxElapsed?: number
@@ -251,10 +250,10 @@ export interface AgentInstance {
     callbacks: Callbacks
     running: { controller: AbortController; task: Promise<Answer | string> } | null // send 时是 Answer；compact 时是总结字符串。
     send: {
-        (input: string | any[], options?: Omit<SendOptions, 'input'>): Promise<Answer>
-        (options: SendOptions & { input: string | any[] }): Promise<Answer>
+        // 不带输入 = 从当前历史继续（不追加消息）：末尾是 user 就回答它，是 assistant/tool 就接着说。
+        (input?: string | any[], options?: Omit<SendOptions, 'input'>): Promise<Answer>
+        (options?: SendOptions): Promise<Answer>
     }
-    resume: (options?: Omit<SendOptions, 'input'>) => Promise<Answer>   // 不发新消息，用现有历史末尾续跑（历史末尾须是 assistant/tool）
     stop: () => Promise<{ ok: boolean }>
     compact: (options?: { onCompact?: Callbacks['onCompact']; onRetry?: Callbacks['onRetry']; signal?: AbortSignal }) => Promise<string>
     // 当前模型用的估算倍率，宿主可以持久化；calibrated=false 表示还是 seed 或默认值。

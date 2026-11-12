@@ -122,7 +122,7 @@ const markLast = message => {
 // 这是 Agent 配置和 LLM.chat 之间的翻译，放在 LLM 这边，因为它只回答"一次请求要哪些参数"。
 // 两个容易看懵的点：output 要塞进 provider，是 AI SDK 要求结构化输出从 provider 选项传入，不能平铺在顶层；
 // system 在这里置空，是因为系统提示由调用方每一笔请求前单独交给 Context，避免同一条提示被传两遍。
-// index.js（send / resume / compact）和 Loop（每笔请求前）调的都是这一份，规则只写一处。
+// index.js（send / compact）和 Loop（每笔请求前）调的都是这一份，规则只写一处。
 export const buildLLM = (config, overrides = {}) => {
     const { output, ...merged } = { ...config, ...overrides }                 // 浅拷一份：之后宿主再改 agent.config，不会影响已经拼好的这次请求。
     return { ...merged, provider: { ...merged.provider, output }, system: undefined }
