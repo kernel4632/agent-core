@@ -45,6 +45,9 @@ const result = await LLM.chat({
     signal: abortSignal,
     requestTimeout: undefined,      // 单笔请求最多等多久（毫秒）；不设就不限时
 
+    // --- 内部选项（Agent 的 Loop 用；直接调 LLM.chat 时不需要）---
+    refresh: undefined,             // 每次尝试（含重试）前调用一次，用返回的参数覆盖上面的静态值
+
     // --- 提示词缓存（默认开启）---
     cache: true,                    // true 使用默认键；{ key, retention, body } 自定义；false 完全关闭
     capabilities: { image, audio, video, file, tools, structuredOutput, toolChoice, reasoning, usage }, // 针对脆弱渠道逐项关闭能力
@@ -118,8 +121,8 @@ const markLast = message => {
 // --- 把 Agent 的配置整理成一次模型请求的参数 ---
 // 这是 Agent 配置和 LLM.chat 之间的翻译，放在 LLM 这边，因为它只回答"一次请求要哪些参数"。
 // 两个容易看懵的点：output 要塞进 provider，是 AI SDK 要求结构化输出从 provider 选项传入，不能平铺在顶层；
-// system 在这里置空，是因为系统提示由调用方每一轮单独交给 Context，避免同一条提示被传两遍。
-// index.js（send / resume / compact）和 Loop（每轮请求前）调的都是这一份，规则只写一处。
+// system 在这里置空，是因为系统提示由调用方每一笔请求前单独交给 Context，避免同一条提示被传两遍。
+// index.js（send / resume / compact）和 Loop（每笔请求前）调的都是这一份，规则只写一处。
 export const buildLLM = (config, overrides = {}) => {
     const { output, ...merged } = { ...config, ...overrides }                 // 浅拷一份：之后宿主再改 agent.config，不会影响已经拼好的这次请求。
     return { ...merged, provider: { ...merged.provider, output }, system: undefined }
@@ -164,7 +167,7 @@ const connect = ({ baseURL, apiKey, model, protocol, system, headers, cache, bod
 
 // --- 发一次请求：流式和非流式在这里分叉，但对外表现完全一致 ---
 // markAttempt 把本笔请求的限时信号交回给 chat，错误分类靠它区分"限时到点"和"用户取消"。
-// baseSignal 是调用方自己的取消信号，每轮重试都从它重新组合限时信号——
+// baseSignal 是调用方自己的取消信号，每次重试都从它重新组合限时信号——
 // 不能在 input.abortSignal 上叠加：上一轮的限时定时器还在跑，叠加会让它在中途打断下一轮。
 const request = async ({ input, stream, requestTimeout, markAttempt, onLLMEvent, baseSignal }) => {
     const attempt = Number.isFinite(requestTimeout) && requestTimeout > 0 ? AbortSignal.timeout(requestTimeout) : null // 重试各自重新计时。
@@ -248,10 +251,10 @@ const classifyError = (error, timeout) => {
 }
 
 
-// --- 发出一次模型请求 ---
-// 模型的来源在入口决定；来源确定后，同一份 input 供流式和非流式请求使用。
+// --- 组装并发出一次请求（不含重试）---
+// 每次尝试都会重新调它，用的参数要么是调用方的静态参数，要么是 refresh 现拼出来的（见 chat）。
 // 本函数是公开接口，也是外部模型响应进入 Agent 的边界，因此只在这里判定请求是否失败。
-const chat = async ({
+const send = async ({
     baseURL,              // 模型服务地址；传模型实例时不用给。
     apiKey,               // 鉴权密钥；传模型实例时不用给。
     model,                // 模型名称，或调用方创建的 AI SDK 模型实例。
@@ -267,12 +270,6 @@ const chat = async ({
     requestTimeout,       // 单笔请求限时（毫秒）；不设就不限时。
     onLLMEvent,           // 流式事件回调。
     onLLMStart,           // 每次真实请求前回调，重试也算一次。
-    onRetry,              // 重试通知回调。
-    retryBaseDelay,       // 第一次退避基数（毫秒）。
-    retryMaxDelay,        // 重试退避上限（毫秒）。
-    retryMaxElapsed,      // 重试总时长上限（毫秒）。
-    retryMaxTries,        // 最多再重试几次；不设＝不限，0＝不重试。
-    retry,                // 调用方过滤不想重试的错误。
     signal,               // 取消信号。
     provider = {},        // AI SDK 生成参数整包，headers / body 单独取出来。
     maxTokens,            // 单次生成最大输出 token；provider.maxOutputTokens 显式给了就优先用它。
@@ -327,25 +324,43 @@ const chat = async ({
         else delete input.toolChoice                                        // 关掉 toolChoice 时，provider 里可能带进来的同名字段也要删掉。
     } else {
         delete input.tools                                                 // capabilities.tools=false 时，provider 里带进来的 tools 也要删掉，否则请求照样带着它。
-        delete input.toolChoice                                            // 没工具时单独发 toolChoice 会被部分服务拒收。
+        delete input.toolChoice                                            // 没工具时单独发 toolChoice 会被部分服务商拒收。
     }
 
     let attempt = null // 本笔请求的限时信号；classifyError 靠它区分"限时到点"和"用户取消"。
-    const once = () => request({ input, stream, requestTimeout, markAttempt: timeout => { attempt = timeout }, onLLMEvent, baseSignal: signal }) // 流式和非流式在 request 里分叉，对外表现一致。
+    await Notify.tell(onLLMStart, { messages, tools }) // 每一次真实请求都通知一次；重试也是真实请求。
+    try {
+        return await request({ input, stream, requestTimeout, markAttempt: timeout => { attempt = timeout }, onLLMEvent, baseSignal: signal }) // 流式和非流式在 request 里分叉，对外表现一致。
+    } catch (error) {
+        throw classifyError(error, attempt) // 分类只在这里做一次，流式和非流式共用同一个出口。
+    }
+}
 
-    // 重试包在这里，而不是让每个调用方各自包一层：这样"发一次模型请求"在整个项目里只有一条路，
-    // 主循环和上下文压缩自动走同一套重试、同一套退避、同一个 onRetry 通知。
+
+// --- 发出一次模型请求（带重试）---
+// 重试包在这里，而不是让每个调用方各自包一层：这样"发一次模型请求"在整个项目里只有一条路，
+// 主循环和上下文压缩自动走同一套重试、同一套退避、同一个 onRetry 通知。
+//
+// refresh 是给 Agent 用的：传了它就每次尝试前调用一次，用返回值覆盖静态参数。
+// 为什么要有它——重试之间隔着退避，宿主完全可能在这段时间里改了 agent.config / agent.tools；
+// 如果每一笔请求都复用开局那份快照，切换后的模型永远等不到机会（issue #29）。
+// 直接调 Agent.llm.chat 的调用方不传 refresh，行为和以前完全一样。
+const chat = async options => {
+    const { refresh } = options
+    const operation = async () => send(refresh ? { ...options, ...(await refresh()) } : options)
+
     // 外面再包一次 label：退避等待期间被取消时，p-retry 直接抛 AbortError、不经过 operation 的分类，
     // 从这里兜住，保证"取消一定带 kind=aborted"这条承诺没有缺口。
     try {
         return await Retry.run({
-            operation: async () => {
-                await Notify.tell(onLLMStart, { messages, tools }) // 每一次真实请求都通知一次；重试也是真实请求。
-                try { return await once() }
-                catch (error) { throw classifyError(error, attempt) } // 分类只在这里做一次，流式和非流式共用同一个出口。
-            },
-            signal, onRetry,
-            baseDelay: retryBaseDelay, maxDelay: retryMaxDelay, maxElapsed: retryMaxElapsed, maxTries: retryMaxTries ?? Infinity, retry,
+            operation,
+            signal: options.signal,
+            onRetry: options.onRetry,
+            baseDelay: options.retryBaseDelay,
+            maxDelay: options.retryMaxDelay,
+            maxElapsed: options.retryMaxElapsed,
+            maxTries: options.retryMaxTries ?? Infinity,
+            retry: options.retry,
         })
     } catch (error) { throw classifyError(error, null) } // 退避等待期被取消时，p-retry 直接抛 AbortError，不经过 operation；这里别再拿上一笔的旧限时信号判成 timeout。
 }

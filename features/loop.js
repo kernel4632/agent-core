@@ -1,8 +1,8 @@
 /*
 目标被调用形式（绝对不可修改）：
 const result = await Loop.run({
-    // --- 宿主的活对象（每轮请求前现读，不缓存）---
-    // Loop 每一轮都把 agent.config 和 agent.tools 重新读一遍，再拼这一笔请求：
+    // --- 宿主的活对象（每一笔请求前现读，不缓存）---
+    // Loop 每一笔请求（含重试）前都把 agent.config 和 agent.tools 重新读一遍，再拼这一笔请求：
     // 宿主运行中改模型 / 思考强度 / system / 限额，或者把 agent.tools 换成另一份集合，
     // 下一笔请求就用新值，不用停掉当前任务，也不用重建 Agent。
     agent: {
@@ -119,27 +119,49 @@ const add = (total, usage = {}) => {
 //   native（默认）：工具描述放在接口的 tools 字段里，system 一个字都不多。
 //   text：纯对话模型。工具说明写进 system，历史里的工具记录改写成文字，调用从回复文字里读回。
 //   auto：先试原生；接口拒收工具字段就记住这个模型、改用文字协议重发。原生模型把调用写成了文字，也读回来。
-const ask = async (request, llm) => {
-    const { tools, messages } = request
-    const textual = Object.keys(tools).length && (llm.toolMode === 'text' || (llm.toolMode === 'auto' && TextTools.remembered(llm)))
-    const spec = Object.keys(tools).length && llm.toolMode !== 'native' ? await TextTools.prepare(tools) : null // 只有可能用到文字协议时才写说明书。
+//
+// build 是"现拼这一笔请求"的函数：每一次尝试（含重试）都调它一次，拿的是宿主此刻的状态。
+// record 记下真正发出去的那一份，Loop 用它做 token 校准（重试可能已经换了模型）。
+// 协议模式（textual / auto 的降级）在每轮开始时定下，重试不会中途换协议。
+const ask = async ({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry }) => {
+    const first = build()                          // 先拼一次，用来判断协议和工具表；真正发出去的那几笔还会再拼。
+    const tools = first.tools
+    const hasTools = Boolean(tools && Object.keys(tools).length)
+    const textual = hasTools && (llm.toolMode === 'text' || (llm.toolMode === 'auto' && TextTools.remembered(llm)))
+    const spec = hasTools && llm.toolMode !== 'native' ? await TextTools.prepare(tools) : null // 只有可能用到文字协议时才写说明书。
 
-    // 文字协议：说明书和改写都在出门前做好，接口上不带 tools 字段。
-    const byText = async () => TextTools.read(await LLM.chat({ ...request, messages: TextTools.wrap(messages, spec), tools: undefined }), spec, { loose: true })
+    // 文字协议：每笔尝试前用最新的 messages / tools 重写一遍说明书，接口上不带 tools 字段。
+    const byText = async () => {
+        let used = spec
+        const refresh = async () => {
+            const next = build()
+            used = await TextTools.prepare(next.tools)                                                  // 工具表可能在重试期间变了，说明书跟着重写。
+            const final = { ...next, messages: TextTools.wrap(next.messages, used), tools: undefined }  // 说明书并进 system，工具记录改写成文字。
+            record(final)
+            return final
+        }
+        const result = await LLM.chat({ ...llm, signal, onLLMEvent, onLLMStart, onRetry, refresh })
+        return TextTools.read(result, used, { loose: true })                                            // 从回复文字里读回工具调用。
+    }
 
     if (textual) return byText()
 
     // auto 模式要能在"接口拒收工具字段"时降级成文字协议。但默认是"除取消和上下文超长外全重试"，
     // 那个 400 会被一直重试、永远轮不到下面的 catch。所以把"工具被拒"并进调用方的重试过滤：
     // 命中就立刻抛出，交给 catch 改用文字协议；user 自己的过滤也一起保留。
-    const native = llm.toolMode === 'auto' && spec
-        ? { ...request, retry: error => !TextTools.refused(error) && !Retry.declines(llm.retry, error) }
-        : request
+    const autoRetry = llm.toolMode === 'auto' && spec
+        ? { retry: error => !TextTools.refused(error) && !Retry.declines(llm.retry, error) }
+        : {}
     try {
-        const result = await LLM.chat(native)
+        const refresh = () => {
+            const next = build()                 // 每一笔都现拼：重试期间宿主改了配置，下一笔就用新的。
+            record(next)
+            return next
+        }
+        const result = await LLM.chat({ ...llm, signal, onLLMEvent, onLLMStart, onRetry, ...autoRetry, refresh })
         return spec ? TextTools.read(result, spec) : result // auto 下原生没给调用时，模型可能把调用写成了文字。
     } catch (error) {
-        if (llm.toolMode !== 'auto' || !spec || request.signal?.aborted || !TextTools.refused(error)) throw error
+        if (llm.toolMode !== 'auto' || !spec || signal?.aborted || !TextTools.refused(error)) throw error
         const result = await byText()
         TextTools.remember(llm) // 文字协议真的跑通了才记住；上下文超长这类和工具无关的 400，换协议也会失败，不能把模型永久降级。
         return result
@@ -160,8 +182,10 @@ const run = async ({
         // --- 每轮开始：先响应取消信号 ---
         if (signal?.aborted) throw aborted()
 
-        // --- 每轮现读一次宿主状态，现拼这一笔请求 ---
-        // agent 是活对象：宿主在运行中改 agent.config、换 agent.tools，下一笔请求就用新值。
+        // --- 这一轮先用一份快照做决策：压缩、注入、轮次计数 ---
+        // 真正发请求时还会再拼一次（见下面 build），所以这里快照旧了也不会写进请求；
+        // 它只用于"这一轮要不要压缩、要不要提醒"这类有副作用的决定。
+        // agent 是活对象：宿主运行中改 agent.config、换 agent.tools，下一笔请求就用新值。
         // 已经发出去的那一笔和它发起的工具照常跑完，切换只发生在请求边界，流式过程中不热替换。
         // 工具表只读宿主手上那份，不重新扫描目录——扫描是宿主的事（Tool.from / scan）。
         // key 也跟着重算：换模型后 token 估算按新模型的比例记，不会拿旧模型的比例量新模型。
@@ -199,19 +223,31 @@ const run = async ({
         // --- 请求模型 ---
         // 重试不在这里：它是 LLM.chat 自带的，压缩那次请求走的是同一条路、同一套退避。
         if (signal?.aborted) throw aborted()
+
+        // --- 每一笔请求前现拼一次：连接、system、工具表、messages 都读宿主此刻的状态 ---
+        // 重试是新的请求。退避期间宿主完全可能把 model / provider / system / tools 换掉，
+        // 下一笔就必须用新值——否则切了模型却一直卡在旧模型上重试（issue #29）。
+        // 只重拼请求内容，不重做轮次级的决定（压缩、注入、轮次计数）：那些有副作用，属于"这一轮怎么决策"。
+        // 已经发出去、正在流式的那一笔不打断；它由 LLM.chat 负责。
+        let last = null   // 最近一笔真正发出去的请求：token 校准要用它（重试可能已经换了模型）。
+        const record = request => { last = { key: modelKey(request), messages: request.messages, tools: request.tools } }
+        const build = () => {
+            meter.seed(agent.config.contextRatio)                                                       // 宿主的冷启动倍率也可能在重试期间被改。
+            const current = buildLLM(agent.config)                                                     // 连接、生成参数、能力开关、限额，全是此刻的值。
+            const currentSystem = agent.config.system                                                  // 系统提示词也在这时候读。
+            const currentTools = agent.config.capabilities.tools === false ? {} : agent.tools.schema    // 工具表读宿主手上那份，不重新扫描目录。
+            const built = buildContext({ history, system: currentSystem, tools: currentTools, budget: current.maxContextTokens, ratio: meter.ratio(modelKey(current)) }) // messages 从 history 现推。
+            const prompt = [temporaryPrompt, injected].filter(Boolean).join('\n\n')                     // 核心的提醒 + 宿主注入的那句。
+            const messages = prompt ? [...built.messages, History.user({ content: prompt })] : built.messages
+            return { ...current, messages, tools: currentTools }
+        }
+
         // 上下文超长专项（照抄 Roo Code）：模型说"窗口放不下"时，先强制压缩一次再把这一笔请求重发，
         // 最多重试 CONTEXT_WINDOW_RETRIES 次；超过就按普通错误抛出。这是每轮自动压缩之外的兜底。
-        // 临时提示（核心自己的 noToolPrompt + 宿主注入的）合在一条消息里，只挂在本次请求上。
-        const buildRequest = () => {
-            const prompt = [temporaryPrompt, injected].filter(Boolean).join('\n\n')
-            return { ...llm, messages: prompt ? [...context.messages, History.user({ content: prompt })] : context.messages, tools, signal, onLLMEvent, onLLMStart, onRetry }
-        }
         let result
-        let sent
         for (let attempt = 0; ; attempt += 1) {
             try {
-                sent = buildRequest()                        // 每次重发都用最新重建的 messages。
-                result = await ask(sent, llm)
+                result = await ask({ build, record, llm, signal, onLLMEvent, onLLMStart, onRetry })
                 break
             } catch (error) {
                 if (attempt >= CONTEXT_WINDOW_RETRIES || !isContextWindowError(error)) throw error // 不是上下文超长，或已经压过 3 次，交给上层。
@@ -224,7 +260,7 @@ const run = async ({
         }
         steps += 1            // 模型完整回答后才算这一轮，失败重试由 LLM.chat 自己处理。
         add(usage, result.usage)
-        meter.observe(key, { messages: sent.messages, tools }, result.usage?.inputTokens) // 用这个模型刚回的真实输入 token 数校准"每字符 token 比"，越用越准。
+        meter.observe(last.key, { messages: last.messages, tools: last.tools }, result.usage?.inputTokens) // 用真正发出去那一笔的真实用量校准，越用越准。
         await Notify.tell(onLLMFinish, result) // 上层拿到完整 result，自行选择 usage 或其他字段。
         const answer = { text: result.text, ...('output' in result ? { output: result.output } : {}), steps, usage: { ...usage } } // 最终对象和文字来自同一轮，不能从旧历史猜结果。用量是到这一轮为止的合计。
         temporaryPrompt = null      // 提示已经用过，下一轮默认不再携带。

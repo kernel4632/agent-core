@@ -15,7 +15,7 @@
 2. send 先把用户输入推进只增不删的历史，再交给 start 启动；
 3. start 停掉上一次还在跑的运行，合入外部取消信号，然后执行本轮工作；
 4. 工作里由 Loop 反复「请求模型 → 执行工具」，上下文接近预算时调 Compact 压缩；
-   每一轮请求前都会重新取一次配置、system 和工具表，所以运行中改这些东西，下一笔请求就生效；
+   每一笔请求（包括同一轮里的每次重试）前都会重新取一次配置、system 和工具表，所以运行中改这些东西，下一笔请求就生效；
 5. 运行结束（成功或失败）后清空 running，下一次 send 才能干净地开始。
 */
 
@@ -225,7 +225,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             agent.history.push(History.user({ content: input }))
 
             return Loop.run({
-                agent,                      // 活对象：Loop 每一轮都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效。
+                agent,                      // 活对象：Loop 每一笔请求前都从它现读 config、system 和工具表，宿主运行中改了就下一笔生效（重试也算）。
                 history: agent.history,     // 数据固定这一个数组：循环只往里追加，不换目标。
                 buildContext: options => Context.build({ ...options, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
                 // 压缩发生在哪一轮，就用那一刻的 compact 配置——宿主运行中换了压缩模型也照样跟上。
@@ -260,7 +260,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
             if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
             const callbacks = { ...agent.callbacks }
             return Loop.run({
-                agent,                      // 和 send 同一条路：每轮现读宿主的配置、system 和工具表。
+                agent,                      // 和 send 同一条路：每笔请求前现读宿主的配置、system 和工具表。
                 history: agent.history,
                 buildContext: buildOptions => Context.build({ ...buildOptions, capabilities: agent.config.capabilities, mediaFallback: agent.config.mediaFallback, keep: agent.config.contextKeep }),
                 compact: request => {
@@ -323,7 +323,7 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
     // 显式设一个倍率：立刻生效（忘掉之前学到的值），之后真实 usage 到达仍会覆盖它。
     agent.setContextRatio = ratio => {
         if (!(typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0)) throw new TypeError('contextRatio must be a positive number')
-        agent.config = { ...agent.config, contextRatio: ratio } // 写回配置：Loop 每轮会读它，和别的配置一样是活的。
+        agent.config = { ...agent.config, contextRatio: ratio } // 写回配置：Loop 每笔请求前会读它，和别的配置一样是活的。
         meter.forget(modelKey(agent.config))                    // 让新倍率立刻生效，而不是被之前学到的值挡住。
         meter.seed(ratio)
         return agent.getContextRatio()

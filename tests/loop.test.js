@@ -1260,3 +1260,83 @@ describe('压缩触发的诊断信息', () => {
         expect(events[0]).toEqual({ type: 'compact-start', messages: [{ role: 'user', content: '要压缩的内容' }] })
     })
 })
+
+
+describe('重试边界也现拼配置', () => {
+    // issue #29：重试是新的请求。退避期间宿主改了 model / provider / system / tools，
+    // 下一笔就必须用新值——否则切了模型却一直卡在旧模型上重试。
+    const flaky = ({ fail = 1, status = 500 } = {}) => {
+        const bodies = []
+        const server = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                bodies.push(await request.json())
+                if (bodies.length <= fail) return Response.json({ error: { message: 'boom' } }, { status })
+                return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: '好了' }, finish_reason: 'stop' }], usage: {} })
+            },
+        })
+        return { bodies, server }
+    }
+
+    test('切模型：下一笔重试就用新模型', async () => {
+        const { bodies, server } = flaky()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'model-a', stream: false, retryBaseDelay: 0 },
+                callbacks: { onRetry: () => { agent.config.model = 'model-b' } },
+            })
+
+            const answer = await agent.send('hi')
+
+            expect(answer.text).toBe('好了')
+            expect(bodies.map(body => body.model)).toEqual(['model-a', 'model-b']) // 第一笔 A 失败，重试已经换成 B。
+        } finally { server.stop(true) }
+    })
+
+    test('system / provider 生成参数 / 工具表也一起换', async () => {
+        const { bodies, server } = flaky()
+        const seenTools = []
+        try {
+            const agent = Agent.create({
+                config: {
+                    baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, retryBaseDelay: 0,
+                    system: '旧的系统提示', provider: { temperature: 0.1 }, noToolRounds: 1,
+                },
+                tools: Agent.tool.adopt({ old_tool: { description: '旧', inputSchema: { type: 'object', properties: {} }, execute: async () => 'old' } }),
+                callbacks: {
+                    onRetry: () => {
+                        agent.config.system = '新的系统提示'
+                        agent.config.provider = { ...agent.config.provider, temperature: 0.9 }
+                        agent.tools = Agent.tool.adopt({ new_tool: { description: '新', inputSchema: { type: 'object', properties: {} }, execute: async () => 'new' } })
+                    },
+                    onLLMStart: ({ tools }) => seenTools.push(Object.keys(tools ?? {})),
+                },
+            })
+
+            await agent.send('hi')
+
+            const systemOf = body => body.messages.find(message => message.role === 'system')?.content
+            expect(systemOf(bodies[0])).toBe('旧的系统提示')
+            expect(systemOf(bodies[1])).toBe('新的系统提示')                                             // system 重拼了。
+            expect(bodies[0].temperature).toBe(0.1)
+            expect(bodies[1].temperature).toBe(0.9)                                                     // provider 参数重拼了。
+            expect((bodies[0].tools ?? []).map(tool => tool.function?.name)).toEqual(['old_tool'])
+            expect((bodies[1].tools ?? []).map(tool => tool.function?.name)).toEqual(['new_tool'])      // 工具表重拼了。
+            expect(seenTools[1]).toEqual(['new_tool'])                                                  // onLLMStart 看到的就是这一笔实际发的。
+        } finally { server.stop(true) }
+    })
+
+    test('没改配置时，重试发的和第一笔完全一样（向后兼容）', async () => {
+        const { bodies, server } = flaky()
+        try {
+            const agent = Agent.create({
+                config: { baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', model: 'm', stream: false, retryBaseDelay: 0, system: 'SYS' },
+            })
+
+            await agent.send('hi')
+
+            expect(bodies).toHaveLength(2)
+            expect(bodies[1]).toEqual(bodies[0]) // 重拼是幂等的：宿主没动，两笔字节级一致。
+        } finally { server.stop(true) }
+    })
+})

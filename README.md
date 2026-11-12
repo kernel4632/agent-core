@@ -729,7 +729,7 @@ const agent = Agent.create({
 })
 ```
 
-在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的每一次模型请求继续生效（包括正在跑的这一轮的下一笔，见下方「每轮现拼」）。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities`、`compact` 和 `contextKeep` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
+在 `agent.send({ input, config: { ... } })` 里传入的配置会**写回 Agent**、之后的每一笔模型请求继续生效（包括正在跑的这一轮的下一笔和它的每次重试，见下方「每笔请求现拼」）。合并规则分三种：`provider` 和 `retry` **整份替换**（传了就只用新的，未写的字段不再保留）；`capabilities`、`compact` 和 `contextKeep` **按字段浅合并**（只传其中一项不丢另外的）；其余字段直接覆盖。`maxContextTokens` 是上下文预算，`maxTokens` 是单次生成的最大输出（会映射成请求体的 `maxOutputTokens`），两者不是一回事。
 
 `cache` 默认开启。四种协议各按自己的方式让服务端复用固定的开头（system、工具描述、历史），命中后那部分不再重新计算，长会话能明显变快、变便宜：
 
@@ -941,9 +941,9 @@ await agent.send({
 
 > 直接 `send` 的内容块会在入口校验：`text` / `image` / `audio` / `video` / `file` 这些块形状不对（比如媒体缺 `mediaType`、值不是字符串 / URL / 二进制）会当场拒绝，不会写进只增不删的历史。图片块用 `{ type: 'image', image: <data URL 或 base64 或 URL 对象> }`，或 AI SDK 当前的 `{ type: 'file', mediaType, data }`。
 
-#### 每轮现拼：运行中改什么，下一笔请求就生效
+#### 每笔请求现拼：运行中改什么，下一笔请求就生效
 
-每发一笔模型请求之前，Loop 都会重新从宿主那里取一遍这次请求要用的全部东西——配置、`system`、工具表，再重新拼出这一轮的上下文和请求。具体到代码就一句话：`agent` 是活对象，Loop 每轮重新读一次 `agent.config` 和 `agent.tools`，不是 `send` 开始时留一份副本。所以一次 `send` 还在跑的时候改它们，下一笔请求就用新值：不用停掉当前任务，也不用重建 Agent。
+**每一笔真正发给模型的请求**之前，Loop 都会重新从宿主那里取一遍要用的全部东西——配置、`system`、工具表，再从 `history` 现推 messages。这里说的"每一笔"是字面意思：每轮的首次请求，**以及它的每一次重试**。`agent` 是活对象，不是 `send` 开始时留的一份副本。
 
 ```js
 // 在 onStep / onLLMFinish 里改都行：当前这笔请求和它发起的工具已经跑完
@@ -953,13 +953,14 @@ agent.config.system = '新的系统提示'
 agent.tools = Agent.tool.omit(agent.tools, ['shell'])   // 运行中撤掉一个工具，下一笔请求就不带它
 ```
 
-- **什么时候切换**：只在请求边界。已经发出去的那一笔不会被打断，它发起的工具也照常跑完；下一轮请求模型时才换。流式过程中不会热替换。
-- **每轮都会重新取的**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`retry` / `requestTimeout`、`maxTokens`、`maxContextTokens` / `compactThreshold`、`noToolRounds`、`maxToolOutput` / `maxToolConcurrency`、`system`、工具表；压缩用的 `compact` 配置在压缩发生的那一轮取。token 估算也按新模型重新记。
+- **什么时候切换**：只在请求边界。已经发出去、正在流式返回的那一笔不会被打断（也不会热替换）；下一笔请求——**包括同一轮的重试**——就用新值。最常见的情况：模型 A 失败、退避期间你把 `agent.config.model` 换成 B，下一次重试直接发给 B，不会一直卡在 A 上。
+- **每笔都会重新取的**：连接（`baseURL` / `apiKey` / `model` / `protocol`）、`provider` 里的生成参数（温度、思考强度等）、`capabilities` / `mediaFallback`、`cache`、`requestTimeout`、`maxTokens`、`maxContextTokens`、`system`、工具表、以及从 `history` 现推的 messages。token 估算也按新模型重新记。
+- **每轮才取的**：压缩判定（`compactThreshold` / 压缩用的 `compact` 配置）、`noToolRounds` 计数、轮次上限、`onInject` 的"这一轮要不要插一句"。这些是有副作用的决策（压缩会真的发一次请求、往 `history` 追加总结），不能放进重试里；新模型装不下时走"上下文超长 → 压缩后重发"那条兜底。
 - **工具表只读一遍，不重新扫描目录**：把 `agent.tools` 换成新的集合（`Agent.tool.from` / `pick` / `omit` 的返回值）就生效；目录里的文件不会在这次运行中被重新扫描——要重新扫描用新的 `send`（`send({ tools })` 会在开始时现扫）。模型看到的那张表和执行时用的 handler 取自同一份集合。
-- **不随轮次换的只有两样**：`history` 是这次运行的权威数据，循环始终往同一个数组追加；回调是运行期的接线，在 `send` 开始时定下。
+- **不随请求换的只有两样**：`history` 是这次运行的权威数据，循环始终往同一个数组追加；回调是运行期的接线，在 `send` 开始时定下。
 - 按次传的 `send({ config })` 语义不变：写回 `agent.config`，这次运行从第一笔请求起就用它。
 
-> 会话运行中改模型 / 思考强度 / system / 工具表，直接改 `agent.config` 和 `agent.tools` 就行：历史、流式输出和运行状态都不中断。
+> 会话运行中改模型 / 思考强度 / system / 工具表，直接改 `agent.config` 和 `agent.tools` 就行：历史、流式输出和运行状态都不中断，正在重试的那笔请求也会立刻用上新配置。
 
 #### `agent.stop()`
 
@@ -1188,7 +1189,7 @@ console.log(output.total)
 
 有工具时先完成工具调用，再读取最终对象。工具轮或 `tool-stop` 不会凭空产生 `output`。最终对象校验成功立即结束；格式错误默认也会重试（重新生成不保证还是坏的），想让它立刻失败可用 `retry` 过滤或收紧 `retryMaxElapsed`。手动及自动压缩只生成文本总结，不继承任务的对象格式。流式和非流式都在最终结果上提供 `output`；流中仍会有生成时的文字片段。
 
-直接使用底层 LLM，绕过 Agent 循环。
+直接使用底层 LLM，绕过 Agent 循环。这里的参数是**一次性**的：`Agent.llm.chat` 不认识 `agent.config`，运行中改配置再重发是 Agent 层（`send` / 重试）的事——见「每笔请求现拼」。
 
 #### `Agent.llm.chat(options)`
 
