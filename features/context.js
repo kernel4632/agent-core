@@ -59,8 +59,8 @@ const within = (turns, budget) => {
     return picked
 }
 
-// --- 把最新总结折进 system，而不是当成一条消息塞进对话里 ---
-// 裸的 role:'user' 总结会被模型读成"用户塞给我一张表"，于是它从头重做整个任务：
+// 把最新总结折进 system，而不是当成一条消息塞进对话里：
+// 把总结当普通用户消息发出去，模型会读成"用户塞给我一张表"，于是它从头重做整个任务：
 // 真实中转站上实测 gpt-oss-120b 有 5/6 概率退回第一步，而且因为它一直在调工具，
 // Loop 的两个出口（tool-stop / 连续 noToolRounds 轮不调工具）全都够不着，send() 永不返回、钱一直烧。
 // 同一段总结换成下面这个身份说明，同样的模型 6/6 能正确接着往下做。
@@ -71,12 +71,12 @@ const brief = (system, summary) => summary
 // History 只比 AI SDK 多了 id、compact 这些顶层内部字段，兼容规则交给 History.model 集中处理。
 // 默认去掉思考和未完成的工具调用；切换到支持它们的模型时只改 capabilities，不改裁剪流程。
 
-// 模型只认 user / assistant / tool；role:'error' 这类宿主记录被丢掉是预期行为（History.error 就是给它用的）。
+// 模型只认 user / assistant / tool；compact（压缩总结）和 error（宿主的失败记录）是合法但不进模型的 role。
 // 其他没见过的 role 同样丢掉，但先警告一次——那多半是宿主自己写错了字段，静默丢弃会很难查。
 const warnedRoles = new Set()
 const warnUnknownRoles = history => {
     for (const message of history) {
-        if (message.role === 'error' || MODEL_ROLES.has(message.role) || warnedRoles.has(message.role)) continue
+        if (message.role === 'compact' || message.role === 'error' || MODEL_ROLES.has(message.role) || warnedRoles.has(message.role)) continue
         warnedRoles.add(message.role)
         console.warn(`history 里有模型不认识的 role ${JSON.stringify(message.role)}，已跳过；只有 user / assistant / tool 会发给模型。`)
     }
@@ -95,7 +95,7 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
     const turns = History.turns(history)                 // 一个回合 = 一次用户发言，或模型的一次响应连同它的工具调用和结果。
 
     // --- 定位最新总结：从后往前找，多次压缩后只有最后那一条算数 ---
-    const summaryIndex = turns.findLastIndex(turn => turn[0].compact === true) // 最后一次压缩留下的那条总结。
+    const summaryIndex = turns.findLastIndex(turn => turn[0].role === 'compact') // 最后一次压缩留下的那条总结。
     const room = Number.isFinite(budget) ? budget / ratio : Infinity // 旧内容能用的字符预算：token 预算 ÷ 每字符 token 比。没设预算就不限制。
     let selected = turns                                                 // 没有总结时，完整历史就是最准确的上下文。
     let summary = ''                                                     // 有总结时，总结文本折进 system，不占消息位置。
@@ -104,13 +104,13 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
     if (summaryIndex >= 0) {                                                                                    // 有过压缩，才开始"挑"；没压缩时用整段历史。
         summary = turns[summaryIndex][0].content                                                                // 总结本身不进 messages，它要折进 system。
         const before = turns.slice(0, summaryIndex)                                                             // 最新总结已经覆盖的范围，裁剪只在这里面挑。
-        const covered = before.findLastIndex(turn => turn[0].compact === true)                                  // 上一条总结：比它更老的原文已被总结过两次，不再回头捡。
+        const covered = before.findLastIndex(turn => turn[0].role === 'compact')                                // 上一条总结：比它更老的原文已被总结过两次，不再回头捡。
 
         // 最初目标：用户自己说过的话，不拖着当时的工具现场。有上限也有预算——
         // 用户第一条消息就粘一大段日志时，光按条数留会让压缩永远收敛不了（实测 120/120 轮压完仍超限）。
         // 超预算时整条不留，不是把目标弄丢了：总结本身就被要求保留"用户最初的目标"（见 Compact 的指令），
         // 而总结在 system 里，永远不会被裁掉。钉在这里的原文只是便宜时的加分项。
-        const goal = within(before.filter(turn => turn[0].role === 'user' && !turn[0].compact).slice(0, firstTurns), room * firstShare)
+        const goal = within(before.filter(turn => turn[0].role === 'user').slice(0, firstTurns), room * firstShare)
 
         // 最近现场：从离总结最近的往回收，预算不够就丢更老的——
         // 这样"用户上一轮刚说的那句话"一定在，而不是只剩三天前的开场白。
@@ -124,7 +124,7 @@ const build = ({ history, system = '', tools = {}, budget, ratio = DEFAULT_RATIO
         // 本次 send 的用户输入无论如何都要在：预算再紧也不能把"正在做的事"剪掉。
         // 一次 send 里连续压缩多次时，它会落到最新总结之前、且可能不在最初目标里、又装不进最近现场的预算，
         // 于是被整条丢掉——模型看不到任务就开始瞎猜。这里按"最后一条用户回合"硬加回来（工具轮不算，那是结果不是指令）。
-        const current = before.filter(turn => turn[0].role === 'user' && !turn[0].compact).at(-1)
+        const current = before.filter(turn => turn[0].role === 'user').at(-1)
         if (current) chosen.add(current)
         selected = turns.filter(turn => chosen.has(turn))                                                       // 时间顺序由 turns 本身保证。
     }

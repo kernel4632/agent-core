@@ -242,7 +242,7 @@ describe('压缩这条路径', () => {
 
         expect(agent.history.length).toBeGreaterThan(seeded.length)                 // 只增不减。
         for (const message of seeded) expect(agent.history).toContain(message)      // 每一条原始消息都还在，而且是同一个对象引用。
-        expect(agent.history.some(message => message.compact === true)).toBe(true)  // 总结是"加"进来的一条。
+        expect(agent.history.some(message => message.role === 'compact')).toBe(true)  // 总结是"加"进来的一条。
         server.stop(true)
     })
 

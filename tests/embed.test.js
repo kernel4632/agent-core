@@ -128,7 +128,7 @@ describe('可嵌入性', () => {
         // 嵌入方要做的事：把 IM 消息转成 user 块、往历史里塞系统通知、从库里恢复会话。
         // 没有这个就只能手写 { id, role, content } 并自己保证格式对。
         expect(Agent.history.user({ content: '你好' }).role).toBe('user')
-        expect(Agent.history.compact({ content: '总结' }).compact).toBe(true)
+        expect(Agent.history.compact({ content: '总结' }).role).toBe('compact')
         expect(typeof Agent.history.assistant).toBe('function')
         expect(typeof Agent.history.tool).toBe('function')
     })

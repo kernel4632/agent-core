@@ -97,8 +97,8 @@ const tool = ({ id, toolCallId, toolName, content }) => ({
     }],
 })
 
-// 创建压缩总结块；它仍然是 user 角色，但 compact 标记让 Context 识别最新总结。
-const compact = ({ id, content }) => ({ id: messageId(id), role: 'user', content: text(content, 'content'), compact: true })
+// 创建压缩总结块；role 是 compact：它不是用户说的话，Context 会把内容折进 system，不发给模型。
+const compact = ({ id, content }) => ({ id: messageId(id), role: 'compact', content: text(content, 'content') })
 
 // 创建一条只给宿主看的失败记录：模型看不到（Context 会整条丢掉），但能存进 history、刷新后还能渲染。
 // request 是宿主自己的审计信息（provider / model / 耗时 / 错误原因……），原样保存，不参与任何模型逻辑。
@@ -242,6 +242,7 @@ const turns = history => {
 
     // --- 第一趟：拼回合，并登记每个回合欠下的工具调用 ---
     for (const message of history) {
+        if (message.role === 'compact') { open = null; list.push([message]); continue } // 总结自成一个回合：内容会折进 system，不发给模型。
         if (!MODEL_ROLES.has(message.role)) continue                                  // 宿主记录不是对话，模型看不到它。
         if (message.role === 'tool') { open = null; continue }                        // 工具结果自己不开回合，但它意味着上一轮响应已经说完了。
 

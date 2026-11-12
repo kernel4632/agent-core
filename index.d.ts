@@ -176,13 +176,12 @@ export interface ToolModule {
 }
 
 // --- 历史块 ---
-// 前三种是模型能读的对话；'error' 是宿主自己的失败记录（History.error），模型永远看不到。
-export type Role = 'user' | 'assistant' | 'tool' | 'error'
+// 前三种是模型能读的对话；'compact' 是压缩总结（内容折进 system），'error' 是宿主的失败记录，都不发给模型。
+export type Role = 'user' | 'assistant' | 'tool' | 'compact' | 'error'
 export interface Message {
     id: string
     role: Role
     content: string | any[] | null
-    compact?: boolean
     request?: any     // 只有 role:'error' 会带：宿主自己的审计信息（model / 耗时 / 错误原因等），原样保存。
 }
 
