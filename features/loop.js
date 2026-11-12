@@ -27,12 +27,11 @@ import TextTools from './text-tools.js'
 import Notify from '../utils/notify.js'
 import Retry from '../utils/retry.js'                                          // 复用它的重试过滤判据，auto 降级用同一份。
 import isContextWindowError from '../utils/context-error.js' // 上下文超长的判据，Retry 用同一份。
+import aborted from '../utils/abort.js'                        // 取消错误统一从这里造。
 import { createMeter, modelKey } from '../utils/tokens.js'
 
 // 上下文超长时最多"压缩后重发"几次（照抄 Roo Code 的 MAX_CONTEXT_WINDOW_RETRIES）。
 const CONTEXT_WINDOW_RETRIES = 3
-
-const aborted = () => Object.assign(new DOMException('Agent loop aborted', 'AbortError'), { kind: 'aborted' }) // 取消错误也带 kind，调用方能和模型错误一样按 error.kind 分支。
 
 // 等权限回调，但取消信号一到就不再等它。onPermission 是用户代码，可能永远不返回，
 // 不让它把 stop() 吊死（内存工具那边也是同样的"不等了"做法）。

@@ -31,6 +31,7 @@ import TextTools from './features/text-tools.js' // 纯对话模型的文字工�
 import History from './features/history.js'   // 负责创建标准格式的历史消息块
 import { createMeter, modelKey } from './utils/tokens.js' // 本地 token 估算器：按模型记账，用真实 usage 自校准
 import { badPart, PART } from './utils/shape.js' // 内容块形状校验：send 的用户输入也用它挡一下，别让坏块进只增不删的历史
+import aborted from './utils/abort.js'        // 取消错误只有这一处造，字段和措辞不会漂移
 import { version } from './package.json'      // 版本号只在 package.json 里写一次，打包时会被内联进产物
 
 
@@ -119,7 +120,7 @@ const mergeConfig = (current, override) => ({
 const start = (agent, work, outside) => {
     if (outside !== undefined && !(outside instanceof AbortSignal)) return Promise.reject(new TypeError('signal must be an AbortSignal'))
     // 调用方给的 signal 进来就已经取消：这次注定失败，直接拒绝——连 agent.running 都不碰，别把还在跑的上一次挤出状态。
-    if (outside?.aborted) return Promise.reject(Object.assign(new DOMException('Agent run aborted', 'AbortError'), { kind: 'aborted' }))
+    if (outside?.aborted) return Promise.reject(aborted())
     const previous = agent.running
     const controller = new AbortController()
     const signal = outside ? AbortSignal.any([controller.signal, outside]) : controller.signal
@@ -129,7 +130,7 @@ const start = (agent, work, outside) => {
             previous.controller.abort()
             await previous.task.catch(() => {})
         }
-        if (signal.aborted) throw Object.assign(new DOMException('Agent run aborted', 'AbortError'), { kind: 'aborted' }) // 取消也带 kind，和模型错误一致。
+        if (signal.aborted) throw aborted() // 取消也带 kind，和模型错误一致。
         return work(signal)
     })()
 
@@ -213,10 +214,16 @@ const create = ({ id = nanoid(), history = [], config = {}, tools = null, callba
 
         // 真正开始前才把 options 里的覆盖写回 Agent：前面所有校验都过了，这里才不会写进半成品状态。
         return start(agent, async signal => {
-            if ('history' in options) agent.history = options.history
-            if ('config' in options) agent.config = mergeConfig(agent.config, options.config)
-            if ('tools' in options) agent.tools = await Tool.from(options.tools) // send 是异步的，传来的目录会现扫；create 是同步的，只收已经装好的工具。
-            if ('callbacks' in options) agent.callbacks = { ...agent.callbacks, ...options.callbacks }
+            // 先把这一轮要用的状态全部算出来；任何一步抛错，都还没写回 agent。
+            const nextHistory = 'history' in options ? options.history : agent.history
+            const nextConfig = 'config' in options ? mergeConfig(agent.config, options.config) : agent.config
+            const nextTools = 'tools' in options ? await Tool.from(options.tools) : agent.tools   // 唯一可能抛的一步：目录扫不出来、工具形状不对。
+            const nextCallbacks = 'callbacks' in options ? { ...agent.callbacks, ...options.callbacks } : agent.callbacks
+
+            agent.history = nextHistory          // 到这里才开始写回：四个字段一次换完，不会留下半套状态。
+            agent.config = nextConfig
+            agent.tools = nextTools
+            agent.callbacks = nextCallbacks
             const callbacks = { ...agent.callbacks }
 
             if (input !== undefined) agent.history.push(History.user({ content: input })) // 不带输入（继续）：不追加任何消息。

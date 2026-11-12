@@ -161,7 +161,7 @@ const connect = ({ baseURL, apiKey, model, protocol, system, headers, cache, bod
     if (protocol === 'responses') return createOpenAI(settings).responses(model)         // 官方 OpenAI Responses 接口。
     if (protocol === 'anthropic') return createAnthropic(settings).languageModel(model)   // Anthropic 原生接口。
     if (protocol === 'gemini') return createGoogle(settings).languageModel(model)         // Google 原生接口。
-    return protocol // 认不出来就原样返回，由调用方报错，不在这里抛。
+    throw new Error(`Unsupported protocol: ${protocol}`)                                  // 协议拼错时在源头报错，不把名字当模型传下去。
 }
 
 
@@ -202,23 +202,18 @@ const request = async ({ input, stream, requestTimeout, markAttempt, onLLMEvent,
         settled?.catch?.(() => {})
     }
 
-    try {
-        for await (const event of result.stream) {
-            await Notify.tell(onLLMEvent, event) // 不过滤事件，文字、思考、工具和错误都交给上层。
-            if (event.type === 'error') failure = event.error // AI SDK 只对"中断流的网络错误"抛异常，供应商自己报的错是一个事件，不接住就会被当成正常回答。
-            if (event.type === 'text-delta') text.push(event.textDelta ?? event.text ?? event.delta ?? '') // 收集最终文字。
-        }
-        if (failure) throw failure // 带着 statusCode 等字段，先于 result.finishReason 抛，避免被换成丢了这些字段的 AI_NoOutputGeneratedError。
-
-        const finishReason = await result.finishReason
-        if (finishReason === 'error') throw new Error('模型请求失败：供应商返回了错误但没有给出原因') // 只有 finishReason 报错、没有 error 事件时的兜底，不让失败伪装成成功。
-
-    } catch (error) {
-        // 流被截断、SSE 格式坏掉、缺 finish_reason 这类错误，AI SDK 不会额外标记。
-        // 这里只把错误原样抛出去：贴上 kind 由出口的 classifyError 负责，
-        // 能不能重试由 Retry 的新规则决定（默认所有错误都重试，格式错误也不例外）。
-        throw error
+    // 流被截断、SSE 格式坏掉、缺 finish_reason 这类错误，AI SDK 不会额外标记。
+    // 这里只把错误原样抛出去：贴上 kind 由出口的 classifyError 负责，
+    // 能不能重试由 Retry 的新规则决定（默认所有错误都重试，格式错误也不例外）。
+    for await (const event of result.stream) {
+        await Notify.tell(onLLMEvent, event) // 不过滤事件，文字、思考、工具和错误都交给上层。
+        if (event.type === 'error') failure = event.error // AI SDK 只对"中断流的网络错误"抛异常，供应商自己报的错是一个事件，不接住就会被当成正常回答。
+        if (event.type === 'text-delta') text.push(event.textDelta ?? event.text ?? event.delta ?? '') // 收集最终文字。
     }
+    if (failure) throw failure // 带着 statusCode 等字段，先于 result.finishReason 抛，避免被换成丢了这些字段的 AI_NoOutputGeneratedError。
+
+    const finishReason = await result.finishReason
+    if (finishReason === 'error') throw new Error('模型请求失败：供应商返回了错误但没有给出原因') // 只有 finishReason 报错、没有 error 事件时的兜底，不让失败伪装成成功。
     const toolCalls = await result.toolCalls
     return {
         text: text.join('') || await result.text,
@@ -300,9 +295,7 @@ const send = async ({
     const generation = sendOutput ? call : Object.fromEntries(Object.entries(call).filter(([name]) => name !== 'output')) // 不支持结构化输出的渠道不收到 response_format。
 
     // --- 决定模型来源：模型实例直接用，模型名才由这个包创建连接 ---
-    let providerModel = model // 调用方传入的 AI SDK 模型实例，原样使用。
-    if (typeof model === 'string') providerModel = connect({ baseURL, apiKey, model, protocol, system, headers, cache, bodyOverrides, generation, usage: capabilities.usage !== false, stripToolChoice: capabilities.toolChoice === false })
-    if (typeof providerModel === 'string') throw new Error(`Unsupported protocol: ${protocol}`) // 协议拼错时立即报错，不把模型名当实例传下去。
+    const providerModel = typeof model === 'string' ? connect({ baseURL, apiKey, model, protocol, system, headers, cache, bodyOverrides, generation, usage: capabilities.usage !== false, stripToolChoice: capabilities.toolChoice === false }) : model
 
     // --- 组织一次统一的 AI SDK 请求 ---
     // maxRetries: 0 —— 重试在这个项目里只有 Retry 一个实现。交给 AI SDK 自己重试会导致

@@ -180,6 +180,19 @@ describe('Agent 入口', () => {
         expect(agent.history.some(message => message.content === '任务B')).toBe(false) // B 的输入也没写进去。
     })
 
+    test('tools 处理失败时，本次的 config / history 覆盖不会留下', async () => {
+        // 写回是原子的：先算出全部状态，最后才赋值。tools 是唯一可能抛的一步（目录扫不出来、形状不对），
+        // 它抛了之后，前面算好的 config / history 不能已经生效。
+        const agent = Agent.create({ config: config() })
+        const history = agent.history
+
+        await expect(agent.send({ input: 'x', config: { model: 'changed' }, tools: 42 })).rejects.toThrow('Tool.adopt')
+
+        expect(agent.config.model).toBe('m')   // 配置没被半途改写。
+        expect(agent.history).toBe(history)    // 还是原来那个数组。
+        expect(agent.history).toHaveLength(0)  // 用户消息也没写进去。
+    })
+
     test('send 之后 config 按字段合并，没传的字段继续保留', async () => {
         const agent = Agent.create({ config: config({ maxToolOutput: 1000, provider: { temperature: 0.1 } }) })
         await agent.send({ input: '第一次', config: { maxToolOutput: 2000 } })
