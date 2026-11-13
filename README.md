@@ -149,6 +149,17 @@ agent.mcp = [
 核心负责连接（默认 Streamable HTTP，老服务器用 `sse`），工具名统一加 `${name}_` 前缀。
 连接按配置缓存，配置变了自动重连，从数组里删掉的连接会被关闭。连不上只发一条 `onWarning`，不影响别的工具。
 
+**临时关闭某一条：** 元素上的 `enabled` 每轮现读——`false` 断开连接、下一轮起它的工具消失；改回 `true`（或删掉这个字段）下一轮重连。
+也可以用方法，效果相同：
+
+```ts
+await agent.closeMcp('github')   // → { name: 'github', found: true, enabled: false, closed: true }，立即断开
+agent.openMcp('github')          // → { name: 'github', found: true, enabled: true }，下一轮重连
+```
+
+`closeMcp` 把 `agent.mcp` 里同名元素原地换成 `enabled: false` 的新对象并立即断开连接（`closed` 表示是否真的断开了一条活连接，
+`found: false` 表示没有这个名字、什么也没改）；正在执行的该服务器工具调用会以错误结果结束。
+
 ---
 
 ## API 参考
@@ -168,6 +179,7 @@ agent.mcp = [
 | `textTools` | `false` | 用文字协议模拟工具调用（给不支持原生工具的模型） |
 | `media` | 全部 `false` | `{ image, audio, video, file }` 逐项开关 |
 | `mediaFallback` | `'error'` | 发了没开的媒体：`'error'` 报错，`'strip'` 只留文字 |
+| `reasoning` | `'strip'` | 历史里的思考块发不发回模型：`'strip'` 发送前摘掉（与旧版默认一致），`'send'` 原样发回（供应商要求回传时用）。history 里始终保留 |
 | `provider` | — | 原样透传给 AI SDK 的生成参数 |
 | `maxTokens` | — | 单次最大输出 token |
 | `maxToolOutput` | `20000` | 单个工具结果最多保留多少字符 |
@@ -198,7 +210,7 @@ agent.mcp = [
 
 | 回调 | 时机 |
 |------|------|
-| `onChunk(chunk)` | 流式片段：`text` / `reasoning` / `tool-call` / `tool-result` / `finish` |
+| `onChunk(chunk)` | 流式片段：`text` / `reasoning` / `tool-call` / `tool-result` / `finish`；压缩期间见下方 |
 | `onPermission(call)` | 工具执行前；返回 `false` 拒绝（模型会收到"被拒绝"结果）。`call.path` 是来源文件 |
 | `onInject({ tokens, budget, ratio })` | 每次请求前；返回的文字临时挂在这次请求上，不进 history |
 | `onToolCall(call)` / `onToolResult(result)` | 工具开始 / 结束；`path` 用来映射回宿主的插件 |
@@ -208,17 +220,28 @@ agent.mcp = [
 | `onRetry({ attempt, error, delay })` | 模型请求重试前 |
 | `onWarning({ path?, message })` | 坏工具文件、工具重名、MCP 连不上等 |
 
+**压缩也是流式的。** 压缩开始时先来一条 `{ type: 'compact-start', reason: 'auto' | 'manual', compact: true }`，
+之后压缩模型的 `reasoning` / `text` / `finish` 片段都带 `compact: true`，宿主可以实时展示"正在压缩：模型在想什么、总结正文是什么"，
+又不会和正式回答混在一起。压缩结束后 `onCompact` 照常给出 `{ reason, before, after, usage }`。
+压缩请求的流式跟随 `compact.stream ?? stream`（默认流式）；设为非流式时只有 `compact-start`。
+
 ### `agent.stop()`
 
-立即停止：中断模型请求，杀掉本实例的工具子进程，等 loop 给没结果的调用补上"已取消"后返回。
+立即停止：中断模型请求，杀掉本实例的工具子进程，给没结果的调用补上"已取消"。返回
+`Promise<{ stopped: true, wasRunning: boolean, killed: number }>`，**只在子进程全部确认退出、循环已经退出之后才兑现**——
+拿到返回值就说明已经停干净了。`wasRunning` 表示调用时是否有运行，`killed` 是被杀掉的子进程数。正在跑的 `send` 会以 `kind: 'aborted'` 拒绝。
 
 ### `agent.compact(callbacks?)`
 
-强制压缩一次，返回总结文字。
+强制压缩一次，返回总结文字（片段同样通过 `onChunk` 流式推送）。
+
+### `agent.closeMcp(name)` / `agent.openMcp(name)`
+
+临时关闭 / 重新打开一条 MCP 连接，见[接 MCP](#接-mcp)。
 
 ### `Agent.LLM.ask(request, onChunk?)`
 
-不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, stream, cache, provider, maxTokens, output, retry, signal, onRetry }`，
+不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, cache, provider, maxTokens, output, retry, signal, onRetry }`，
 返回 `{ text, toolCalls, usage, output?, messages }`，流式与非流式形状一致。`tools` 只要 `{ description, parameters }`，不会执行。
 
 ### 公开字段
@@ -242,7 +265,9 @@ history 里原文一条不少；每次请求只从里面**现挑**发给模型�
 3. 总结之前最近的 `beforeSummary` 个用户回合；
 4. 总结之后的全部原文。
 
-`budget × maxContextTokens` 只约束第 1、3 段，超出先丢最早的一轮。裁剪按回合进行，并且丢掉落单的工具调用 / 结果，
+`budget × maxContextTokens` 只约束第 1、3 段，超出先丢最早的一轮。**本次 send 的用户输入始终保留**：
+一次 send 里压缩后它落在总结之前，就算 `beforeSummary` 为 0 或预算装不下，也会把这条用户消息（不带它后面的工具现场）补回去，
+模型永远看得到"正在做的事"。裁剪按回合进行，并且丢掉落单的工具调用 / 结果，
 保证发出去的永远是合法上下文。估算超过 `compactThreshold` 就自动压缩一次（每轮最多一次）；
 二次压缩会把上一版总结并进提示词，越压不会越忘。token 估算比例在每次拿到真实 usage 后按模型名校准。
 
