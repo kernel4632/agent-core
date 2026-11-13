@@ -1,5 +1,5 @@
 {
-    // 新实现（src/ 与根目录 index.ts）的类型检查配置。旧的 index.js / features/ 不在检查范围内，切换完成后删除。
+    // 新实现（src/、根目录 index.ts、tests/、scripts/）的类型检查配置。
     // Bun 直接运行 .ts，所以这里只做类型检查（noEmit）；发布时另用 emitDeclarationOnly 生成 .d.ts。
     "compilerOptions": {
         "target": "ESNext",
@@ -16,5 +16,5 @@
         "noUnusedParameters": false,
         "skipLibCheck": true
     },
-    "include": ["src/**/*.ts", "index.ts"]
+    "include": ["src/**/*.ts", "index.ts", "tests/**/*.ts", "scripts/**/*.ts"]
 }

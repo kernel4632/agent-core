@@ -22,12 +22,41 @@ import type { ModelInput, Usage } from '../types.ts'
 export const DEFAULT_RATIO = 0.6   // 每字符多少 token；偏高，宁可早压缩也不撑爆上下文
 export const MEDIA_TOKENS = 1200   // 一个媒体块按多少 token 估；偏保守
 
+const MIN_RATIO = 0.1              // 比例下限：再低就是测量噪声
+const MAX_RATIO = 2                // 比例上限
+const SMOOTH = 0.3                 // 新样本占的权重；越小越稳，越大越快跟上
+const MIN_CHARS = 200              // 内容太短时字符数抖动大，不采信
+// 这几个 type 的内容块装的是媒体本身；CARRIER 是其中真正装字节 / 网址的字段，换成标记后不计长度。
+const MEDIA = new Set(['image', 'audio', 'video', 'file', 'file-data', 'file-url'])
+const CARRIER = new Set(['image', 'audio', 'video', 'data', 'url'])
+
+// 把比例夹在合理范围内（estimate 和 calibrate 都要用，所以抽出来）。
+const clamp = (ratio: number) => Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio))
+
+// 量一份内容：文字有多少字符、里面有几个媒体块（estimate 和 calibrate 共用同一把尺子，校准才对得上）。
+// 二进制直接序列化会变成 {"0":137,...}，媒体载荷长度只反映编码方式，都换成短标记。
+function measure(payload: unknown): { chars: number; media: number } {
+    let media = 0
+    const walk = (value: any): any => {
+        if (value instanceof Uint8Array || value instanceof ArrayBuffer) return '#bytes#'
+        if (Array.isArray(value)) return value.map(walk)
+        if (!value || typeof value !== 'object' || value instanceof URL) return value instanceof URL ? '#url#' : value
+        if (MEDIA.has(value.type)) {                                     // 媒体块：只记"有一个"，载荷换成标记。
+            media += 1
+            return Object.fromEntries(Object.entries(value).map(([key, one]) => [key, CARRIER.has(key) ? '#media#' : walk(one)]))
+        }
+        return Object.fromEntries(Object.entries(value).map(([key, one]) => [key, walk(one)]))
+    }
+    return { chars: (JSON.stringify(walk(payload)) ?? '').length, media }
+}
+
 /*
 modelName：比例表的键。字符串模型就是它本身；AI SDK 模型实例取 modelId。
 不拼协议和地址——见文件头"跨服务商共用"的理由。
 */
 export function modelName(model: ModelInput): string {
-    throw new Error('TODO')
+    if (typeof model === 'string') return model
+    return (model as { modelId?: string }).modelId ?? ''                 // AI SDK 模型实例都有 modelId。
 }
 
 /*
@@ -35,7 +64,10 @@ current：这个模型现在该用的比例。学到的优先，其次宿主的�
 冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。
 */
 export function current(ratios: Record<string, number>, model: ModelInput, seed?: number): number {
-    throw new Error('TODO')
+    const learned = ratios[modelName(model)]
+    if (typeof learned === 'number' && Number.isFinite(learned) && learned > 0) return learned  // 宿主手写的坏值当没有。
+    if (typeof seed === 'number' && Number.isFinite(seed) && seed > 0) return seed
+    return DEFAULT_RATIO
 }
 
 /*
@@ -43,7 +75,8 @@ estimate：估一份内容的 token。先把媒体载荷换成短标记再量字
 token = ceil(chars × ratio) + media × MEDIA_TOKENS。chars / media 一起返回，诊断"为什么估这么多"时用。
 */
 export function estimate(payload: unknown, ratio: number): { tokens: number; chars: number; media: number } {
-    throw new Error('TODO')
+    const { chars, media } = measure(payload)
+    return { tokens: Math.ceil(chars * clamp(ratio)) + media * MEDIA_TOKENS, chars, media }
 }
 
 /*
@@ -56,5 +89,14 @@ calibrate：用一次真实 usage 修正这个模型的比例，原地写进 rat
 返回更新后的比例（没采信就返回原值），方便调用方顺手发诊断。
 */
 export function calibrate(ratios: Record<string, number>, model: ModelInput, payload: unknown, real: Usage['inputTokens']): number {
-    throw new Error('TODO')
+    const key = modelName(model)
+    const old = ratios[key]                                              // 只和"学到的值"比：冷启动值是宿主的猜测，不能当离群判据。
+    if (!key || !Number.isFinite(real) || real <= 0) return old ?? DEFAULT_RATIO // 上游没回 usage：学不到。
+    const { chars, media } = measure(payload)
+    const text = real - media * MEDIA_TOKENS                             // 先扣掉媒体的固定估值，剩下才归给文字。
+    if (text <= 0 || chars < MIN_CHARS) return old ?? DEFAULT_RATIO      // 几乎全是媒体、或内容太短：样本不可靠。
+    const sample = clamp(text / chars)
+    if (old !== undefined && (sample > old * 3 || sample < old / 3)) return old // 离群值丢掉，别让一次异常用量带偏。
+    ratios[key] = old === undefined ? sample : old * (1 - SMOOTH) + sample * SMOOTH
+    return ratios[key]!
 }

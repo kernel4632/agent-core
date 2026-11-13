@@ -2,39 +2,89 @@
 configure：把"统一请求数据"翻译成 AI SDK generateText / streamText 的调用参数。
 
 调用示例（在 model/ask 里）：
-    const call = configure(request)   // { model, system, messages, maxOutputTokens, providerOptions, headers, ... }
+    const call = configure(request, system, messages)   // { model, system, messages, maxOutputTokens, output, ... }
 
 翻译内容：
 - 连接：model 是字符串时按 protocol 选 provider 现连（chat → openai-compatible，responses → openai，
   anthropic → anthropic，gemini → google），用 baseURL / apiKey；是模型实例就原样用（保留宿主自定义的中间件）；
-- 生成参数：maxTokens → maxOutputTokens；provider 里的字段原样透传，显式写的优先；
-- 提示词缓存：cache 打开时按协议加缓存标记（Anthropic 给 system 和最后一条消息打 ephemeral 标记，
-  OpenAI 系给 promptCacheKey），键默认按"地址 + 模型 + system 哈希"生成；
-- 结构化输出：output 有值就挂上 AI SDK 的 output 参数，没值就不挂（不需要单独开关）。
+- 生成参数：provider 里的字段原样展开（temperature 等）；headers / body 两个是连接参数，单独取出；
+  maxTokens → maxOutputTokens，provider 里显式写的 maxOutputTokens 优先；
+- 提示词缓存（默认开启，实测数据见下）：
+    chat / responses：服务端按 prompt_cache_key 路由到同一处缓存。不发 0%，发了第二步起 99%；
+    anthropic：服务端不自动缓存，必须在内容块上标 cache_control（system 一个、最后一条消息一个）；
+    gemini：隐式缓存由服务端决定，请求里没有可发的字段；
+- 结构化输出：output 有值就挂上 AI SDK 的 output 参数，没值就不挂（不需要单独开关）；
+- maxRetries 固定为 0：重试在这个项目里只有 utils/retry 一个实现，交给 AI SDK 会一次请求变三次、错误被包成 AI_RetryError。
 
 configure 只做翻译，不发请求、不重试、不处理文字工具（那些在 ask 里）。
-没有模块级可变状态：provider 实例每次调用现建，构造成本可以忽略，换 baseURL / apiKey 也立即生效。
+没有模块级可变状态：provider 实例每次现建，构造成本可以忽略，换 baseURL / apiKey 也立即生效。
 */
 
 import type { LanguageModel, ModelMessage } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogle } from '@ai-sdk/google'
 import type { AskRequest } from '../types.ts'
 
-// configure 的产物：ask 直接展开交给 generateText / streamText，再补上 tools、signal 等运行期参数。
-export interface Configured {
-    model: LanguageModel
-    system: string | undefined
-    messages: ModelMessage[]
-    maxOutputTokens?: number
-    providerOptions?: Record<string, Record<string, any>>
-    headers?: Record<string, string>
-    output?: unknown
-    extra: Record<string, unknown>   // provider 里其余的生成参数（temperature 等），原样透传
-}
+// Anthropic 的缓存断点：挂在 providerOptions 上，AI SDK 会翻译成 cache_control。system 和最后一个内容块各用一次。
+const EPHEMERAL = { anthropic: { cacheControl: { type: 'ephemeral' } } }
 
 /*
-configure：按文件头的规则把 request 翻译成 Configured。
+configure：按文件头的规则把 request（以及 ask 处理过文字工具之后的 system / messages）翻译成调用参数。
+返回的对象直接展开交给 generateText / streamText，ask 再补上 tools、abortSignal。
 model 是字符串但缺 baseURL 时抛 TypeError（说明要么给地址，要么直接传模型实例）。
 */
-export function configure(request: AskRequest): Configured {
-    throw new Error('TODO')
+export function configure(request: AskRequest, system: string | undefined, messages: ModelMessage[]): Record<string, unknown> & { model: LanguageModel } {
+    const { model, baseURL, apiKey, protocol = 'chat', provider = {}, maxTokens, output } = request
+    if (!model || !Array.isArray(messages)) throw new TypeError('model and messages are required')
+    if (typeof model === 'string' && !baseURL) throw new TypeError('string models need baseURL; or pass an AI SDK model instance')
+    const { headers, body, ...generation } = provider as { headers?: Record<string, string>; body?: Record<string, unknown> } & Record<string, unknown>
+    // 模型实例的连接归创建者管：这个包换不了它的 fetch，所以默认缓存对实例安静跳过。
+    const cache = typeof model === 'string' ? request.cache ?? true : false
+
+    let languageModel: LanguageModel
+    if (typeof model !== 'string') languageModel = model
+    else {
+        // 缓存键只取"这段对话从哪开始"：同一会话连续请求的开头相同，自然落在同一个键上。
+        const cacheOptions = typeof cache === 'object' ? cache : {}
+        const cacheBody = cache && (protocol === 'chat' || protocol === 'responses')
+            ? { prompt_cache_key: cacheOptions.key ?? `agent:${baseURL}:${model}:${Bun.hash(system ?? '')}`, ...(cacheOptions.retention ? { prompt_cache_retention: cacheOptions.retention } : {}) }
+            : {}
+        const extraBody = { ...cacheBody, ...(cache ? cacheOptions.body : {}), ...body } // 宿主的 body 可以覆盖默认缓存字段。
+        // 只有自建的连接才能接管 fetch：把额外字段并进 AI SDK 已经组好的请求体，请求头、方法、取消信号原样保留。
+        const fetcher = Object.keys(extraBody).length ? (async (input: string | URL | Request, init?: RequestInit) => {
+            const raw = init?.body
+            const merged = typeof raw === 'string' ? JSON.stringify({ ...JSON.parse(raw), ...extraBody }) : raw
+            return fetch(input, { ...init, body: merged })
+        }) as typeof fetch : undefined
+        const settings = { baseURL, apiKey, headers, fetch: fetcher }
+        if (protocol === 'chat') languageModel = createOpenAICompatible({ ...settings, baseURL: baseURL!, name: 'agent', includeUsage: true, supportsStructuredOutputs: Boolean(output) }).chatModel(model) // includeUsage：流式也带 usage，token 校准靠它。
+        else if (protocol === 'responses') languageModel = createOpenAI(settings).responses(model)
+        else if (protocol === 'anthropic') languageModel = createAnthropic(settings).languageModel(model)
+        else if (protocol === 'gemini') languageModel = createGoogle(settings).languageModel(model)
+        else throw new TypeError(`Unsupported protocol: ${protocol}`)       // 协议拼错时在源头报错。
+    }
+
+    // Anthropic 缓存：给 system 和最后一条消息的最后一个内容块打断点（纯文本消息先摊成一个文字块才有地方挂）。
+    const anthropicCache = cache && protocol === 'anthropic'
+    let sentMessages = messages
+    if (anthropicCache && messages.length) {
+        const last = messages.at(-1)!
+        const content = (Array.isArray(last.content) ? last.content : [{ type: 'text', text: last.content }]) as Record<string, any>[]
+        if (content.length) sentMessages = [...messages.slice(0, -1), { ...last, content: [...content.slice(0, -1), { ...content.at(-1), providerOptions: { ...content.at(-1)!.providerOptions, ...EPHEMERAL } }] } as ModelMessage]
+    }
+    const sentSystem = anthropicCache && system ? { role: 'system' as const, content: system, providerOptions: EPHEMERAL } : system
+
+    return {
+        ...generation,                                                    // 宿主的生成参数整包展开，不逐个列字段。
+        model: languageModel,
+        system: sentSystem,
+        messages: sentMessages,
+        maxRetries: 0,
+        // 已建好的模型实例：额外请求头按请求级参数发送（自建连接已经在 settings 里带上了）。
+        ...(typeof model !== 'string' && headers ? { headers } : {}),
+        ...(maxTokens !== undefined && generation.maxOutputTokens === undefined ? { maxOutputTokens: maxTokens } : {}),
+        ...(output ? { output } : {}),
+    }
 }

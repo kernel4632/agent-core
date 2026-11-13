@@ -34,5 +34,12 @@ decide：按文件头的规则返回判断结果。默认值在读的时候补�
 宿主整份替换 config 也不会丢默认值；noToolRounds 为 Infinity 时永不因不调工具而结束。
 */
 export function decide(round: Round, config: Config): Decision {
-    throw new Error('TODO')
+    if (round.results.some(result => result.stop)) return { action: 'end', reason: 'tool-stop' } // 任一工具要求停止，整个循环结束。
+    if (round.reply.toolCalls.length) return { action: 'continue' }                              // 调了工具：结果已写回，接着问。
+    // 没调工具：有结构化输出，或这一轮根本没有可用工具——这就是最终回答，不再追问。
+    if (round.reply.output !== undefined || !round.hasTools) return { action: 'end', reason: 'finished' }
+    const rounds = config.noToolRounds ?? DEFAULT_NO_TOOL_ROUNDS
+    if (round.idle >= rounds) return { action: 'end', reason: 'no-tool' }                       // 到上限：返回最后一次回答。Infinity 永不触发。
+    if (round.idle === rounds - 1) return { action: 'remind', reminder: config.noToolPrompt ?? DEFAULT_NO_TOOL_PROMPT } // 上限前一轮：推一下。
+    return { action: 'continue' }
 }

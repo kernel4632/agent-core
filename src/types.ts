@@ -98,7 +98,7 @@ export interface ToolDefinition {
     description: string
     parameters: JSONSchema7                                   // 只收 JSON Schema
     run: (args: any) => unknown | Promise<unknown>            // 只有 args；停止 = 直接杀子进程
-    toModelOutput?: (output: unknown) => unknown              // 可选：把结果改写成给模型看的形状
+    toModelOutput?: (options: { output: unknown; input: unknown; toolCallId: string }) => unknown // 可选：把结果改写成给模型看的输出块（与 AI SDK 同签名）
     timeout?: number                                          // 可选：单次执行超时（毫秒）
 }
 

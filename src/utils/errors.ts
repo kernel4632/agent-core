@@ -30,8 +30,36 @@ classify：判断一个错误属于哪一类，并把 kind 写回错误对象上
 
 返回分出来的 kind，方便调用方直接 switch。
 */
-export function classify(error: unknown, timeout?: AbortSignal): ErrorKind {
-    throw new Error('TODO')
+export function classify(error: unknown, timeout?: AbortSignal | null): ErrorKind {
+    const target = (error ?? {}) as Record<string, any>                  // 错误可能是任意值；按对象读字段，读不到就是 undefined。
+    if (typeof target.kind === 'string') return target.kind as ErrorKind  // 已经分过类（例如重试前贴过），不重复判断。
+    const status = target.statusCode ?? target.status                     // AI SDK 用 statusCode，个别库用 status。
+    const name = typeof target.name === 'string' ? target.name : ''
+    // 把错误可能藏信息的几处文字拼起来：message、responseBody、data、cause；对象尽量取 message，再退一步序列化。
+    const texts: string[] = []
+    for (const value of [target.message, target.responseBody, target.data, target.cause]) {
+        if (typeof value === 'string' && value) texts.push(value)
+        else if (value && typeof value === 'object') {
+            if (typeof value.message === 'string') texts.push(value.message)
+            try { texts.push(JSON.stringify(value)) } catch { /* 循环引用：跳过这一处来源，不影响其它 */ }
+        }
+    }
+    const text = texts.join('\n')
+    let kind: ErrorKind
+    if (timeout?.aborted) kind = 'timeout'                                                      // 我们自己的限时先判，避免被当成用户取消。
+    else if (name === 'AbortError' || target.code === 'ABORT_ERR') kind = 'aborted'              // 用户 stop() 或外部取消。
+    else if ((status === 400 && OVERFLOW_GENERAL.test(text)) || OVERFLOW_ANTHROPIC.test(text) || name === 'LengthFinishReasonError') kind = 'overflow' // 上下文超长：交给 loop 压缩后重发。
+    else if (name === 'AI_TypeValidationError' || name === 'AI_NoObjectGeneratedError') kind = 'unknown' // 连上了、状态码也成功，只是内容对不上格式。
+    else if (status === undefined) kind = name.startsWith('AI_') && name !== 'AI_APICallError' ? 'unknown' : 'network' // AI SDK 本地校验错误没发出请求，不算网络问题。
+    else if (status === 401 || status === 403) kind = 'auth'
+    else if (status === 429) kind = 'limit'
+    else if (status === 408) kind = 'timeout'
+    else if (status >= 500) kind = 'server'
+    else if (status >= 400) kind = 'request'                                                     // 其它 4xx：参数、格式问题。
+    else kind = 'unknown'                                                                        // 2xx 但内容对不上：不能算调用方传错。
+    // 能写就把 kind 贴回错误对象：宿主 catch 到的就是带 kind 的原始错误。冻结对象、原始值写不进去，只返回结果。
+    if (error && typeof error === 'object' && Object.isExtensible(error)) (error as Record<string, unknown>).kind = kind
+    return kind
 }
 
 /*
@@ -39,5 +67,6 @@ cancelled：造一个"已取消"错误。整个项目只在这里造，名字（
 stop() 打断运行时，send / compact 的 Promise 以它拒绝。
 */
 export function cancelled(): Error {
-    throw new Error('TODO')
+    // DOMException 的 name 就是 AbortError，和 fetch / AbortSignal 的取消错误同一种形状，宿主现有的判断都认。
+    return Object.assign(new DOMException('Agent aborted', 'AbortError'), { kind: 'aborted' as const })
 }

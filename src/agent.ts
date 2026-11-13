@@ -42,7 +42,22 @@ export class Agent {
     只做字段赋值和入口校验（config 必须有 model、history 必须是数组、tools / mcp 必须是数组），不做任何 I/O。
     */
     constructor(options: CreateOptions) {
-        throw new Error('TODO')
+        if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Agent.create options must be an object')
+        const { id = nanoid(), history = [], tools = [], mcp = [], contextRatio, ratios = {}, ...config } = options
+        // 边界检查：坏值当场说清楚。history 只增不删，一个坏值写进去会永久毒化会话，所以宁可在入口报错。
+        if (!config.model) throw new TypeError('model is required: a model name (with baseURL) or an AI SDK model instance')
+        if (!Array.isArray(history)) throw new TypeError('history must be an array')
+        if (!Array.isArray(tools)) throw new TypeError('tools must be an array of tool file / directory paths')
+        if (!Array.isArray(mcp)) throw new TypeError('mcp must be an array of { name, url, headers?, transport? }')
+        if (contextRatio !== undefined && !(typeof contextRatio === 'number' && Number.isFinite(contextRatio) && contextRatio > 0)) throw new RangeError('contextRatio must be a positive number')
+        this.id = id
+        this.config = config
+        this.history = history                                           // 不复制：宿主传进来的数组就是 agent.history。
+        this.tools = tools
+        this.mcp = mcp
+        this.contextRatio = contextRatio
+        this.ratios = ratios
+        this.#internal = { procs: new Set(), toolCache: new Map(), mcpClients: new Map(), controller: null, running: null, warned: new Set() }
     }
 
     /*
@@ -50,7 +65,7 @@ export class Agent {
     工具不在这里读取——每轮请求前由 loop 现读，所以 create 不需要 async。
     */
     static create(options: CreateOptions): Agent {
-        throw new Error('TODO')
+        return new Agent(options)
     }
 
     /*
@@ -59,7 +74,12 @@ export class Agent {
     避免两条循环同时写同一份 history。不接受外部 signal，停止统一走 stop()。
     */
     async send(input?: Input, callbacks: Callbacks = {}): Promise<Answer> {
-        throw new Error('TODO')
+        // 先查输入再动任何状态：注定失败的调用不该把还在跑的上一次挤掉。
+        if (input !== undefined && (typeof input === 'string' ? !input.trim() : !Array.isArray(input) || !input.length)) throw new TypeError('input must be a non-empty string or a non-empty content array')
+        return this.#start(() => {
+            if (input !== undefined) append(this.history, { role: 'user', content: input })
+            return run(this.#state(), callbacks)
+        })
     }
 
     /*
@@ -67,7 +87,10 @@ export class Agent {
     （不给工具任何反应时间）；等 loop 补完"已取消"结果后返回。没有运行时什么也不做。
     */
     async stop(): Promise<void> {
-        throw new Error('TODO')
+        const { controller, running, procs } = this.#internal
+        controller?.abort()                                              // 中断模型请求、MCP 调用、权限等待。
+        killAll(procs)                                                   // 立刻杀掉本实例的工具子进程，不等它们收尾。
+        await running?.catch(() => {})                                   // 等 loop 补完"已取消"结果，history 完整后再返回。
     }
 
     /*
@@ -75,7 +98,25 @@ export class Agent {
     和 send 一样受"一次只跑一件事"约束，可以被 stop() 打断。
     */
     async compact(callbacks: Callbacks = {}): Promise<string> {
-        throw new Error('TODO')
+        return this.#start(async () => (await compact(this.#state(), callbacks, 'manual')).summary)
+    }
+
+    /*
+    #start：同一实例一次只跑一件事。上一次还在跑就先停掉它并等它收尾（避免两条循环同时写 history），
+    再换上新的取消器开始这一次；结束时只清理自己这一次的记录（防止清掉后来居上的新运行）。
+    */
+    async #start<T>(work: () => Promise<T>): Promise<T> {
+        const internal = this.#internal
+        const previous = internal.running
+        const task = (async () => {
+            if (previous) { internal.controller?.abort(); killAll(internal.procs); await previous.catch(() => {}) }
+            internal.controller = new AbortController()                  // loop 在开始时取一次这个信号。
+            return work()
+        })()
+        internal.running = task
+        try { return await task } finally {
+            if (internal.running === task) { internal.running = null; internal.controller = null }
+        }
     }
 
     /*
@@ -83,6 +124,17 @@ export class Agent {
     loop 下一次读取就拿到新值；contextRatio 可写（宿主和 loop 都可能改）；internal 是私有部分。
     */
     #state(): State {
-        throw new Error('TODO')
+        const agent = this
+        return {
+            get id() { return agent.id },
+            get config() { return agent.config },
+            get history() { return agent.history },
+            get tools() { return agent.tools },
+            get mcp() { return agent.mcp },
+            get contextRatio() { return agent.contextRatio },
+            set contextRatio(value) { agent.contextRatio = value },
+            get ratios() { return agent.ratios },
+            internal: agent.#internal,
+        }
     }
 }
