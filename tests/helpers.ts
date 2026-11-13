@@ -11,14 +11,15 @@ import { join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 
-// 一次脚本化回复：文字，或若干工具调用（可以同时有）。usage 是假的输入 token 数，用来测校准。
-export type Step = { text?: string; calls?: { name: string; input?: unknown; id?: string }[]; inputTokens?: number }
+// 一次脚本化回复：思考、文字，或若干工具调用（可以同时有）。usage 是假的输入 token 数，用来测校准。
+export type Step = { reasoning?: string; text?: string; calls?: { name: string; input?: unknown; id?: string }[]; inputTokens?: number }
 
 // 用量的 V4 形状：只填测试关心的字段。
 const usageOf = (input = 100) => ({ inputTokens: { total: input, noCache: input, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } })
 
 // 把一步脚本变成模型的内容块。
 const contentOf = (step: Step) => [
+    ...(step.reasoning ? [{ type: 'reasoning' as const, text: step.reasoning }] : []),
     ...(step.text ? [{ type: 'text' as const, text: step.text }] : []),
     ...(step.calls ?? []).map((call, index) => ({ type: 'tool-call' as const, toolCallId: call.id ?? `c${Math.random().toString(36).slice(2, 8)}${index}`, toolName: call.name, input: JSON.stringify(call.input ?? {}) })),
 ]
@@ -42,6 +43,7 @@ export function script(steps: (Step | ((index: number) => Step | Promise<Step>))
             calls.push(options)
             const step = await next()
             const chunks: any[] = [{ type: 'stream-start', warnings: [] }]
+            if (step.reasoning) chunks.push({ type: 'reasoning-start', id: 'r' }, ...[...step.reasoning].map(char => ({ type: 'reasoning-delta', id: 'r', delta: char })), { type: 'reasoning-end', id: 'r' })
             if (step.text) chunks.push({ type: 'text-start', id: 't' }, ...[...step.text].map(char => ({ type: 'text-delta', id: 't', delta: char })), { type: 'text-end', id: 't' })
             for (const part of contentOf(step).filter(one => one.type === 'tool-call')) chunks.push(part)
             chunks.push({ type: 'finish', finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: usageOf(step.inputTokens) })

@@ -28,7 +28,7 @@ request：把当前上下文变成一次"写总结"的问模型请求。
   原样作为 messages 发出，不 JSON.stringify 成一条消息：二次转义会让压缩请求比它要压的上下文还大（实测 1.51 倍）；
 - built.system 里折着主提示词和上一次的总结，作为背景并进压缩专用的 system——丢掉它，第二次压缩就看不到第一次总结过的事实；
 - 连接参数优先取 config.compact 里的（压缩可以用更便宜的模型），没写的沿用主配置；
-- 不带工具、不开文字工具、不要结构化输出：总结请求只要一段文字；
+- 不带工具、不开文字工具、不要结构化输出：总结请求只要一段文字；stream 照搬配置（默认流式，loop 把片段标上 compact 转给宿主）；
 - 重试参数照搬主配置（retryMaxTries 等收拢成 RetryOptions）。
 */
 export function request(built: { system?: string; messages: ModelMessage[] }, config: Config): AskRequest {
@@ -37,6 +37,7 @@ export function request(built: { system?: string; messages: ModelMessage[] }, co
     return {
         model: merged.model, baseURL: merged.baseURL, apiKey: merged.apiKey, protocol: merged.protocol,
         cache: merged.cache, provider: merged.provider, maxTokens: merged.maxTokens, stream: merged.stream,
+        reasoning: merged.reasoning,                                     // built.messages 已按主配置摘过；压缩模型另有要求时由 ask 再处理一次。
         system,
         messages: [...built.messages, { role: 'user', content: SUMMARY_PROMPT }],
         retry: options(merged),

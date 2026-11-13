@@ -55,6 +55,35 @@ describe('context/build', () => {
         expect(texts(built.messages).filter(text => text.startsWith('问'))).toEqual(['问3字', '问4字']) // 预算 1500：只装得下最近两轮
     })
 
+    test('压缩后始终保留本次输入：beforeSummary 0、预算再紧也补回最后一条用户消息（不带它后面的工具现场）', () => {
+        const history: Message[] = [
+            { id: 'u1', role: 'user', content: '旧问题' },
+            { id: 'a1', role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
+            { id: 'u2', role: 'user', content: '当前任务' + '字'.repeat(3000) },
+            { id: 'a2', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 't1', toolName: 'x', input: {} }] },
+            { id: 'r2', role: 'tool', content: [{ type: 'tool-result', toolCallId: 't1', toolName: 'x', output: { type: 'text', value: '大量输出' } }] },
+            { id: 'c', role: 'compact', content: '总结正文' },
+        ]
+        for (const config of [{ context: { beforeSummary: 0 } }, { maxContextTokens: 1000, context: { budget: 0.01 } }]) {
+            const built = build(stateOf(history, config), {})
+            expect(texts(built.messages)).toEqual(['当前任'])
+            expect(JSON.stringify(built.messages)).not.toContain('大量输出')
+        }
+    })
+
+    test('思考块：默认 strip 摘掉（被摘空的消息整条丢），reasoning: send 原样发回', () => {
+        const history: Message[] = [
+            { id: 'u', role: 'user', content: '问' },
+            { id: 'a', role: 'assistant', content: [{ type: 'reasoning', text: '想法' }, { type: 'text', text: '答' }] },
+            { id: 'b', role: 'assistant', content: [{ type: 'reasoning', text: '只有想法' }] },
+        ]
+        expect(JSON.stringify(build(stateOf(history), {}).messages)).not.toContain('想法')
+        expect(build(stateOf(history), {}).messages).toHaveLength(2)
+        const sent = build(stateOf(history, { reasoning: 'send' }), {}).messages
+        expect(sent).toHaveLength(3)
+        expect(JSON.stringify(sent)).toContain('只有想法')
+    })
+
     test('媒体默认不发：mediaFallback error 报错，strip 只留文字', () => {
         const history: Message[] = [{ id: 'u', role: 'user', content: [{ type: 'text', text: '看图' }, { type: 'image', image: 'aGk=' }] }]
         expect(() => build(stateOf(history), {})).toThrow('image')
@@ -63,7 +92,9 @@ describe('context/build', () => {
     })
 
     test('超过 maxContextTokens × compactThreshold 时 over 为 true', () => {
-        expect(build(stateOf(withSummary(1, 2000), { maxContextTokens: 1000 }), {}).over).toBe(false) // 压缩后的上下文很小
+        const compacted = withSummary(3)
+        compacted[0] = { id: 'u1', role: 'user', content: '字'.repeat(2000) }                          // 大的是总结前的旧回合（本次输入总会保留，所以不能是它）
+        expect(build(stateOf(compacted, { maxContextTokens: 1000 }), {}).over).toBe(false)             // 压缩后的上下文很小
         expect(build(stateOf([{ id: 'u', role: 'user', content: '字'.repeat(2000) }], { maxContextTokens: 1000 }), {}).over).toBe(true)
     })
 })

@@ -8,7 +8,7 @@ ask：对 AI SDK 的薄封装，"统一请求数据 → 统一结果"，协议�
     )
 
 一次 ask 做的事：
-1. configure(request) 翻译成 AI SDK 参数；
+1. configure(request) 翻译成 AI SDK 参数；reasoning 不是 'send'（默认 'strip'，与旧版一致）时先摘掉 messages 里的思考块；
 2. textTools 为 true：describe 把工具说明写进 system、render 把历史工具消息改写成文字，不发原生 tools；
    否则把 tools 描述表转成 AI SDK 的工具定义（只有 schema，没有 execute——执行在 loop 里做）；
 3. 用 retry 包住真正的请求：stream 时走 streamText，把 AI SDK 事件简化成 Chunk 交给 onChunk；
@@ -45,7 +45,13 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => void)
     // --- 2. 文字工具：说明书进 system，历史工具记录改写成文字，不发原生 tools ---
     const spec = request.textTools ? describe(request.tools) : null
     const system = spec ? [request.system, spec.instructions].filter(Boolean).join('\n\n') : request.system
-    const messages = spec ? render(request.messages) : request.messages
+    // 思考块回传开关：默认摘掉（多数供应商不收），被摘空的 assistant 消息整条丢掉；'send' 原样发回。
+    const outgoing = request.reasoning === 'send' ? request.messages : request.messages.flatMap(message => {
+        if (!Array.isArray(message.content)) return [message]
+        const content = (message.content as { type: string }[]).filter(part => part.type !== 'reasoning')
+        return content.length ? [{ ...message, content } as ModelMessage] : []
+    })
+    const messages = spec ? render(outgoing) : outgoing
     // 原生工具只给 schema 不给 execute：AI SDK 只会返回调用，执行由 loop 负责（子进程 / MCP）。
     const tools = !spec && request.tools && Object.keys(request.tools).length
         ? Object.fromEntries(Object.entries(request.tools).map(([name, one]) => [name, tool({ description: one.description, inputSchema: jsonSchema(one.parameters as any) })]))

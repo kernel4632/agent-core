@@ -6,7 +6,9 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
     const { reason, text, usage, output } = await agent.send('帮我做件事', { onChunk: c => render(c) })
     agent.tools = agent.tools.filter(p => !p.startsWith('/plugins/a/'))   // 关掉插件 a：下一次请求就没有它的工具
     agent.config = { ...agent.config, model: 'claude-sonnet-4' }          // 中途换模型：下一轮生效
-    await agent.stop()                                                    // 立即杀掉本实例的工具子进程
+    const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
+    await agent.closeMcp('github')                                        // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
+    agent.openMcp('github')                                               // 重新打开：enabled 置 true，下一轮重连
     await agent.compact()                                                 // 宿主点"压缩"：强制压缩一次
     const reply = await Agent.LLM.ask({ model, baseURL, apiKey, messages })  // 不建实例也能直接问模型
 
@@ -14,13 +16,14 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
 私有状态（#internal，不对外）：工具元数据缓存、MCP 连接、正在跑的子进程 procs、当前运行的取消器、警告去重。
 每个实例完全隔离，不共享任何可变状态。
 
-导入：loop/run（run、compact）、tools/spawn（killAll）、history（append）、model/ask（挂到 Agent.LLM）。
+导入：loop/run（run、compact）、tools/spawn（killAll）、tools/mcp（close）、history（append）、model/ask（挂到 Agent.LLM）。
 */
 
 import { nanoid } from 'nanoid'
-import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, McpServer, Message, State } from './types.ts'
+import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, McpServer, McpToggle, Message, State, Stopped } from './types.ts'
 import { run, compact } from './loop/run.ts'
 import { killAll } from './tools/spawn.ts'
+import { close } from './tools/mcp.ts'
 import { append } from './history.ts'
 import { ask } from './model/ask.ts'
 
@@ -83,14 +86,40 @@ export class Agent {
     }
 
     /*
-    stop：立即停止当前运行。abort 当前取消器（中断模型请求和 MCP 调用），并 killAll 本实例的子进程
-    （不给工具任何反应时间）；等 loop 补完"已取消"结果后返回。没有运行时什么也不做。
+    stop：立即停止当前运行，返回 { stopped: true, wasRunning, killed }。
+    abort 当前取消器（中断模型请求和 MCP 调用），killAll 本实例的子进程（不给工具任何反应时间）；
+    只有在子进程全部确认退出、loop 补完"已取消"结果并退出之后才兑现——拿到返回值就说明已经停干净了。
+    循环收尾后再清一次子进程：防止 abort 生效前恰好又起了一个（例如正在读工具元数据）。没有运行时直接返回。
     */
-    async stop(): Promise<void> {
+    async stop(): Promise<Stopped> {
         const { controller, running, procs } = this.#internal
         controller?.abort()                                              // 中断模型请求、MCP 调用、权限等待。
-        killAll(procs)                                                   // 立刻杀掉本实例的工具子进程，不等它们收尾。
+        let killed = await killAll(procs)                                // 立刻杀掉本实例的工具子进程，并等它们退出。
         await running?.catch(() => {})                                   // 等 loop 补完"已取消"结果，history 完整后再返回。
+        killed += await killAll(procs)
+        return { stopped: true, wasRunning: running !== null, killed }
+    }
+
+    /*
+    closeMcp：临时关闭一条 MCP 连接。把 agent.mcp 里同名元素换成 enabled: false 的新对象（原地替换元素，
+    不改宿主传进来的对象，也不换掉数组本身），并立即断开连接；下一轮请求起它的工具就不在了。
+    正在执行中的该服务器工具调用会以错误结果结束。返回 { name, found, enabled: false, closed }。
+    */
+    async closeMcp(name: string): Promise<McpToggle> {
+        const index = this.mcp.findIndex(server => server.name === name)
+        if (index >= 0) this.mcp[index] = { ...this.mcp[index]!, enabled: false }
+        const closed = await close(name, this.#internal.mcpClients)
+        return { name, found: index >= 0, enabled: false, closed }
+    }
+
+    /*
+    openMcp：重新打开 closeMcp 关掉的连接——只把 enabled 改回 true，下一轮请求时才真正连接
+    （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。返回 { name, found, enabled }。
+    */
+    openMcp(name: string): McpToggle {
+        const index = this.mcp.findIndex(server => server.name === name)
+        if (index >= 0) this.mcp[index] = { ...this.mcp[index]!, enabled: true }
+        return { name, found: index >= 0, enabled: index >= 0 }
     }
 
     /*
@@ -109,7 +138,7 @@ export class Agent {
         const internal = this.#internal
         const previous = internal.running
         const task = (async () => {
-            if (previous) { internal.controller?.abort(); killAll(internal.procs); await previous.catch(() => {}) }
+            if (previous) { internal.controller?.abort(); await killAll(internal.procs); await previous.catch(() => {}) }
             internal.controller = new AbortController()                  // loop 在开始时取一次这个信号。
             return work()
         })()

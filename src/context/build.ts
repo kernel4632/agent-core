@@ -9,9 +9,12 @@ build：每一轮从当前状态现拼一次上下文，不缓存任何东西；
 1. 找到 history 里最新一条 role:'compact'；没有就直接用全部原文，跳到第 4 步；
 2. 按用户回合（history.turns）挑出：开场 head 轮、总结之前最近的 beforeSummary 轮；
    这两段合计不超过 budget × maxContextTokens（只约束这两段），超出时先丢最早的一轮；
+   总结之前最后一条用户发言（本次 send 的输入）无论如何都保留——一次 send 里压缩后，它落在总结之前，
+   预算再紧也不能把"正在做的事"剪掉，否则模型看不到任务就开始瞎猜（沿用旧实现的规则）；
 3. system = config.system + 最新总结（折进 system，不作为单独消息——实测单独的 user 总结成功率从 6/6 掉到 1/6）；
 4. 顺序：开场 head 轮 → 总结之前最近 beforeSummary 轮 → 总结之后的全部原文；
 5. 去掉发给模型不需要的东西：每条消息的 id、全部 role:'error'、旧的 compact 消息；
+   思考块按 config.reasoning 处理：'strip'（默认，与旧版一致）摘掉，'send' 原样发回；
 6. 按 config.media 处理媒体块：没开的类型，mediaFallback 'strip' 就只留文字，'error'（默认）就抛错说明怎么打开；
 7. 估算 token（system + messages + 工具描述），over = tokens ≥ maxContextTokens × compactThreshold。
 
@@ -75,6 +78,10 @@ export function build(state: State, tools: ToolSchemas): Built {
         const room = Number.isFinite(budget) ? keep.budget * budget : Infinity
         let used = kept.reduce((total, turn) => total + estimate(turn, ratio).tokens, 0)
         while (kept.length && used > room) used -= estimate(kept.shift()!, ratio).tokens
+        // 本次输入兜底：最后一个用户回合没被留下（预算 / beforeSummary 0 挤掉了）就只把那条用户消息补回末尾。
+        // 只补用户消息本身、不带它后面的工具现场：现场正是撑爆上下文的部分，已经由总结覆盖。
+        const current = before.filter(turn => turn[0]!.role === 'user').at(-1)
+        if (current && !kept.includes(current)) kept.push([current[0]!])
         selected = [...kept.flat(), ...history.slice(at + 1)]                       // 开场 → 最近现场 → 总结之后的全部原文。
     }
 
@@ -94,7 +101,7 @@ export function build(state: State, tools: ToolSchemas): Built {
         const { id, ...rest } = message as Message & { id: string }                 // 去掉 id，其余字段原样（providerOptions 等）。
         if (!Array.isArray(rest.content)) { messages.push(rest as ModelMessage); continue }
         const content = (rest.content as Record<string, any>[]).flatMap(part => {
-            if (part.type === 'reasoning') return []                                 // 思考内容默认不回传：多数接口不收、还占预算。
+            if (part.type === 'reasoning' && config.reasoning !== 'send') return []  // 思考默认不回传：多数接口不收、还占预算；要求回传的供应商设 'send'。
             if (part.type === 'tool-call' && !answered.has(part.toolCallId)) return [] // 没有结果的调用：发出去必然 400。
             if (part.type === 'tool-result' && !called.has(part.toolCallId)) return [] // 孤儿结果同理。
             // --- 6：媒体按开关处理；file 按 mediaType 判断是图片 / 音频 / 视频还是普通文件 ---

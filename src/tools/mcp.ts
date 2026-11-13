@@ -9,7 +9,8 @@ MCP：远程工具连接，留在主进程（卡住断开连接即可，不需�
 Agent 实例的 internal.mcpClients 里（按 name，配置变了就重连），所以平时没有额外开销。
 
 规则（issue #30 Q9、Q10）：
-- 元素是 { name, url, headers?, transport? }；transport 默认 'http'（Streamable HTTP），老服务器写 'sse'；
+- 元素是 { name, url, headers?, transport?, enabled? }；transport 默认 'http'（Streamable HTTP），老服务器写 'sse'；
+- enabled: false 的元素等同于"列表里没有"：断开连接、工具这一轮就消失；改回 true（或删掉这个字段）下一轮重连；
 - 列表里新出现的连接、配置（url / headers / transport）变了的连接：建立 / 重建；
 - 列表里已经没有的连接：关闭并移出缓存；
 - 某个服务器连不上：跳过并通过 onWarning 警告，其它照常；
@@ -31,7 +32,7 @@ export async function connect(
     clients: Internal['mcpClients'],
     onWarning?: (warning: { path?: string; message: string }) => void,
 ): Promise<Record<string, Tool>> {
-    const wanted = new Map(servers.map(server => [server.name, server]))
+    const wanted = new Map(servers.filter(server => server.enabled !== false).map(server => [server.name, server])) // 临时关闭的不算。
     // 列表里已经没有的连接：关掉并移出缓存（关闭失败不影响其它）。
     for (const [name, client] of clients) if (!wanted.has(name)) { clients.delete(name); void client.close().catch(() => {}) }
     await Promise.all([...wanted.values()].map(async server => {
@@ -51,6 +52,18 @@ export async function connect(
     const result: Record<string, Tool> = {}
     for (const [name, client] of clients) for (const [toolName, tool] of Object.entries(client.tools)) result[`${name}_${toolName}`] = tool
     return result
+}
+
+/*
+close：立即断开一条连接（Agent.closeMcp 用），返回是否真的断开了一条活连接。
+只动连接缓存，不改 agent.mcp——"之后别再连"由调用方把 enabled 置为 false 表达。
+*/
+export async function close(name: string, clients: Internal['mcpClients']): Promise<boolean> {
+    const client = clients.get(name)
+    if (!client) return false
+    clients.delete(name)
+    await client.close().catch(() => {})                                // 关闭失败也已移出缓存，下一轮不会再用它。
+    return true
 }
 
 /*

@@ -16,10 +16,13 @@ describe('stop()', () => {
         const { model } = script([{ calls: [{ name: 'spin', id: 'spin1' }] }, { text: '不该走到这里' }])
         const agent: Agent = Agent.create({ model, tools: [dir], stream: false })
         let stopped = 0
-        const running = agent.send('hi', { onToolCall: () => { setTimeout(() => { stopped = Date.now(); void agent.stop() }, 300) } })
+        let confirmed: Promise<unknown> = Promise.resolve()
+        const running = agent.send('hi', { onToolCall: () => { setTimeout(() => { stopped = Date.now(); confirmed = agent.stop() }, 300) } })
         const failure = await running.catch(e => e)
         expect(failure.kind).toBe('aborted')
         expect(Date.now() - stopped).toBeLessThan(1000)                   // 不等工具反应
+        expect(await confirmed).toEqual({ stopped: true, wasRunning: true, killed: 1 }) // 子进程确认退出、循环收尾后才兑现
+        expect(await agent.stop()).toEqual({ stopped: true, wasRunning: false, killed: 0 })
         const [result] = results(agent.history)
         expect(result).toMatchObject({ toolCallId: 'spin1', output: { type: 'error-text', value: '工具执行已取消' } })
     })
@@ -80,6 +83,25 @@ describe('MCP', () => {
             await agent.send('hi')
             expect(toolNames(calls[0])).toEqual(['fake_echo'])
             expect(JSON.stringify(results(agent.history)[0].output)).toContain('echo:你好')
+        } finally { fake.stop(true) }
+    })
+
+    test('单条 MCP 临时关闭：enabled false 不连接；closeMcp 立即断开、下一轮工具消失；openMcp 下一轮重连', async () => {
+        const fake = server()
+        try {
+            const { model, calls } = script([{ text: '好' }])
+            const mcp = [{ name: 'fake', url: `http://localhost:${fake.port}/mcp`, enabled: false }]
+            const agent = Agent.create({ model, stream: false, noToolRounds: 1, mcp })
+            await agent.send('1')
+            expect(toolNames(calls[0])).toEqual([])
+            expect(agent.openMcp('fake')).toEqual({ name: 'fake', found: true, enabled: true })
+            await agent.send('2')
+            expect(toolNames(calls[1])).toEqual(['fake_echo'])
+            expect(await agent.closeMcp('fake')).toEqual({ name: 'fake', found: true, enabled: false, closed: true })
+            expect(mcp[0]!.enabled).toBe(false)                            // 原地替换元素，宿主手里的数组同步可见
+            await agent.send('3')
+            expect(toolNames(calls[2])).toEqual([])
+            expect(await agent.closeMcp('nope')).toEqual({ name: 'nope', found: false, enabled: false, closed: false })
         } finally { fake.stop(true) }
     })
 })

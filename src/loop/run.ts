@@ -102,7 +102,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                 const request: AskRequest = {
                     model: config.model, baseURL: config.baseURL, apiKey: config.apiKey, protocol: config.protocol,
                     cache: config.cache, provider: config.provider, maxTokens: config.maxTokens, stream: config.stream,
-                    output: config.output, textTools: config.textTools,
+                    output: config.output, textTools: config.textTools, reasoning: config.reasoning,
                     system: built.system, messages, tools: Object.keys(schemas).length ? schemas : undefined,
                     retry: retryOptions(config), signal, onRetry: callbacks.onRetry,
                 }
@@ -167,16 +167,18 @@ compact：整个项目唯一的压缩逻辑（取代旧实现的三个同名 com
 
 1. build 当前上下文；
 2. summarize.request 拼"写总结"的请求（可用 config.compact 里的便宜模型）；
-3. ask 问模型，取回总结文字；
+3. ask 问模型，取回总结文字；开始前发一条 onChunk({ type: 'compact-start' })，压缩模型的思考 / 正文 / finish
+   片段带上 compact: true 实时转给 onChunk（宿主能看到压缩时模型在想什么、总结正文是什么）；
 4. summarize.wrap 包成 role:'compact' 消息，append 进 history；
 5. 发 onCompact（reason、压缩前后估算 token、用量），返回总结文字和这一笔请求的用量（run 要把它计进合计）。
 reason 为 'manual' 时来自宿主的 agent.compact()，'auto' 时来自 run 的阈值判断或超长重发。
-压缩请求不带工具、不流式转发片段（总结不是给用户看的回答）。
+压缩请求不带工具；是否流式跟随配置（config.compact.stream ?? config.stream，默认流式），非流式时只有 compact-start。
 */
 export async function compact(state: State, callbacks: Callbacks = {}, reason: 'auto' | 'manual' = 'manual'): Promise<{ summary: string; usage: Usage }> {
     const signal = state.internal.controller?.signal
     const before = build(state, {})
-    const reply = await ask({ ...summarize.request(before, state.config), signal, onRetry: callbacks.onRetry })
+    tell(callbacks.onChunk, { type: 'compact-start', reason, compact: true })
+    const reply = await ask({ ...summarize.request(before, state.config), signal, onRetry: callbacks.onRetry }, chunk => tell(callbacks.onChunk, { ...chunk, compact: true }))
     const message = append(state.history, summarize.wrap(reply.text)) as { content: string }
     tell(callbacks.onCompact, { reason, before: before.tokens, after: build(state, {}).tokens, usage: reply.usage })
     return { summary: message.content, usage: reply.usage }

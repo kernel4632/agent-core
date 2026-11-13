@@ -160,6 +160,22 @@ describe('压缩与估算', () => {
         const prompt = JSON.stringify(calls[1].prompt)
         expect(prompt).toContain('这是总结')
         expect(prompt).not.toContain('很长的开场')                         // beforeSummary 0：总结前的原文一个不留
+        expect(prompt).toContain('下一步')                                 // 本次输入落在总结之前，也始终保留
+    })
+
+    test('压缩流式推送：compact-start 之后压缩模型的思考 / 正文 / finish 都带 compact: true，onCompact 照常给最终结果', async () => {
+        const { model } = script([{ reasoning: '想想', text: '总结' }])
+        const agent = Agent.create({ model, history: [{ id: 'u', role: 'user', content: '你好' }] })   // 默认流式
+        const chunks: any[] = []
+        const finals: any[] = []
+        expect(await agent.compact({ onChunk: chunk => chunks.push(chunk), onCompact: info => finals.push(info) })).toBe('总结')
+        expect(chunks[0]).toEqual({ type: 'compact-start', reason: 'manual', compact: true })
+        expect(chunks.every(chunk => chunk.compact === true)).toBe(true)
+        expect(chunks.filter(chunk => chunk.type === 'reasoning').map(chunk => chunk.text).join('')).toBe('想想')
+        expect(chunks.filter(chunk => chunk.type === 'text').map(chunk => chunk.text).join('')).toBe('总结')
+        expect(chunks.at(-1).type).toBe('finish')
+        expect(finals).toHaveLength(1)
+        expect(finals[0]).toMatchObject({ reason: 'manual', usage: { inputTokens: 100 } })
     })
 
     test('agent.compact() 强制压缩一次，返回总结文字', async () => {
@@ -211,5 +227,15 @@ describe('Agent.LLM.ask', () => {
         expect(reply.text).toBe('直接回答')
         expect(reply.toolCalls).toEqual([])
         expect(reply.usage.inputTokens).toBe(100)
+    })
+
+    test('reasoning 开关：默认摘掉 messages 里的思考块，send 原样发回', async () => {
+        const messages: any[] = [{ role: 'user', content: '问' }, { role: 'assistant', content: [{ type: 'reasoning', text: '旧想法' }, { type: 'text', text: '答' }] }, { role: 'user', content: '再问' }]
+        const strip = script([{ text: '好' }])
+        await Agent.LLM.ask({ model: strip.model, messages, stream: false })
+        expect(JSON.stringify(strip.calls[0].prompt)).not.toContain('旧想法')
+        const send = script([{ text: '好' }])
+        await Agent.LLM.ask({ model: send.model, messages, stream: false, reasoning: 'send' })
+        expect(JSON.stringify(send.calls[0].prompt)).toContain('旧想法')
     })
 })

@@ -4,7 +4,7 @@ spawn / killAll：子进程的生命周期。普通工具的每次读取、每�
 
 调用示例：
     const result = await spawn({ mode: 'run', path, args, limit, toolCallId }, internal.procs, { timeout, onOutput })
-    killAll(internal.procs)   // agent.stop()：只杀本实例的子进程
+    await killAll(internal.procs)   // agent.stop()：只杀本实例的子进程，等它们退出，返回个数
 
 启动方式：用 process.execPath（当前运行时自己）而不是写死 'bun'——将来宿主打成 Bun 单文件可执行程序时，
 execPath 就是那个程序，配合 BUN_BE_BUN=1 让它表现得像 bun 本身。
@@ -88,10 +88,14 @@ export async function spawn(
 }
 
 /*
-killAll：立刻 kill procs 里的全部子进程（SIGKILL，不等它们收尾），并清空集合。
+killAll：立刻 kill procs 里的全部子进程（SIGKILL，不给它们收尾的机会），清空集合，
+等到它们全部确认退出后返回被杀的个数（stop() 据此告诉宿主"已经停干净了"）。
 各自的 spawn 调用会因此以 killed 结束。
 */
-export function killAll(procs: Set<Subprocess>): void {
-    for (const proc of procs) proc.kill('SIGKILL')
+export async function killAll(procs: Set<Subprocess>): Promise<number> {
+    const all = [...procs]
     procs.clear()
+    for (const proc of all) proc.kill('SIGKILL')
+    await Promise.all(all.map(proc => proc.exited.catch(() => {})))     // SIGKILL 不可拦截，这里很快就返回。
+    return all.length
 }

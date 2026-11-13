@@ -27,6 +27,10 @@ export type ModelInput = string | LanguageModel
 // 按媒体类型逐项开关；没写的一律视为 false（不发）。对象而不是布尔，因为多数模型只支持图片。
 export interface MediaSwitch { image?: boolean; audio?: boolean; video?: boolean; file?: boolean }
 
+// 思考内容回传：有的供应商强制要求把上一轮的思考原样发回（如部分推理模型的工具调用），有的直接拒收。
+// 'send' 原样发回，'strip' 发送前摘掉（history 里始终保留）。
+export type ReasoningMode = 'send' | 'strip'
+
 // 压缩后的上下文怎么拼：开场 head 轮 → 最新总结 → 总结前最近 beforeSummary 轮 → 总结后全部原文。
 // 单位都是"用户回合"；budget 只约束 head + beforeSummary 两段，基数是 maxContextTokens，超出先丢最早的一轮。
 export interface ContextKeep { head?: number; beforeSummary?: number; budget?: number }
@@ -60,6 +64,7 @@ export interface Config {
     textTools?: boolean                       // 显式开关：打开后用文字协议模拟工具调用
     media?: MediaSwitch
     mediaFallback?: 'error' | 'strip'         // 发了模型不支持的媒体：报错，或只留文字
+    reasoning?: ReasoningMode                 // 历史里的思考内容发不发回模型，默认 'strip'（与旧版一致）
     provider?: Record<string, unknown>        // 原样透传给 AI SDK 的生成参数
     maxTokens?: number                        // 单次生成的最大输出 token
     maxToolOutput?: number                    // 单个工具结果最多保留多少字符
@@ -113,7 +118,8 @@ export interface ToolMeta {
 }
 
 // MCP 连接配置：核心负责连接，工具名加 `${name}_` 前缀。默认 Streamable HTTP，老服务器用 sse。
-export interface McpServer { name: string; url: string; headers?: Record<string, string>; transport?: 'http' | 'sse' }
+// enabled: false = 临时关闭（每轮现读：断开连接、工具下一轮消失；改回 true 下一轮重连），省略视为 true。
+export interface McpServer { name: string; url: string; headers?: Record<string, string>; transport?: 'http' | 'sse'; enabled?: boolean }
 
 // 模型发出的一次工具调用。
 export interface ToolCall { toolCallId: string; toolName: string; input: unknown }
@@ -139,6 +145,7 @@ export interface AskRequest {
     messages: ModelMessage[]
     tools?: Record<string, { description: string; parameters: JSONSchema7 }>
     textTools?: boolean
+    reasoning?: ReasoningMode                                 // 默认 'strip'：发送前摘掉 messages 里的思考块
     stream?: boolean
     cache?: CacheOption
     provider?: Record<string, unknown>
@@ -150,12 +157,16 @@ export interface AskRequest {
 }
 
 // 流式片段：简化后的形状，不暴露 AI SDK 原始事件。tool-result 由 loop 在执行完工具后补发。
-export type Chunk =
+// 压缩期间：先发一条 compact-start，之后压缩模型的 reasoning / text / finish 片段都带 compact: true，
+// 宿主用同一个 onChunk 就能实时展示"正在压缩：模型在想什么、总结正文是什么"，又不会和正式回答混在一起。
+export type Chunk = (
     | { type: 'text'; text: string }
     | { type: 'reasoning'; text: string }
     | { type: 'tool-call'; call: ToolCall }
     | { type: 'tool-result'; result: ToolResult }
     | { type: 'finish'; usage: Usage }
+    | { type: 'compact-start'; reason: 'auto' | 'manual' }
+) & { compact?: true }
 
 // 用量：五个字段都给数字，缺的补 0，方便宿主累加。
 export interface Usage { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
@@ -173,6 +184,21 @@ export type Reason = 'finished' | 'no-tool' | 'tool-stop'
 
 // send 的返回值：和回调里实时反馈的内容一致。
 export interface Answer { reason: Reason; text: string; usage: Usage; output?: unknown }
+
+// stop() 的结果：只在本实例的子进程全部退出、当前运行（send / compact）已经收尾之后才兑现。
+export interface Stopped {
+    stopped: true          // 固定为 true：拿到这个值就说明已经完全停下
+    wasRunning: boolean    // 调用时是否有运行在进行（没有时 stop 什么也不用做）
+    killed: number         // 被杀掉的工具子进程数（均已确认退出）
+}
+
+// closeMcp / openMcp 的结果。
+export interface McpToggle {
+    name: string
+    found: boolean         // agent.mcp 里有没有这个名字；没有就什么也没改
+    enabled: boolean       // 改完之后的 enabled
+    closed?: boolean       // 仅 closeMcp：是否真的断开了一条活连接（本来就没连上则为 false）
+}
 
 // decide 的判断结果：继续、挂一条临时提醒后继续、或结束并给出原因。
 export type Decision = { action: 'continue' } | { action: 'remind'; reminder: string } | { action: 'end'; reason: Reason }
