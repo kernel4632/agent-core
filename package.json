@@ -1,7 +1,7 @@
 {
   "name": "@kernel4632/agent-core",
-  "version": "0.42.0",
-  "description": "轻量的 AI Agent 核心：给它模型地址和工具（文件目录或内存对象），自动循环「问模型 → 执行工具 → 再问模型」。支持 OpenAI Chat / Responses、Anthropic、Gemini 四种协议，上下文压缩保留、提示词缓存，纯对话模型也能用工具。",
+  "version": "0.43.0",
+  "description": "轻量的 AI Agent 核心：给它模型地址和工具文件路径（也支持 MCP 服务），自动循环「问模型 → 执行工具 → 再问模型」。支持 OpenAI Chat / Responses、Anthropic、Gemini 四种协议，上下文压缩保留、提示词缓存，纯对话模型也能用工具。",
   "keywords": ["agent", "ai", "llm", "tool-calling", "bun", "openai", "anthropic", "gemini", "ai-sdk"],
   "license": "MIT",
   "author": "Kernyr",
@@ -15,24 +15,24 @@
   },
   "type": "module",
   "main": "./dist/agent-core.js",
-  "types": "./dist/agent-core.d.ts",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/agent-core.d.ts",
+      "types": "./dist/types/index.d.ts",
       "default": "./dist/agent-core.js"
     }
   },
-  "files": ["dist/agent-core.js", "dist/agent-core.d.ts", "README.md", "LICENSE"],
+  "files": ["dist/agent-core.js", "dist/types", "README.md", "LICENSE"],
   "engines": {
-    "bun": ">=1.3.14"
+    "bun": ">=1.4.4"
   },
   "scripts": {
     "test": "bun test",
-    "build": "bun scripts/build.js",
+    "build": "bun scripts/build.ts",
     "prepack": "bun run build",
     "prepublishOnly": "bun test",
-    "bump": "bun scripts/bump.js",
-    "release": "bun scripts/release.js",
+    "bump": "bun scripts/bump.ts",
+    "release": "bun scripts/release.ts",
     "check": "tsc --noEmit -p . && bun scripts/check-imports.ts",
     "publish:npm": "npm publish --registry=https://registry.npmjs.org --access public"
   },
@@ -44,7 +44,6 @@
     "ai": "^7.0.122",
     "jsonrepair": "^3.15.0",
     "nanoid": "^6.0.1",
-    "p-retry": "^9.0.0",
     "zod": "4.6.7",
     "@ai-sdk/mcp": "^2.0.99",
     "@types/bun": "^1.4.4",

@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 import { APICallError } from 'ai'
-import { Agent } from '../../index.ts'
-import type { Message } from '../../index.ts'
+import { Agent } from '../index.ts'
+import type { Message } from '../index.ts'
 import { script, tools, tool, toolNames } from './helpers.ts'
 
 // history 里所有工具结果，按出现顺序。

@@ -1,0 +1,12 @@
+{
+    // 发布用：只为包入口和 src/ 生成 .d.ts（scripts/build.ts 调用），不产出 JS——JS 由 Bun.build 打成单文件。
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": false,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "outDir": "dist/types",
+        "rootDir": "."
+    },
+    "include": ["index.ts", "src/**/*.ts"]
+}

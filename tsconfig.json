@@ -1,6 +1,6 @@
 {
-    // 新实现（src/、根目录 index.ts、tests/、scripts/）的类型检查配置。
-    // Bun 直接运行 .ts，所以这里只做类型检查（noEmit）；发布时另用 emitDeclarationOnly 生成 .d.ts。
+    // 类型检查配置：覆盖 src/、根目录 index.ts、tests/、scripts/。
+    // Bun 直接运行 .ts，所以这里只做类型检查（noEmit）；发布时 scripts/build.ts 按 tsconfig.build.json 生成 .d.ts。
     "compilerOptions": {
         "target": "ESNext",
         "module": "ESNext",

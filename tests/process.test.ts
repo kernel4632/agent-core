@@ -4,8 +4,8 @@ MCP 工具（用一个本地的假 MCP 服务器）。这些用例会真的起�
 */
 
 import { describe, expect, test } from 'bun:test'
-import { Agent } from '../../index.ts'
-import type { Message } from '../../index.ts'
+import { Agent } from '../index.ts'
+import type { Message } from '../index.ts'
 import { script, tools, tool, toolNames } from './helpers.ts'
 
 const results = (history: Message[]) => history.flatMap(message => message.role === 'tool' ? (message.content as any[]) : [])

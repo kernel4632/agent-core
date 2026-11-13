@@ -24,7 +24,7 @@ import { repository } from '../package.json'
 const root = fileURLToPath(new URL('../', import.meta.url)) // 必须是路径字符串：Windows 上传 URL 对象给 cwd，spawn 会找不到 git。
 const slug = new URL(repository.url.replace(/^git\+/, '')).pathname.replace(/^\/|\.git$/g, '')
 
-const run = (command, args) => {
+const run = (command: string, args: string[]): string => {
     const result = Bun.spawnSync([command, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
     const out = result.stdout.toString().trim()
     if (result.exitCode !== 0) throw new Error(`${command} ${args.join(' ')} 失败：\n${result.stderr.toString().trim() || out}`)
@@ -32,7 +32,7 @@ const run = (command, args) => {
 }
 
 const part = process.argv[2]
-if (!['major', 'minor', 'patch'].includes(part)) throw new Error('用法：bun run release <major|minor|patch>')
+if (!part || !['major', 'minor', 'patch'].includes(part)) throw new Error('用法：bun run release <major|minor|patch>')
 
 // --- 1. 发布的内容必须是 main 上一个干净的提交 ---
 const dirty = run('git', ['status', '--porcelain'])
@@ -45,8 +45,8 @@ console.log('本地测试…')
 run('bun', ['test'])
 
 // --- 3. 升版本号 ---
-const bumped = run('bun', ['scripts/bump.js', part])
-const next = bumped.split('→').pop().trim()
+const bumped = run('bun', ['scripts/bump.ts', part])
+const next = bumped.split('→').pop()!.trim()
 const tag = `v${next}`
 console.log(bumped)
 

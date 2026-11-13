@@ -4,15 +4,15 @@
 */
 
 import { describe, expect, test } from 'bun:test'
-import type { Message, State } from '../../src/types.ts'
-import { build } from '../../src/context/build.ts'
-import { append, turns, unanswered } from '../../src/history.ts'
-import { parse } from '../../src/model/text-tools/parse.ts'
-import { describe as describeTools } from '../../src/model/text-tools/describe.ts'
-import { shape } from '../../src/tools/shape.ts'
-import { calibrate, current, estimate } from '../../src/utils/tokens.ts'
-import { decide } from '../../src/loop/decide.ts'
-import { classify } from '../../src/utils/errors.ts'
+import type { Message, State } from '../src/types.ts'
+import { build } from '../src/context/build.ts'
+import { append, turns, unanswered } from '../src/history.ts'
+import { parse } from '../src/model/text-tools/parse.ts'
+import { describe as describeTools } from '../src/model/text-tools/describe.ts'
+import { shape } from '../src/tools/shape.ts'
+import { calibrate, current, estimate } from '../src/utils/tokens.ts'
+import { decide } from '../src/loop/decide.ts'
+import { classify } from '../src/utils/errors.ts'
 
 // 造一个 State：只填 build 用得到的字段。
 const stateOf = (history: Message[], config: Record<string, unknown> = {}): State => ({
