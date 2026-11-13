@@ -11,7 +11,7 @@
 ## 推送前必须改版本号
 
 每次准备 `git push` 之前，先把 `package.json` 里的 `version` 改掉，再提交这次改动。
-版本号只写在 `package.json` 一处，`scripts/build.js` 打包时会自动读进产物，不需要改别的地方。
+版本号只写在 `package.json` 一处，`scripts/build.ts` 打包时会自动读进产物，不需要改别的地方。
 
 改哪一位：
 
@@ -34,16 +34,30 @@
 
 判断标准很简单：**代码里只应该存在一种正确写法**。看到"为了兼容旧版"的分支，就说明该删了。
 
+## 代码结构规则（issue #30）
+
+- **TypeScript，运行在 Bun 上**（engines `bun >= 1.4.4`）。源码在 `src/`，包入口是根目录 `index.ts`，脚本在 `scripts/*.ts`。
+- **Agent 是唯一的状态持有者。** 公开字段 `config / history / tools / mcp / contextRatio / ratios / id`，私有 `#internal`（子进程、工具缓存、MCP 连接、取消器、警告去重）。
+  **模块里不允许有任何可变的顶层状态**，需要状态就放进 `#internal`、作为参数往下传。
+- **loop 是 history 唯一的写入者**；history 只增不删（压缩只追加 `role: 'compact'`）。
+- **导入只往下指：** `agent > loop > {context, model, tools} > history > utils > types`。同层能力模块（context / model / tools）互不导入，
+  不允许循环导入。`bun run check` 里的 `scripts/check-imports.ts` 负责检查。
+- **工具只认文件路径。** 插件、技能、渲染、开关都是宿主的概念，不进核心。工具子进程一律用 `process.execPath` 启动，不写死 `bun`。
+- **默认值在读取处套用**，不在构造时写回 config。
+- **不要把函数拆散。** 只有真的被多处复用时才抽辅助函数；一个文件约 100–200 行，注释（中文）和代码差不多一样多。
+  超过 200 行要有理由；自然很小的文件可以少于 100 行。
+
 ## 验证命令
 
-改完代码必须跑这两条，都通过才算完成：
+改完代码必须跑这三条，都通过才算完成：
 
 ```bash
-bun test
-bun run build
+bun run check     # tsc --noEmit + 导入方向检查
+bun test          # 用 ai/test 的 mock 模型，不联网
+bun run build     # 打包 + 临时目录自检 + 生成 dist/types
 ```
 
-推到 main 之后，GitHub Actions 也会自动再跑一遍测试和构建（`.github/workflows/ci.yml`）。
+推到 main 之后，GitHub Actions 也会自动再跑一遍检查、测试和构建（`.github/workflows/ci.yml`）。
 
 ## 发布新版
 
