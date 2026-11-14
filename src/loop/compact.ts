@@ -13,8 +13,8 @@ compact：整个项目唯一的压缩逻辑（取代旧实现的三个同名 com
    - system = 压缩专用的身份说明 + 当前上下文的 system（折着主提示词和上一次总结）作为背景——
      丢掉它，第二次压缩就看不到第一次总结过的事实；
    - 连接参数优先取 config.compact 里的（压缩可以用更便宜的模型），没写的沿用主配置；重试参数照搬（utils/retry.options）；
-   - 不沿用主配置的 maxTokens：那是给正式回答设的上限，思考模型会把大半花在思考上，总结被截断却照样写进 history（实录）；
-     压缩用模型自己的上限，长度靠 SUMMARY_PROMPT 约束；宿主确实要限制时写在 config.compact.maxTokens；
+   - 不传 maxTokens：那是给正式回答设的上限，思考模型会把大半花在思考上，总结被截断却照样写进 history（实录）；
+     压缩一律用模型自己的上限，长度靠 SUMMARY_PROMPT 约束；
    - 不带工具、不开文字工具、不要结构化输出：只要一段文字；provider 原样带上，只对工具有意义的 toolChoice
      由 model/configure 按"这一笔没带工具"的通用规则去掉，这里不特殊处理；
 3. model/ask 问模型：开始前发一条 onChunk({ type: 'compact-start' })，压缩模型的思考 / 正文 / finish 片段带上 compact: true
@@ -63,7 +63,7 @@ export async function compact(state: State, callbacks: Callbacks = {}, reason: C
     void tell(callbacks.onChunk, { type: 'compact-start', reason, compact: true })
     const reply = await ask({
         model: merged.model, baseURL: merged.baseURL, apiKey: merged.apiKey, protocol: merged.protocol,
-        cache: merged.cache, provider: merged.provider, maxTokens: state.config.compact?.maxTokens, stream: merged.stream, includeUsage: merged.includeUsage,
+        cache: merged.cache, provider: merged.provider, stream: merged.stream, includeUsage: merged.includeUsage,
         reasoning: merged.reasoning,                                     // before.messages 已按主配置摘过；压缩模型另有要求时由 ask 再处理一次。
         system,
         messages: [...before.messages, { role: 'user', content: SUMMARY_PROMPT }],

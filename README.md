@@ -199,7 +199,7 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 | `includeUsage` | `true` | `chat` 协议流式时请求 usage（token 校准靠它）；不认 `stream_options` 的中转站设 `false` |
 | `maxContextTokens` | `128000` | 上下文预算；`Infinity` 关闭自动压缩 |
 | `compactThreshold` | `0.8` | 估算达到预算的这个比例就压缩 |
-| `compact` | — | 压缩请求单独用的配置（比如更便宜的模型）。压缩不沿用主配置的 `maxTokens`（用模型自己的上限，总结长度靠提示词约束），要限制就写 `compact.maxTokens` |
+| `compact` | — | 压缩请求单独用的配置（比如更便宜的模型）。压缩不传 `maxTokens`（用模型自己的上限，总结长度靠提示词约束） |
 | `context` | `{ head: 0, beforeSummary: 10, budget: 0.3 }` | 压缩后的保留规则，见下文 |
 | `output` | — | 结构化输出格式（AI SDK `Output`） |
 | `noToolRounds` | `3` | 连续几轮不调工具就结束 |

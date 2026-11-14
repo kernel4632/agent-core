@@ -71,7 +71,7 @@ export interface Config {
     maxToolOutput?: number                    // 单个工具结果最多保留多少字符；默认不截断（截断时保留开头 70% + 结尾 30%）
     maxContextTokens?: number                 // 上下文预算，默认 128000；Infinity 关闭自动压缩
     compactThreshold?: number                 // 估算达到预算的这个比例就压缩，默认 0.8
-    compact?: Partial<Config>                 // 压缩请求单独用的模型 / 参数（省钱）
+    compact?: Omit<Partial<Config>, 'maxTokens'> // 压缩请求单独用的模型 / 参数（省钱）；压缩不限输出长度
     context?: ContextKeep                     // 压缩后保留规则，默认 { head: 0, beforeSummary: 10, budget: 0.3 }
     output?: unknown                          // 结构化输出格式；有值就用，没值就不用
     noToolRounds?: number                     // 连续几轮不调工具就结束，默认 3
