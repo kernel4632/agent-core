@@ -270,13 +270,13 @@ export interface Internal {
     warned: Set<string>                                         // 已提醒过的警告，避免每轮重复
 }
 
-// 一条 MCP 连接的记录：连接在后台进行，轮次最多等它一小会儿（tools/mcp 的 MCP_GRACE），之后只读它此刻的状态。
-// failed 的记录一直留着，直到宿主切换这条连接（enabled / MCP.close / 改配置）才会重连——不自动重试。
+// 一条 MCP 连接的记录：连接在后台进行，轮次从不等它，只读它此刻的状态。
+// failed 的记录一直留着，直到宿主切换这条连接（enabled / MCP.close / MCP.open / 改配置）才会重连——不自动重试。
 export interface MCPClient {
     key: string                                       // url + headers + transport，变了就重建
     status: 'connecting' | 'ready' | 'failed'
     tools: Record<string, Tool>                       // ready 之后才有内容
-    pending: Promise<void>                            // 这次连接的进行中任务（永不拒绝），轮次等它时用
+    error?: string                                    // 失败原因：还没通过 onWarning 报给宿主时有值，报过就清掉
     close: () => Promise<void>                        // 断开；连接中调用时，连上后立即关掉
 }
 

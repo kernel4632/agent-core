@@ -61,9 +61,11 @@ describe('坏插件文件', () => {
 
 describe('MCP', () => {
     // 一个最小的 Streamable HTTP MCP 服务器：只回 JSON（不开 SSE），实现 initialize / tools/list / tools/call。
-    const server = () => Bun.serve({
+    // delay：每个请求先等这么久（毫秒），模拟慢服务器。
+    const server = (delay = 0) => Bun.serve({
         port: 0,
         async fetch(request) {
+            await Bun.sleep(delay)
             if (request.method !== 'POST') return new Response(null, { status: 405 })
             const message = await request.json() as any
             if (message.id === undefined) return new Response(null, { status: 202 })      // 通知：不需要回复
@@ -80,13 +82,14 @@ describe('MCP', () => {
         try {
             const { model, calls } = script([{ calls: [{ name: 'fake_echo', input: { text: '你好' } }] }, { text: '好' }])
             const agent = Agent.create({ model, stream: false, noToolRounds: 1, MCP: [{ name: 'fake', url: `http://localhost:${fake.port}/mcp` }] })
+            await Bun.sleep(300)                                             // create 时就在后台开连；连上之后的请求才带它的工具
             await agent.send('hi')
             expect(toolNames(calls[0])).toEqual(['fake_echo'])
             expect(JSON.stringify(results(agent.history)[0].output)).toContain('echo:你好')
         } finally { fake.stop(true) }
     })
 
-    test('单条 MCP 临时关闭：enabled false 不连接；MCP.close 立即断开、下一轮工具消失；MCP.open 下一轮重连；整份替换 MCP.list 也生效', async () => {
+    test('单条 MCP 临时关闭：enabled false 不连接；MCP.close 立即断开、下一轮工具消失；MCP.open 立刻开连；整份替换 MCP.list 也生效', async () => {
         const fake = server()
         try {
             const { model, calls } = script([{ text: '好' }])
@@ -95,6 +98,7 @@ describe('MCP', () => {
             await agent.send('1')
             expect(toolNames(calls[0])).toEqual([])
             expect(agent.MCP.open('fake')).toEqual({ name: 'fake', found: true, enabled: true })
+            await Bun.sleep(300)
             await agent.send('2')
             expect(toolNames(calls[1])).toEqual(['fake_echo'])
             expect(await agent.MCP.close('fake')).toEqual({ name: 'fake', found: true, enabled: false, closed: true })
@@ -104,13 +108,31 @@ describe('MCP', () => {
             expect(await agent.MCP.close('nope')).toEqual({ name: 'nope', found: false, enabled: false, closed: false })
             agent.MCP.list = [{ name: 'fake', url: `http://localhost:${fake.port}/mcp` }] // 整份换成新数组：下一轮按新数组连接
             const { open, close } = agent.MCP                               // 解构出来单独调用也照常工作
-            await agent.send('4')
-            expect(toolNames(calls[3])).toEqual(['fake_echo'])
+            await agent.send('4')                                           // 这一轮开头发现新元素并开连，但不等它
+            expect(toolNames(calls[3])).toEqual([])
+            await Bun.sleep(300)
+            await agent.send('5')
+            expect(toolNames(calls[4])).toEqual(['fake_echo'])
             expect((await close('fake')).closed).toBe(true)
             expect(agent.MCP.list[0]!.enabled).toBe(false)
             expect(open('fake').enabled).toBe(true)
         } finally { fake.stop(true) }
     })
+
+    test('慢服务器不拖慢第一次请求；一次 send 中途连上，下一轮请求就带上它的工具', async () => {
+        const slow = server(400)                                             // 握手要好几个来回，每个 400ms
+        const dir = tools({ 'nap.ts': tool('nap', 'await Bun.sleep(2500); return "醒了"') })
+        const at: number[] = []
+        const started = Date.now()
+        const { model, calls } = script([() => { at.push(Date.now() - started); return { calls: [{ name: 'nap' }] } }, { text: '好' }])
+        try {
+            const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1, MCP: [{ name: 'slow', url: `http://localhost:${slow.port}/mcp` }] })
+            await agent.send('hi')
+            expect(at[0]!).toBeLessThan(400)                                // 第一次请求没等连接
+            expect(toolNames(calls[0])).toEqual(['nap'])
+            expect(toolNames(calls[1])).toEqual(['nap', 'slow_echo'])       // 工具跑着的时候连上了：下一轮就有
+        } finally { slow.stop(true) }
+    }, 15000)
 })
 
 describe('工具子进程细节', () => {
@@ -147,26 +169,29 @@ describe('MCP 连接不阻塞', () => {
         const warnings: string[] = []
         const onWarning = (warning: { message: string }) => { warnings.push(warning.message) }
         try {
-            await agent.send('1', { onWarning })
+            await Bun.sleep(300)                                             // create 后在后台失败：那时没有 send，原因先记下
+            await agent.send('1', { onWarning })                             // 下一次请求开始时报出来
             await agent.send('2', { onWarning })
             expect(warnings.filter(message => message.includes('dead'))).toHaveLength(1)
             expect(await agent.MCP.close('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
             agent.MCP.open('dead')
+            await Bun.sleep(300)
             await agent.send('3', { onWarning })
             expect(warnings.filter(message => message.includes('dead'))).toHaveLength(2)
         } finally { dead.stop(true) }
     })
 
-    test('一直不回应的服务器：这一轮最多等 MCP_GRACE 就继续，stop() 不被它拖住', async () => {
+    test('一直不回应的服务器：请求一点也不等它，stop() 也不被它拖住', async () => {
         const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
         try {
             const { model, calls } = script([{ text: '好' }])
             const agent = Agent.create({ model, stream: false, MCP: [{ name: 'hang', url: `http://localhost:${hang.port}/mcp` }] })
             const started = Date.now()
             await agent.send('1')
-            expect(Date.now() - started).toBeLessThan(3500)
+            expect(Date.now() - started).toBeLessThan(300)
             expect(toolNames(calls[0])).toEqual([])
-            const again = agent.send('2').catch(e => e)                      // 仍在连接中：这一轮又等 MCP_GRACE
+            model.doGenerate = (options: any) => new Promise((_, reject) => options.abortSignal?.addEventListener('abort', () => reject(options.abortSignal.reason)))
+            const again = agent.send('2').catch(e => e)                      // 仍在连接中：照常发请求
             await Bun.sleep(50)
             const stopping = Date.now()
             await agent.stop()

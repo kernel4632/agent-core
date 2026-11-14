@@ -7,9 +7,9 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
     agent.tools = agent.tools.filter(p => !p.startsWith('/plugins/a/'))   // 关掉插件 a：下一次请求就没有它的工具
     agent.config = { ...agent.config, model: 'claude-sonnet-4' }          // 中途换模型：下一轮生效
     const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
-    agent.MCP.list.push({ name: 'github', url })                          // 加一条 MCP 连接：下一轮在后台连接
+    agent.MCP.list.push({ name: 'github', url })                          // 加一条 MCP 连接：下一轮开头在后台开连（不等）
     await agent.MCP.close('github')                                       // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
-    agent.MCP.open('github')                                              // 重新打开：enabled 置 true，下一轮在后台重连（连不上走 onWarning）
+    agent.MCP.open('github')                                              // 重新打开：enabled 置 true，立刻在后台重连，连上后下一次请求就有它的工具
     await agent.compact()                                                 // 宿主点"压缩"：强制压缩一次
     const reply = await Agent.LLM.ask({ model, baseURL, apiKey, messages })  // 不建实例也能直接问模型
 
@@ -18,14 +18,14 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
 私有状态（#internal，不对外）：工具元数据缓存、MCP 连接、正在跑的子进程 procs、当前运行的取消器、警告去重。
 每个实例完全隔离，不共享任何可变状态；一个实例就是一段对话，核心里没有"会话"概念，要多段对话就 create 多个实例。
 
-导入：loop/run（run、compact）、tools/spawn（kill）、tools/mcp（close，在这里叫 disconnect）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
+导入：loop/run（run、compact）、tools/spawn（kill）、tools/mcp（connect；close，在这里叫 disconnect）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
 */
 
 import { nanoid } from 'nanoid'
 import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, MCP, MCPToggle, Message, State, Stopped } from './types.ts'
 import { run, compact } from './loop/run.ts'
 import { kill } from './tools/spawn.ts'
-import { close as disconnect } from './tools/mcp.ts'
+import { close as disconnect, connect } from './tools/mcp.ts'
 import { append } from './history.ts'
 import { ask } from './model/ask.ts'
 import { cancelled } from './utils/errors.ts'
@@ -45,7 +45,7 @@ export class Agent {
 
     /*
     构造函数不对外推荐使用，统一走 Agent.create（保持和旧 API 一致的工厂写法）。
-    只做字段赋值和入口校验（config 必须有 model、history 必须是数组、tools / MCP 必须是数组），不做任何 I/O。
+    只做字段赋值和入口校验（config 必须有 model、history 必须是数组、tools / MCP 必须是数组）；唯一的 I/O 是让 MCP 连接在后台开始（不等它，create 仍是同步的）。
     */
     constructor(options: CreateOptions) {
         if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Agent.create options must be an object')
@@ -78,19 +78,21 @@ export class Agent {
                 return { name, found: index >= 0, enabled: false, closed }
             },
             /*
-            open：重新打开 close 关掉的连接——只把 enabled 改回 true，下一轮请求时才在后台连接
-            （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
+            open：重新打开 close 关掉的连接——把 enabled 改回 true 并立刻在后台开连（不等）
+            （连上之后的下一次请求就带上它的工具；连不上在下一轮走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
             */
             open(name: string): MCPToggle {
                 const list = agent.MCP.list
                 const index = list.findIndex(server => server.name === name)
                 if (index >= 0) list[index] = { ...list[index]!, enabled: true }
+                connect(list, agent.#internal.MCPClients)                 // 立刻在后台开连，不等；连上后下一次请求就带上它的工具。
                 return { name, found: index >= 0, enabled: index >= 0 }
             },
         }
         this.contextRatio = contextRatio
         this.ratios = ratios
         this.#internal = { procs: new Set(), toolCache: new Map(), MCPClients: new Map(), controller: null, running: null, warned: new Set() }
+        connect(MCP, this.#internal.MCPClients)                         // MCP 尽早开连：第一次 send 之前就可能已经连上。失败留到下一轮报。
     }
 
     /*

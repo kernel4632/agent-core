@@ -6,7 +6,7 @@ loop：唯一的编排者，也是整个项目里唯一写 history 的地方。�
     const { summary } = await compact(state, callbacks, 'manual') // agent.compact()：强制压缩一次
 
 run 的一轮（循环直到 decide 说结束，不设最大轮数）：
-1. 现读工具：tools/load（agent.tools 的元数据）+ tools/mcp connect（agent.MCP.list，后台连接，只用已连上的），合成这一轮的工具描述表；
+1. 现读工具：tools/load（agent.tools 的元数据）+ tools/mcp connect（agent.MCP.list，后台连接、从不等待，只用此刻已连上的），合成这一轮的工具描述表；
 2. context/build 现拼上下文；over 为 true 就调 compact('auto') 后重新 build——"何时压"只在这里判断一处；
 3. onInject 问宿主要不要临时附一句话；连同上一轮 decide 给的提醒，只挂在这一次请求上，不写进 history；
 4. model/ask 问模型（流式片段转给 onChunk）；拿到真实 usage 后用 utils/tokens.calibrate 校准 state.ratios；
@@ -74,7 +74,8 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             const config = state.config                                 // 这一轮的配置快照：宿主运行中整份替换也只影响下一轮。
 
             // --- 1. 现读工具：路径元数据（mtime 缓存）+ MCP；合成发给模型的描述表 ---
-            const [metas, MCPTools] = await Promise.all([load(state.tools, internal, callbacks.onWarning), connect(state.MCP, internal.MCPClients, callbacks.onWarning, signal)])
+            const metas = await load(state.tools, internal, callbacks.onWarning)
+            const MCPTools = connect(state.MCP, internal.MCPClients, callbacks.onWarning) // 同步：只拿此刻已连上的，从不等连接；新元素在这里开连。
             const schemas: Record<string, { description: string; parameters: JSONSchema7 }> = {}
             for (const meta of metas) schemas[meta.name] = { description: meta.description, parameters: meta.parameters }
             for (const [name, tool] of Object.entries(MCPTools)) schemas[name] = { description: typeof tool.description === 'string' ? tool.description : '', parameters: await asSchema(tool.inputSchema as any).jsonSchema as JSONSchema7 }

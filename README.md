@@ -151,16 +151,19 @@ agent.MCP.list = [                       // 也可以 Agent.create({ MCP: [...] 
 ```
 
 核心负责连接（默认 Streamable HTTP，老服务器用 `sse`），工具名统一加 `${name}_` 前缀。
-连接在后台进行，不阻塞对话：每轮最多等正在连接的服务器 2 秒（`stop()` 立刻不等），连上之后的那一轮起工具才出现。
-连接按配置缓存，配置变了自动重建，从数组里删掉的连接会被关闭。连不上（含握手超过 15 秒）只发一条 `onWarning`，不影响别的工具，
+**连接完全异步，从不阻塞**：请求、`send`、`stop()` 都不会等任何 MCP 连接。连接尽早开始（`Agent.create` 时、`MCP.open` 时、
+每轮开头发现 `list` 里有新元素时），在后台连上的那一刻起，下一次构建请求就带上它的工具——一次 `send` 中途连上的，下一轮请求就能用。
+还没连上的这一轮就是没有它的工具。连接按配置缓存，配置变了自动重建，从数组里删掉的连接会被关闭。
+连不上（含握手超过 15 秒）不影响别的工具，原因先记下，由**下一次请求开始时**通过那次 `send` 的 `onWarning` 报一次
+（连接可能在没有 `send` 在跑时失败，那一刻没有回调可用；而失败影响的正是下一次请求，在那时报最对得上），
 **也不自动重连**——要重试就切一下这条连接的开关（`MCP.close` / `MCP.open`、`enabled`、或改配置）。
 
-**临时关闭某一条：** 元素上的 `enabled` 每轮现读——`false` 断开连接、下一轮起它的工具消失；改回 `true`（或删掉这个字段）下一轮重连。
+**临时关闭某一条：** 元素上的 `enabled` 每轮现读——`false` 断开连接、下一轮起它的工具消失；改回 `true`（或删掉这个字段）下一轮开头重新开连。
 也可以用方法，效果相同：
 
 ```ts
 await agent.MCP.close('github')   // → { name: 'github', found: true, enabled: false, closed: true }，立即断开
-agent.MCP.open('github')          // → { name: 'github', found: true, enabled: true }，下一轮在后台重连
+agent.MCP.open('github')          // → { name: 'github', found: true, enabled: true }，立刻在后台重连（不等）
 ```
 
 `MCP.close` 把 `MCP.list` 里同名元素原地换成 `enabled: false` 的新对象并立即断开连接（`closed` 表示是否真的断开了一条已连上的连接，连接中 / 连接失败的记录只是被移出，
