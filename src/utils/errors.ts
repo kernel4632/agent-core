@@ -7,6 +7,8 @@
 
 为什么"上下文超长"也在这里：它是一种分类（kind = 'overflow'），重试见到它不重试，
 loop 见到它就强制压缩一次再重发——两边用同一份判据，判据只写一处。
+宿主回调出错的处理（tell）也放在这里：它回答的是"宿主代码出错了怎么办"，loop / model / tools / retry 都要用，
+只能放在最底层的 utils 里，规则只写一处。
 本文件不导入任何东西，处在依赖图最底层；不持有任何模块级可变状态（正则是常量）。
 */
 
@@ -15,7 +17,7 @@ import type { ErrorKind } from '../types.ts'
 // 通用的"上下文超长"措辞（照抄 Roo Code 的判据，大小写不敏感）：400 + 长度 / 窗口字样。
 const OVERFLOW_GENERAL = /context length|window|maximum context|(input )?tokens? exceed|too many tokens/i
 // Anthropic 家族特有的措辞，和状态码无关。
-const OVERFLOW_ANTHROPIC = /prompt is too long|maximum.*tokens|context.*too.*long|exceeds.*context|token.*limit|context_length_exceeded/i
+const OVERFLOW_ANTHROPIC = /prompt is too long|maximum.*tokens|context.*too.*long|exceeds.*context|token.*limit|context_length_exceeded|max_tokens_to_sample/i
 
 /*
 classify：判断一个错误属于哪一类，并把 kind 写回错误对象上（已经有 kind 的不重复判断）。
@@ -69,4 +71,15 @@ stop() 打断运行时，send / compact 的 Promise 以它拒绝。
 export function cancelled(): Error {
     // DOMException 的 name 就是 AbortError，和 fetch / AbortSignal 的取消错误同一种形状，宿主现有的判断都认。
     return Object.assign(new DOMException('Agent aborted', 'AbortError'), { kind: 'aborted' as const })
+}
+
+/*
+tell：调一个宿主回调，宿主代码出错（同步抛错或返回的 Promise 被拒绝）都吞掉，不打断循环 / 请求 / 工具。
+
+- 返回一个永不拒绝的 Promise：需要等宿主做完的地方（onStep：宿主在这里持久化这一轮；onToolCall：工具开跑前先让界面显示）就 await；
+- 高频的通知（onChunk、onToolOutput、onRetry、onWarning）不 await，写成 void tell(...)——等它就等于给模型输出加了节流阀；
+- 不 await 也安全：拒绝在这里被 catch 住，不会变成未处理拒绝（Bun 对未处理拒绝会直接退出宿主进程，旧实现 issue #26）。
+*/
+export async function tell<T>(callback: ((value: T) => unknown) | undefined, value: T): Promise<void> {
+    try { await callback?.(value) } catch { /* 宿主回调出错不影响核心 */ }
 }

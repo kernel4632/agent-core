@@ -239,3 +239,94 @@ describe('Agent.LLM.ask', () => {
         expect(JSON.stringify(send.calls[0].prompt)).toContain('旧想法')
     })
 })
+
+describe('回调与诊断', () => {
+    test('回调抛错或返回被拒绝的 Promise 都不打断循环；onToolCall / onStep 会被等待；返回 steps', async () => {
+        const dir = tools({ 'a.ts': tool('a', 'return 1') })
+        const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好' }])
+        const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })          // 流式：onChunk 也是高频回调
+        const order: string[] = []
+        const reject = async () => { throw new Error('宿主回调坏了') }
+        const answer = await agent.send('hi', {
+            onChunk: reject, onToolResult: async () => { order.push('result'); throw new Error('坏') }, onWarning: reject,
+            onToolCall: async () => { await Bun.sleep(50); order.push('call') },
+            onStep: async ({ step }) => { await Bun.sleep(50); order.push(`step${step}`) },
+        })
+        expect(answer).toMatchObject({ reason: 'no-tool', text: '好', steps: 2 })
+        expect(order).toEqual(['call', 'result', 'step1', 'step2'])
+    })
+
+    test('无效调用（工具不存在）不问权限、不执行，写"调用无效"结果；onPermission 返回非布尔值按拒绝、只警告一次', async () => {
+        const dir = tools({ 'a.ts': tool('a', 'return 1') })
+        const { model } = script([{ calls: [{ name: 'ghost' }, { name: 'a' }, { name: 'a' }] }, { text: '好' }])
+        const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
+        const asked: string[] = []
+        const warnings: string[] = []
+        await agent.send('hi', { onPermission: call => { asked.push(call.toolName); return 'yes' as any }, onWarning: warning => { warnings.push(warning.message) } })
+        expect(asked).toEqual(['a', 'a'])
+        const [ghost, first] = results(agent.history)
+        expect(ghost.output).toMatchObject({ type: 'error-text', value: expect.stringContaining('工具调用无效') })
+        expect(first.output.type).toBe('execution-denied')
+        expect(warnings.filter(message => message.includes('onPermission'))).toHaveLength(1)
+    })
+
+    test('权限等待中 stop()：立即不等，写"已取消"，send 以 aborted 拒绝', async () => {
+        const dir = tools({ 'a.ts': tool('a', 'return 1') })
+        const { model } = script([{ calls: [{ name: 'a' }] }])
+        const agent: Agent = Agent.create({ model, tools: [dir], stream: false })
+        const running = agent.send('hi', { onPermission: () => { setTimeout(() => void agent.stop(), 50); return new Promise<boolean>(() => {}) } })
+        expect((await running.catch(e => e)).kind).toBe('aborted')
+        expect(results(agent.history)[0].output.value).toBe('工具执行已取消')
+    })
+
+    test('send 在等上一次收尾时被 stop()：这一次不开工，它的输入也不写进 history', async () => {
+        const { model, calls } = script([{ text: '永远不会到' }])
+        model.doGenerate = (options: any) => { calls.push(options); return new Promise((_, reject) => options.abortSignal?.addEventListener('abort', () => reject(options.abortSignal.reason))) }
+        const agent = Agent.create({ model, stream: false })
+        const first = agent.send('一').catch(e => e)
+        await Bun.sleep(20)
+        const second = agent.send('二').catch(e => e)
+        await agent.stop()
+        expect((await first).kind).toBe('aborted')
+        expect((await second).kind).toBe('aborted')
+        expect(calls).toHaveLength(1)
+        expect(JSON.stringify(agent.history)).not.toContain('二')
+    })
+
+    test('onInject 拿到阈值和比例来源；onCompact 带 reason、总结正文和诊断；超长重发的 reason 是 overflow', async () => {
+        const { model } = script([{ text: '这是总结' }, { text: '继续' }])
+        const history: Message[] = [{ id: 'u0', role: 'user', content: '很长的开场'.repeat(1000) }, { id: 'a0', role: 'assistant', content: [{ type: 'text', text: '好' }] }]
+        const infos: any[] = []
+        const injects: any[] = []
+        await Agent.create({ model, history, stream: false, maxContextTokens: 1000 }).send('下一步', { onCompact: info => { infos.push(info) }, onInject: info => { injects.push(info); return undefined } })
+        expect(infos[0]).toMatchObject({ reason: 'auto', summary: '这是总结', budget: 1000, compactThreshold: 0.8, ratioSource: 'default' })
+        expect(infos[0].before).toBeGreaterThan(infos[0].after)
+        expect(injects[0]).toMatchObject({ budget: 1000, compactThreshold: 0.8, ratioSource: 'default' })
+
+        let first = true
+        const overflow = script([() => { if (first) { first = false; throw new APICallError({ message: 'maximum context length exceeded', url: 'http://x', requestBodyValues: {}, statusCode: 400 }) } return { text: '总结' } }, { text: '答' }])
+        const reasons: string[] = []
+        await Agent.create({ model: overflow.model, stream: false }).send('hi', { onCompact: info => { reasons.push(info.reason) } })
+        expect(reasons).toEqual(['overflow'])
+    })
+
+    test('provider.toolChoice 只在真的带工具时发送：压缩请求和没有工具的请求都不带', async () => {
+        const dir = tools({ 'a.ts': tool('a', "return { output: 1, stop: true }") })
+        const { model, calls } = script([{ text: '总结' }, { calls: [{ name: 'a' }] }])
+        const agent = Agent.create({ model, tools: [dir], stream: false, provider: { toolChoice: 'required' }, history: [{ id: 'u', role: 'user', content: '你好' }] })
+        expect(await agent.compact()).toBe('总结')                                    // 'required' 漏到压缩请求上会因"没调工具"报错
+        expect((await agent.send('hi')).reason).toBe('tool-stop')
+        expect(calls[0].toolChoice?.type).not.toBe('required')
+        expect(calls[1].toolChoice).toEqual({ type: 'required' })
+    })
+
+    test('文字工具流式：调用块之外的正文边收边推，调用块本身不推；不是调用的标签照常推', async () => {
+        const dir = tools({ 'add.ts': tool('add', 'return args.x + 1') })
+        const { model } = script([{ text: '我来算<tool_call>{"name": "add", "arguments": {"x": 41}}</tool_call>' }, { text: '答案 <b>42</b>' }], 'plain-chat')
+        const agent = Agent.create({ model, tools: [dir], textTools: true, noToolRounds: 1 })
+        let text = ''
+        await agent.send('41+1', { onChunk: chunk => { if (chunk.type === 'text') text += chunk.text } })
+        expect(text).toBe('我来算答案 <b>42</b>')
+        expect(results(agent.history)[0].output.value).toBe(42)
+    })
+})

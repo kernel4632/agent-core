@@ -19,6 +19,11 @@ procs 是 Agent 实例私有的 Set，由调用方传入——放在本模块里
 import { fileURLToPath } from 'node:url'
 import type { Subprocess } from 'bun'
 import type { ChildRequest } from './child.ts'
+import { tell } from '../utils/errors.ts'
+
+// 替模型攒着的"已产出内容"上限（字符）：工具超时 / 被取消 / 崩溃时把它连同原因交给模型，让它知道跑到了哪里。
+// 即使宿主没设 maxToolOutput 也要有上限：一个边跑边刷日志、又长期不返回的工具，否则能把主进程内存吃光。
+const MAX_PARTIAL = 1 << 20
 
 // 打包时由 scripts/build.ts 的 define 替换成 child 的完整源码；源码直接运行时它不存在。
 declare const __AGENT_CORE_CHILD__: string | undefined
@@ -32,28 +37,32 @@ export type ChildResult =
 spawn：启动一个 child 子进程执行一条指令，等它通过 IPC 回结果后立刻 kill 它并返回。
 
 - 启动后立即加入 procs，退出（无论成败）立即移出；
-- 工具自己的 stdout / stderr 实时交给 onOutput（宿主显示工具进度），stderr 尾部留着给崩溃时说明原因；
+- 工具自己的 stdout / stderr 实时交给 onOutput（宿主显示工具进度），同时攒进一个有上限的头尾缓冲
+  （开头 70% + 结尾 30%，上限取 limit，没有就 MAX_PARTIAL），没拿到结果就结束时，错误里带上这些已产出的内容；
 - timeout 到了就 kill 并返回 { ok: false, timedOut: true }；
-- 被 killAll 杀掉返回 { ok: false, killed: true }，由调用方补"已取消"；
-- 进程崩溃、没回结果就退出，返回 { ok: false, error: 退出码和 stderr 尾部 }。
+- 被 killAll 杀掉（killAll 先把它移出 procs 再杀）返回 { ok: false, killed: true }，由调用方补"已取消"；
+- 别的原因死掉（崩溃、被系统 OOM 杀掉——同样是 SIGKILL，但不是我们杀的）返回 { ok: false, error: 退出原因 }，不算取消。
 永远不抛错：工具的错都是结果，交给模型处理。
 */
 export async function spawn(
     request: ChildRequest,
     procs: Set<Subprocess>,
-    options: { timeout?: number; onOutput?: (stream: 'stdout' | 'stderr', data: string) => void } = {},
+    options: { timeout?: number; onOutput?: (stream: 'stdout' | 'stderr', data: string) => unknown } = {},
 ): Promise<ChildResult> {
     const inline = typeof __AGENT_CORE_CHILD__ === 'string' ? __AGENT_CORE_CHILD__ : null
     let answer: ChildResult | null = null                                 // child 回的结果；收到后就不再关心进程怎么退出。
     let timedOut = false
-    let stderrTail = ''
+    // 头尾缓冲：头部攒满 70% 后只滚动保留尾部 30%，中间丢掉的字符数记在 dropped 里。
+    const cap = request.mode === 'run' && request.limit !== undefined && Number.isFinite(request.limit) ? request.limit : MAX_PARTIAL
+    let head = '', tail = '', dropped = 0
     let proc: Subprocess<any, 'pipe', 'pipe'>
     try {
         proc = Bun.spawn([process.execPath, inline ? '-' : fileURLToPath(new URL('./child.ts', import.meta.url))], {
             stdin: inline ? new Blob([inline]) : 'ignore',
             stdout: 'pipe',
             stderr: 'pipe',
-            env: { ...process.env, AGENT_CORE_CHILD: '1', BUN_BE_BUN: '1' },
+            // AGENT_CORE_CHILD 的值告诉 child：BUN_BE_BUN 是不是我们替它加的（是就别漏给工具起的孙进程）。
+            env: { ...process.env, AGENT_CORE_CHILD: process.env.BUN_BE_BUN === undefined ? 'added' : 'kept', BUN_BE_BUN: '1' },
             ipc(message, child) {
                 if (message?.ready) return void child.send(request)        // 握手完成才派活，消息不会丢。
                 answer = message as ChildResult
@@ -64,14 +73,15 @@ export async function spawn(
         return { ok: false, error: `无法启动工具子进程：${(error as Error)?.message ?? String(error)}` }
     }
     procs.add(proc)
-    // 两路输出各用一个解码器（共用会把被拆开的汉字拼到另一路上），读到就转发。
+    // 两路输出各用一个解码器（共用会把被拆开的汉字拼到另一路上），读到就转发，并攒进头尾缓冲。
     const relay = async (stream: ReadableStream<Uint8Array>, name: 'stdout' | 'stderr') => {
         const decoder = new TextDecoder()
         try {
             for await (const chunk of stream) {
                 const text = decoder.decode(chunk, { stream: true })
-                if (name === 'stderr') stderrTail = (stderrTail + text).slice(-2000)
-                try { options.onOutput?.(name, text) } catch { /* 宿主回调出错不影响工具 */ }
+                if (head.length < cap * 0.7) head += text
+                else { tail += text; if (tail.length > cap * 0.3) { const cut = tail.length - Math.floor(cap * 0.3); dropped += cut; tail = tail.slice(cut) } }
+                void tell(data => options.onOutput?.(name, data), text)            // 宿主回调出错（含异步拒绝）不影响工具。
             }
         } catch { /* 进程被杀时管道会被重置，当成流结束 */ }
     }
@@ -79,16 +89,20 @@ export async function spawn(
     const timer = options.timeout && Number.isFinite(options.timeout) ? setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, options.timeout) : null
     const code = await proc.exited
     if (timer) clearTimeout(timer)
-    procs.delete(proc)
+    const cancelled = !procs.delete(proc) && !timedOut && !answer        // 已经不在 procs 里 = killAll 先移出再杀的，这才是"取消"。
     await Promise.race([reading, Bun.sleep(50)])                          // 给输出一点时间读完；孙进程占着管道时不无限等。
     if (answer) return answer
-    if (timedOut) return { ok: false, timedOut: true, error: `工具执行超时（${options.timeout}ms）` }
-    if (proc.signalCode === 'SIGKILL') return { ok: false, killed: true, error: '工具执行已取消' }
-    return { ok: false, error: `工具子进程异常退出（退出码 ${code}）${stderrTail ? `：${stderrTail.trim()}` : ''}` }
+    // 已产出的内容放在原因前面，模型能看到工具停在了哪一步。
+    const partial = (dropped ? `${head}\n\n……[输出过长，中间省略 ${dropped} 个字符]……\n\n${tail}` : head + tail).trim()
+    const withPartial = (reason: string) => partial ? `${partial}\n${reason}` : reason
+    if (timedOut) return { ok: false, timedOut: true, error: withPartial(`工具执行超时（${options.timeout}ms）`) }
+    if (cancelled) return { ok: false, killed: true, error: withPartial('工具执行已取消') }
+    const why = proc.signalCode ? `被信号 ${proc.signalCode} 终止${proc.signalCode === 'SIGKILL' ? '（可能是内存不足被系统杀掉）' : ''}` : `退出码 ${code}`
+    return { ok: false, error: withPartial(`工具子进程异常退出（${why}）`) }
 }
 
 /*
-killAll：立刻 kill procs 里的全部子进程（SIGKILL，不给它们收尾的机会），清空集合，
+killAll：先清空集合、再 kill 里面的全部子进程（SIGKILL，不给它们收尾的机会）——先移出是 spawn 区分"被取消"和"自己死掉"的依据，
 等到它们全部确认退出后返回被杀的个数（stop() 据此告诉宿主"已经停干净了"）。
 各自的 spawn 调用会因此以 killed 结束。
 */

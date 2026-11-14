@@ -2,7 +2,7 @@
 本地 token 估算：不装分词器，按"字符数 × 每字符 token 比例"估，再用真实 usage 校准比例。
 
 调用示例：
-    const ratio = current(state.ratios, config.model, state.contextRatio)   // 这个模型现在用的比例
+    const { ratio, source } = current(state.ratios, config.model, state.contextRatio)   // 这个模型现在用的比例和它的来源
     const { tokens } = estimate({ system, messages, tools }, ratio)          // 估一份请求
     calibrate(state.ratios, config.model, payload, reply.usage.inputTokens)  // 用真实 usage 修正比例
 
@@ -17,7 +17,7 @@ ratios 是 Agent 的公开状态（{ 模型名: 比例 }），宿主直接读写
 校准时也先扣掉这部分，否则一张图就能把学到的比例拉到接近 0。
 */
 
-import type { ModelInput, Usage } from '../types.ts'
+import type { ModelInput, RatioSource, Usage } from '../types.ts'
 
 export const DEFAULT_RATIO = 0.6   // 每字符多少 token；偏高，宁可早压缩也不撑爆上下文
 export const MEDIA_TOKENS = 1200   // 一个媒体块按多少 token 估；偏保守
@@ -60,14 +60,14 @@ export function modelName(model: ModelInput): string {
 }
 
 /*
-current：这个模型现在该用的比例。学到的优先，其次宿主的冷启动值，最后默认值。
-冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。
+current：这个模型现在该用的比例，以及它从哪来（usage / host / default）。学到的优先，其次宿主的冷启动值，最后默认值。
+冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。来源一起返回，宿主据此判断估算可不可信（onInject / onCompact）。
 */
-export function current(ratios: Record<string, number>, model: ModelInput, seed?: number): number {
+export function current(ratios: Record<string, number>, model: ModelInput, seed?: number): { ratio: number; source: RatioSource } {
     const learned = ratios[modelName(model)]
-    if (typeof learned === 'number' && Number.isFinite(learned) && learned > 0) return learned  // 宿主手写的坏值当没有。
-    if (typeof seed === 'number' && Number.isFinite(seed) && seed > 0) return seed
-    return DEFAULT_RATIO
+    if (typeof learned === 'number' && Number.isFinite(learned) && learned > 0) return { ratio: learned, source: 'usage' } // 宿主手写的坏值当没有。
+    if (typeof seed === 'number' && Number.isFinite(seed) && seed > 0) return { ratio: seed, source: 'host' }
+    return { ratio: DEFAULT_RATIO, source: 'default' }
 }
 
 /*

@@ -8,11 +8,10 @@ run：执行一轮里模型发出的全部工具调用。全部并行、不设�
 
 规则：
 - 普通工具（名字在 metas 里）：tools/spawn 起子进程，mode 'run'，超时取工具自己的 timeout；
-  结果已经在子进程里经过 shape；被杀返回 cancelled，超时 / 崩溃 / 抛错变成带 error 的结果；
+  结果已经在子进程里经过 shape；被 stop() 杀掉返回 cancelled，超时 / 崩溃 / 抛错变成带 error 的结果（错误里带着已产出的输出）；
 - MCP 工具（名字在 mcpTools 里）：主进程调 execute(input, { abortSignal: signal })，结果交给 shape；
 - 名字两边都找不到（模型编的、或这一轮刚被宿主删掉）：返回 error 结果，告诉模型这个工具不存在；
-- 文字工具解析出的坏调用（input 带 __invalid）：不执行，直接返回 error 结果，让模型重写；
-- 被拒绝权限的调用不会进到这里（loop 已经直接写了拒绝结果）；
+- 不合法的调用（call.invalid）和被拒绝权限的调用不会进到这里：loop 在问权限之前 / 之后已经直接写了结果；
 - 永远不抛错：工具的错都是结果，写进 history 交给模型。
 导入：同目录 spawn、shape。
 */
@@ -35,14 +34,12 @@ export async function run(
     calls: ToolCall[],
     tools: Runnable,
     procs: Set<Subprocess>,
-    options: { signal?: AbortSignal; limit?: number; onOutput?: (output: { toolCallId: string; stream: 'stdout' | 'stderr'; data: string }) => void } = {},
+    options: { signal?: AbortSignal; limit?: number; onOutput?: (output: { toolCallId: string; stream: 'stdout' | 'stderr'; data: string }) => unknown } = {},
 ): Promise<ToolResult[]> {
     const { signal, limit, onOutput } = options
     // 一个调用的失败结果：错误也写成 error-text 输出块，模型才能读到原因。
     const failed = (call: ToolCall, error: string, extra: Partial<ToolResult> = {}): ToolResult => ({ ...call, output: { type: 'error-text', value: error }, error, ...extra })
     return Promise.all(calls.map(async (call): Promise<ToolResult> => {   // Promise.all 的结果顺序就是 calls 的顺序。
-        const invalid = (call.input as Record<string, unknown> | null)?.__invalid
-        if (invalid) return failed(call, `工具调用无效：${invalid}`)
         if (signal?.aborted) return failed(call, '工具执行已取消', { cancelled: true })
         const meta = tools.metas.find(one => one.name === call.toolName)
         if (meta) {

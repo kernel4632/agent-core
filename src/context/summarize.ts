@@ -29,6 +29,7 @@ request：把当前上下文变成一次"写总结"的问模型请求。
 - built.system 里折着主提示词和上一次的总结，作为背景并进压缩专用的 system——丢掉它，第二次压缩就看不到第一次总结过的事实；
 - 连接参数优先取 config.compact 里的（压缩可以用更便宜的模型），没写的沿用主配置；
 - 不带工具、不开文字工具、不要结构化输出：总结请求只要一段文字；stream 照搬配置（默认流式，loop 把片段标上 compact 转给宿主）；
+  provider 原样带上，其中只对工具有意义的 toolChoice 由 model/configure 按"这一笔没带工具"的通用规则去掉，这里不特殊处理；
 - 重试参数照搬主配置（retryMaxTries 等收拢成 RetryOptions）。
 */
 export function request(built: { system?: string; messages: ModelMessage[] }, config: Config): AskRequest {
@@ -36,7 +37,7 @@ export function request(built: { system?: string; messages: ModelMessage[] }, co
     const system = ['你在压缩一段你自己参与过的工作记录。只输出总结内容本身。', built.system && `下面是这段工作的背景设定和此前的压缩记录，新总结必须保留其中仍然有效的事实：\n\n${built.system}`].filter(Boolean).join('\n\n')
     return {
         model: merged.model, baseURL: merged.baseURL, apiKey: merged.apiKey, protocol: merged.protocol,
-        cache: merged.cache, provider: merged.provider, maxTokens: merged.maxTokens, stream: merged.stream,
+        cache: merged.cache, provider: merged.provider, maxTokens: merged.maxTokens, stream: merged.stream, includeUsage: merged.includeUsage,
         reasoning: merged.reasoning,                                     // built.messages 已按主配置摘过；压缩模型另有要求时由 ask 再处理一次。
         system,
         messages: [...built.messages, { role: 'user', content: SUMMARY_PROMPT }],

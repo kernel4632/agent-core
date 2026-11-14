@@ -12,7 +12,9 @@ import { describe as describeTools } from '../src/model/text-tools/describe.ts'
 import { shape } from '../src/tools/shape.ts'
 import { calibrate, current, estimate } from '../src/utils/tokens.ts'
 import { decide } from '../src/loop/decide.ts'
-import { classify } from '../src/utils/errors.ts'
+import { classify, tell } from '../src/utils/errors.ts'
+import { retry } from '../src/utils/retry.ts'
+import { configure } from '../src/model/configure.ts'
 
 // 造一个 State：只填 build 用得到的字段。
 const stateOf = (history: Message[], config: Record<string, unknown> = {}): State => ({
@@ -55,20 +57,33 @@ describe('context/build', () => {
         expect(texts(built.messages).filter(text => text.startsWith('问'))).toEqual(['问3字', '问4字']) // 预算 1500：只装得下最近两轮
     })
 
-    test('压缩后始终保留本次输入：beforeSummary 0、预算再紧也补回最后一条用户消息（不带它后面的工具现场）', () => {
+    test('进行中的那一轮整轮放不下：用户那句话必留，再按步从后往前补装得下的最近几步；budget 0 只留那句话', () => {
+        const step = (n: number, size: number): Message[] => [
+            { id: `a${n}`, role: 'assistant', content: [{ type: 'tool-call', toolCallId: `t${n}`, toolName: 'x', input: {} }] },
+            { id: `r${n}`, role: 'tool', content: [{ type: 'tool-result', toolCallId: `t${n}`, toolName: 'x', output: { type: 'text', value: `结果${n}` + '字'.repeat(size) } }] },
+        ]
         const history: Message[] = [
             { id: 'u1', role: 'user', content: '旧问题' },
-            { id: 'a1', role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
-            { id: 'u2', role: 'user', content: '当前任务' + '字'.repeat(3000) },
-            { id: 'a2', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 't1', toolName: 'x', input: {} }] },
-            { id: 'r2', role: 'tool', content: [{ type: 'tool-result', toolCallId: 't1', toolName: 'x', output: { type: 'text', value: '大量输出' } }] },
+            { id: 'a0', role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
+            { id: 'u2', role: 'user', content: '当前任务' },
+            ...step(1, 3000), ...step(2, 3000), ...step(3, 100),
             { id: 'c', role: 'compact', content: '总结正文' },
         ]
-        for (const config of [{ context: { beforeSummary: 0 } }, { maxContextTokens: 1000, context: { budget: 0.01 } }]) {
-            const built = build(stateOf(history, config), {})
-            expect(texts(built.messages)).toEqual(['当前任'])
-            expect(JSON.stringify(built.messages)).not.toContain('大量输出')
-        }
+        // 预算 4000 × 0.3 = 1200：只装得下最近的第 3 步（1、2 步各约 1800）；调用和结果成对留下。
+        const tight = JSON.stringify(build(stateOf(history, { maxContextTokens: 4000 }), {}).messages)
+        expect(tight).toContain('当前任务')
+        expect(tight).toContain('结果3')
+        expect(tight).not.toContain('结果2')
+        expect(tight).not.toContain('旧问题')
+        // beforeSummary 0 只管"过去的轮次"：进行中那一轮的现场只受 budget 约束。
+        expect(JSON.stringify(build(stateOf(history, { context: { beforeSummary: 0 } }), {}).messages)).toContain('结果1')
+        const none = build(stateOf(history, { context: { budget: 0 } }), {}).messages
+        expect(none).toEqual([{ role: 'user', content: '当前任务' }])
+        // 上一次压缩之前的步已经总结过两次，不再回头捡。
+        const twice: Message[] = [{ id: 'u', role: 'user', content: '任务' }, ...step(1, 10), { id: 'c0', role: 'compact', content: '第一次' }, ...step(2, 10), { id: 'c1', role: 'compact', content: '第二次' }]
+        const again = JSON.stringify(build(stateOf(twice, { maxContextTokens: 4000 }), {}).messages)
+        expect(again).toContain('结果2')
+        expect(again).not.toContain('结果1')
     })
 
     test('思考块：默认 strip 摘掉（被摘空的消息整条丢），reasoning: send 原样发回', () => {
@@ -84,11 +99,49 @@ describe('context/build', () => {
         expect(JSON.stringify(sent)).toContain('只有想法')
     })
 
-    test('媒体默认不发：mediaFallback error 报错，strip 只留文字', () => {
-        const history: Message[] = [{ id: 'u', role: 'user', content: [{ type: 'text', text: '看图' }, { type: 'image', image: 'aGk=' }] }]
-        expect(() => build(stateOf(history), {})).toThrow('image')
-        expect(build(stateOf(history, { mediaFallback: 'strip' }), {}).messages[0]!.content).toHaveLength(1)
-        expect(build(stateOf(history, { media: { image: true } }), {}).messages[0]!.content).toHaveLength(2)
+    test('媒体：没开的类型换成占位文字（不报错、不改 history），开了的统一成 v7 file；工具结果里的媒体同样处理', () => {
+        const history: Message[] = [
+            { id: 'u', role: 'user', content: [{ type: 'text', text: '看图' }, { type: 'image', image: 'aGk=' }, { type: 'image', image: 'https://x.test/a.png' } as any,
+                { type: 'file', mediaType: 'audio/wav', data: { type: 'url', url: 'data:audio/wav;base64,aGk=' } } as any, { type: 'file-data', data: 'aGk=', mediaType: 'application/pdf', filename: 'a.pdf' } as any] },
+            { id: 'a', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 't', toolName: 'shot', input: {} }] },
+            { id: 'r', role: 'tool', content: [{ type: 'tool-result', toolCallId: 't', toolName: 'shot', output: { type: 'content', value: [{ type: 'text', text: '截图' }, { type: 'image', image: 'aGk=' } as any] } }] },
+        ]
+        const snapshot = JSON.stringify(history)
+        const off = build(stateOf(history), {}).messages as any[]
+        expect(off[0].content.map((part: any) => part.type)).toEqual(['text', 'text', 'text', 'text', 'text'])
+        expect(off[0].content[1].text).toContain('图片')
+        expect(off[0].content[4].text).toContain('a.pdf')
+        expect(off[2].content[0].output.value[1].text).toContain('未开启图片输入')
+        expect(JSON.stringify(history)).toBe(snapshot)                                 // history 原样不动，换个模型原件照常发出
+        const on = build(stateOf(history, { media: { image: true, audio: true, file: true } }), {}).messages as any[]
+        const [, bare, link, audio, pdf] = on[0].content
+        expect(bare).toEqual({ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'aGk=' } })
+        expect(link.data.url).toBeInstanceOf(URL)                                      // 字符串网址包成 URL 对象
+        expect(audio.data.url).toBeInstanceOf(URL)                                     // 存成 JSON 后变成字符串的 data URL 也恢复成 URL
+        expect(pdf).toEqual({ type: 'file', mediaType: 'application/pdf', filename: 'a.pdf', data: { type: 'data', data: 'aGk=' } })
+        expect(on[2].content[0].output.value[1]).toEqual({ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'aGk=' } })
+    })
+
+    test('发不出去的消息跳过并只提醒一次；乱序的工具结果按 toolCallId 跟回它的调用后面', () => {
+        const history: Message[] = [
+            { id: 'u', role: 'user', content: '问' },
+            { id: 's', role: 'system', content: '旧系统提示' } as any,
+            { id: 'n', role: 'user', content: null } as any,
+            { id: 'a', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'x', toolName: 't', input: {} }, { type: 'tool-call', toolCallId: 'y', toolName: 't', input: {} }] },
+            { id: 'b', role: 'assistant', content: [{ type: 'text', text: '中间插了一句' }] },
+            { id: 'ry', role: 'tool', content: [{ type: 'tool-result', toolCallId: 'y', toolName: 't', output: { type: 'text', value: 'Y' } }] },
+            { id: 'rx', role: 'tool', content: [{ type: 'tool-result', toolCallId: 'x', toolName: 't', output: { type: 'text', value: 'X' } }] },
+            { id: 'orphan', role: 'tool', content: [{ type: 'tool-result', toolCallId: 'z', toolName: 't', output: { type: 'text', value: 'Z' } }] },
+        ]
+        const warnings: string[] = []
+        const state = stateOf(history)
+        const built = build(state, {}, warning => { warnings.push(warning.message) })
+        build(state, {}, warning => { warnings.push(warning.message) })                 // 第二轮不再重复提醒
+        expect(warnings).toHaveLength(2)
+        expect(warnings[0]).toContain('config.system')
+        expect(built.messages.map(message => message.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+        expect((built.messages[2]!.content as any[]).map(part => part.toolCallId)).toEqual(['x', 'y'])
+        expect(JSON.stringify(built.messages)).not.toContain('"Z"')
     })
 
     test('超过 maxContextTokens × compactThreshold 时 over 为 true', () => {
@@ -143,11 +196,24 @@ describe('tools/shape', () => {
         expect((await shape(undefined)).output.type).toBe('text')
         expect((await shape({ type: 'error-text', value: '坏' })).output).toEqual({ type: 'error-text', value: '坏' })
         expect(await shape({ output: '完成', stop: true })).toMatchObject({ output: { type: 'text', value: '完成' }, stop: true })
-        const long = await shape('x'.repeat(50), { limit: 10 })
-        expect(long.truncated).toBe(true)
-        expect(String(long.output.value).startsWith('xxxxxxxxxx\n')).toBe(true)
         const cyclic: any = {}; cyclic.self = cyclic
         expect((await shape(cyclic)).output.type).toBe('error-text')
+    })
+
+    test('形状不合法的成形块转成说明错误；截断保留头 70%、尾 30% 并说明省略了多少；默认不截断', async () => {
+        expect((await shape({ type: 'content', value: [{ type: 'image' }] })).output).toMatchObject({ type: 'error-text', value: expect.stringContaining('工具输出不合法') })
+        expect((await shape({ type: 'text', value: 1 })).output.type).toBe('error-text')
+        const text = 'a'.repeat(70) + 'b'.repeat(30) + 'c'.repeat(100)
+        expect((await shape(text)).output.value).toBe(text)                                     // 默认不截断
+        const long = await shape('H'.repeat(70) + 'm'.repeat(100) + 'T'.repeat(30), { limit: 100 })
+        expect(long.truncated).toBe(true)
+        expect(String(long.output.value)).toStartWith('H'.repeat(70) + '\n')
+        expect(String(long.output.value)).toEndWith('\n' + 'T'.repeat(30))
+        expect(String(long.output.value)).toContain('省略 100 个字符')
+        const json = await shape({ big: 'x'.repeat(200) }, { limit: 50 })
+        expect(json.output.type).toBe('text')                                                   // json 截断后只能是文字
+        const content = await shape({ type: 'content', value: [{ type: 'text', text: 'y'.repeat(200) }] }, { limit: 50 })
+        expect(String((content.output.value as any[])[0].text)).toContain('省略')
     })
 })
 
@@ -155,10 +221,11 @@ describe('utils', () => {
     test('估算：媒体按块计；比例键只用模型名，学到的优先于冷启动值', () => {
         expect(estimate({ type: 'image', image: 'x'.repeat(100000) }, 0.6).tokens).toBeLessThan(1300)
         const ratios: Record<string, number> = {}
-        expect(current(ratios, 'gpt', 0.4)).toBe(0.4)
+        expect(current(ratios, 'gpt')).toEqual({ ratio: 0.6, source: 'default' })
+        expect(current(ratios, 'gpt', 0.4)).toEqual({ ratio: 0.4, source: 'host' })
         calibrate(ratios, 'gpt', 'x'.repeat(1000), 300)
         expect(Object.keys(ratios)).toEqual(['gpt'])
-        expect(current(ratios, 'gpt', 0.4)).toBe(ratios.gpt!)
+        expect(current(ratios, 'gpt', 0.4)).toEqual({ ratio: ratios.gpt!, source: 'usage' })
     })
 
     test('classify 按证据分类', () => {
@@ -166,6 +233,30 @@ describe('utils', () => {
         expect(classify({ statusCode: 400, message: 'maximum context length is 8192' })).toBe('overflow')
         expect(classify(new DOMException('x', 'AbortError'))).toBe('aborted')
         expect(classify(new TypeError('fetch failed'))).toBe('network')
+        expect(classify({ statusCode: 400, message: 'prompt is too long: max_tokens_to_sample exceeded' })).toBe('overflow')
+    })
+
+    test('tell 吞掉同步抛错和异步拒绝；retry 认 shouldRetry，onRetry 带 maxTries', async () => {
+        await tell(() => { throw new Error('坏') }, 1)
+        await tell(async () => { throw new Error('坏') }, 1)
+        const seen: unknown[] = []
+        let tries = 0
+        const failing = () => { tries += 1; return Promise.reject(Object.assign(new Error('500'), { statusCode: 500 })) }
+        await expect(retry(failing, { maxTries: 2, baseDelay: 1, onRetry: async info => { seen.push(info.maxTries); throw new Error('宿主回调坏了') } })).rejects.toThrow('500')
+        expect(tries).toBe(3)
+        expect(seen).toEqual([2, 2])
+        tries = 0
+        await expect(retry(failing, { baseDelay: 1, filter: { shouldRetry: () => false } })).rejects.toThrow('500')
+        expect(tries).toBe(1)
+    })
+
+    test('configure：不带工具时去掉 toolChoice；anthropic 缓存标记合并进已有的 providerOptions', () => {
+        const messages: any[] = [{ role: 'user', content: [{ type: 'text', text: 'hi', providerOptions: { anthropic: { citations: true } } }] }]
+        const request = { model: 'claude', baseURL: 'http://x.test', protocol: 'anthropic' as const, provider: { toolChoice: 'required', temperature: 0 }, messages }
+        expect(configure(request, '系统', messages, false).toolChoice).toBeUndefined()
+        expect(configure(request, '系统', messages, true).toolChoice).toBe('required')
+        const sent = configure(request, '系统', messages, false).messages as any[]
+        expect(sent[0].content[0].providerOptions.anthropic).toEqual({ citations: true, cacheControl: { type: 'ephemeral' } })
     })
 
     test('decide：tool-stop 优先；无工具即 finished；第 N-1 轮提醒、第 N 轮 no-tool', () => {

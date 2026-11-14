@@ -105,3 +105,90 @@ describe('MCP', () => {
         } finally { fake.stop(true) }
     })
 })
+
+describe('工具子进程细节', () => {
+    test('超时：错误里带上已经输出的部分；yield 实时转给宿主；被 SIGKILL 与被取消分得开；BUN_BE_BUN 不漏给工具', async () => {
+        const dir = tools({
+            'slow.ts': tool('slow', "console.log('已完成一半'); await Bun.sleep(5000)", 'timeout: 500,'),
+            'steps.ts': "export default { name: 'steps', description: 'x', parameters: { type: 'object' }, async *run() { yield '第一步'; await Bun.sleep(300); yield '第二步' } }\n",
+            'oom.ts': tool('oom', "process.kill(process.pid, 'SIGKILL')"),
+            'env.ts': tool('env', "return [process.env.BUN_BE_BUN ?? 'none', process.env.AGENT_CORE_CHILD ?? 'none'].join(',')"),
+        })
+        const { model } = script([{ calls: [{ name: 'slow', id: 's' }, { name: 'steps', id: 'g' }, { name: 'oom', id: 'o' }, { name: 'env', id: 'e' }] }, { text: '好' }])
+        const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
+        const outputs: { toolCallId: string; data: string; at: number }[] = []
+        const started = Date.now()
+        await agent.send('hi', { onToolOutput: output => { outputs.push({ ...output, at: Date.now() - started }) } })
+        const [slow, steps, oom, env] = results(agent.history)
+        expect(slow.output.value).toContain('工具执行超时')
+        expect(slow.output.value).toContain('已完成一半')
+        const first = outputs.find(output => output.toolCallId === 'g' && output.data.includes('第一步'))!
+        const second = outputs.find(output => output.toolCallId === 'g' && output.data.includes('第二步'))!
+        expect(second.at - first.at).toBeGreaterThan(200)                  // 第一步没等到工具结束才出现
+        expect(steps.output.type).not.toBe('error-text')
+        expect(oom.output.value).toContain('SIGKILL')
+        expect(oom.output.value).not.toContain('已取消')
+        if (process.env.BUN_BE_BUN === undefined) expect(env.output.value).toBe('none,none')
+    }, 15000)
+})
+
+describe('MCP 连接不阻塞', () => {
+    test('连不上的服务器：这一轮照常进行，onWarning 报一次，之后不自动重连；切一下开关才重试', async () => {
+        const dead = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+        const { model } = script([{ text: '好' }])
+        const agent = Agent.create({ model, stream: false, mcp: [{ name: 'dead', url: `http://localhost:${dead.port}/mcp` }] })
+        const warnings: string[] = []
+        const onWarning = (warning: { message: string }) => { warnings.push(warning.message) }
+        try {
+            await agent.send('1', { onWarning })
+            await agent.send('2', { onWarning })
+            expect(warnings.filter(message => message.includes('dead'))).toHaveLength(1)
+            expect(await agent.closeMcp('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
+            agent.openMcp('dead')
+            await agent.send('3', { onWarning })
+            expect(warnings.filter(message => message.includes('dead'))).toHaveLength(2)
+        } finally { dead.stop(true) }
+    })
+
+    test('一直不回应的服务器：这一轮最多等 MCP_GRACE 就继续，stop() 不被它拖住', async () => {
+        const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
+        try {
+            const { model, calls } = script([{ text: '好' }])
+            const agent = Agent.create({ model, stream: false, mcp: [{ name: 'hang', url: `http://localhost:${hang.port}/mcp` }] })
+            const started = Date.now()
+            await agent.send('1')
+            expect(Date.now() - started).toBeLessThan(3500)
+            expect(toolNames(calls[0])).toEqual([])
+            const again = agent.send('2').catch(e => e)                      // 仍在连接中：这一轮又等 MCP_GRACE
+            await Bun.sleep(50)
+            const stopping = Date.now()
+            await agent.stop()
+            expect(Date.now() - stopping).toBeLessThan(500)
+            expect((await again).kind).toBe('aborted')
+        } finally { hang.stop(true) }
+    })
+})
+
+describe('请求体', () => {
+    test('chat：prompt_cache_key 沿用旧实现的哈希；includeUsage: false 时流式请求不带 stream_options', async () => {
+        const bodies: any[] = []
+        const fake = Bun.serve({
+            port: 0,
+            async fetch(request) {
+                const body = await request.json()
+                bodies.push(body)
+                const chunk = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ id: '1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
+                return new Response(chunk({ role: 'assistant', content: '好' }) + chunk({}, 'stop') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
+            },
+        })
+        try {
+            const baseURL = `http://localhost:${fake.port}/v1`
+            const messages = [{ role: 'user' as const, content: 'hi' }]
+            expect((await Agent.LLM.ask({ model: 'm', baseURL, apiKey: 'k', system: '系统', messages })).text).toBe('好')
+            await Agent.LLM.ask({ model: 'm', baseURL, apiKey: 'k', system: '系统', messages, includeUsage: false })
+            expect(bodies[0].prompt_cache_key).toBe(`agent:${baseURL}:m:${Bun.hash(JSON.stringify('系统'))}`)
+            expect(bodies[0].stream_options).toEqual({ include_usage: true })
+            expect(bodies[1].stream_options).toBeUndefined()
+        } finally { fake.stop(true) }
+    })
+})

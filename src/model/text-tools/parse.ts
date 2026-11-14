@@ -20,8 +20,8 @@ import type { TextToolSpec } from './describe.ts'
 
 /*
 parse：按文件头的规则解析一段回复文字，返回正文和调用列表；调用顺序与文字里出现的顺序一致。
-读不出参数的坏块不悄悄丢掉：工具名还能抠出来就生成一个 input 为 { __invalid: 原因 } 的调用，
-由工具执行时报错回给模型，让它重写；连名字都没有就不算调用。解析不出任何调用时 calls 为空，text 原样返回。
+读不出参数的坏块不悄悄丢掉：工具名还能抠出来就生成一个带 invalid（原因）的调用——和原生调用里 AI SDK 标记的坏调用同一种形状，
+loop 不执行它、直接把原因回给模型让它重写；连名字都没有就不算调用。解析不出任何调用时 calls 为空，text 原样返回。
 */
 export function parse(text: string, spec: TextToolSpec): { text: string; calls: ToolCall[] } {
     const source = typeof text === 'string' ? text : ''
@@ -30,17 +30,17 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
     const found: { call: ToolCall; start: number }[] = []
     const ranges: [number, number][] = []                                 // 已被认领的文字范围，防止两种写法重复认领同一段。
     const taken = (index: number) => ranges.some(([start, end]) => index >= start && index < end)
-    const add = (toolName: string, input: unknown, start: number, end: number) => {
-        found.push({ call: { toolCallId: `call_${nanoid(12)}`, toolName, input }, start })
+    const add = (toolName: string, input: unknown, start: number, end: number, invalid?: string) => {
+        found.push({ call: { toolCallId: `call_${nanoid(12)}`, toolName, input, ...(invalid ? { invalid } : {}) }, start })
         ranges.push([start, end])
     }
     // 读一个 JSON 体：工具名和参数可能在几个位置（顶层 / OpenAI 风格的 function / 平铺），按常见程度依次找。
-    const readJson = (raw: string): { name: string; input: unknown } | null => {
+    const readJson = (raw: string): { name: string; input: unknown; invalid?: string } | null => {
         if (!raw?.trim()) return null
         let obj: any
         try { obj = JSON.parse(jsonrepair(raw)) } catch {
             const name = /"name"\s*:\s*"([^"]+)"/.exec(raw)?.[1]          // 修不回来：至少把名字抠出来，让模型知道哪次调用坏了。
-            return name ? { name, input: { __invalid: '工具调用里的 JSON 解析失败' } } : null
+            return name ? { name, input: {}, invalid: '工具调用里的 JSON 解析失败' } : null
         }
         if (Array.isArray(obj)) obj = obj[0]                              // 模型偶尔套一层数组。
         if (!obj || typeof obj !== 'object') return null
@@ -48,7 +48,7 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
         const name = fn?.name ?? obj.tool_name
         if (!name || typeof name !== 'string') return null
         let args = fn.arguments ?? fn.parameters ?? fn.input ?? fn.args
-        if (typeof args === 'string') { try { args = JSON.parse(jsonrepair(args)) } catch { return { name, input: { __invalid: '工具参数不是合法的 JSON' } } } }
+        if (typeof args === 'string') { try { args = JSON.parse(jsonrepair(args)) } catch { return { name, input: {}, invalid: '工具参数不是合法的 JSON' } } }
         if (args === undefined) { const { name: _n, function: _f, tool: _t, tool_name: _tn, type: _ty, ...rest } = obj; args = rest } // 参数平铺在同一层。
         return { name, input: args && typeof args === 'object' ? args : {} }
     }
@@ -56,7 +56,7 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
     // 1. 主格式。
     for (const match of body.matchAll(/<tool_call>\s*([\s\S]*?)(?:<\/tool_call>|$)/g)) {
         const call = readJson(match[1]!)
-        if (call) add(call.name, call.input, match.index!, match.index! + match[0].length)
+        if (call) add(call.name, call.input, match.index!, match.index! + match[0].length, call.invalid)
     }
     // 2. 工具名做标签：子标签是参数，值按 schema 类型还原；没有子标签且只有一个参数时，标签体就是它。
     for (const name of spec.names) {
@@ -73,18 +73,19 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
             const input: Record<string, unknown> = {}
             for (const child of match[1]!.matchAll(/<([a-zA-Z_][\w-]*)>([\s\S]*?)<\/\1>/g)) input[child[1]!] = toType(child[2]!.trim(), types[child[1]!])
             const keys = Object.keys(types), inner = match[1]!.trim()
+            let invalid: string | undefined
             if (!Object.keys(input).length && inner) {
                 if (keys.length === 1) input[keys[0]!] = toType(inner, types[keys[0]!])
-                else input.__invalid = '工具参数格式无法识别'
+                else invalid = '工具参数格式无法识别'
             }
-            add(name, input, match.index!, match.index! + match[0].length)
+            add(name, input, match.index!, match.index! + match[0].length, invalid)
         }
     }
     // 3. 裸 JSON 代码块，只认已注册的工具名。
     for (const match of body.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)```/g)) {
         if (taken(match.index!)) continue
         const call = readJson(match[1]!)
-        if (call && spec.names.includes(call.name)) add(call.name, call.input, match.index!, match.index! + match[0].length)
+        if (call && spec.names.includes(call.name)) add(call.name, call.input, match.index!, match.index! + match[0].length, call.invalid)
     }
 
     // 把认出来的调用从正文里删掉（从后往前删，位置才不会错位），再收拾多余空行。

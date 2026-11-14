@@ -8,15 +8,15 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
     agent.config = { ...agent.config, model: 'claude-sonnet-4' }          // 中途换模型：下一轮生效
     const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
     await agent.closeMcp('github')                                        // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
-    agent.openMcp('github')                                               // 重新打开：enabled 置 true，下一轮重连
+    agent.openMcp('github')                                               // 重新打开：enabled 置 true，下一轮在后台重连（连不上走 onWarning）
     await agent.compact()                                                 // 宿主点"压缩"：强制压缩一次
     const reply = await Agent.LLM.ask({ model, baseURL, apiKey, messages })  // 不建实例也能直接问模型
 
 公开状态（宿主直接读写）：config、history、tools、mcp、contextRatio、ratios，以及 id。
 私有状态（#internal，不对外）：工具元数据缓存、MCP 连接、正在跑的子进程 procs、当前运行的取消器、警告去重。
-每个实例完全隔离，不共享任何可变状态。
+每个实例完全隔离，不共享任何可变状态；一个实例就是一段对话，核心里没有"会话"概念，要多段对话就 create 多个实例。
 
-导入：loop/run（run、compact）、tools/spawn（killAll）、tools/mcp（close）、history（append）、model/ask（挂到 Agent.LLM）。
+导入：loop/run（run、compact）、tools/spawn（killAll）、tools/mcp（close）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
 */
 
 import { nanoid } from 'nanoid'
@@ -26,12 +26,13 @@ import { killAll } from './tools/spawn.ts'
 import { close } from './tools/mcp.ts'
 import { append } from './history.ts'
 import { ask } from './model/ask.ts'
+import { cancelled } from './utils/errors.ts'
 
 export class Agent {
     // 问模型的公开封装：Agent.LLM.ask(request, onChunk)，独立于任何实例。
     static readonly LLM = { ask }
 
-    id: string                          // 会话 id，onPermission 等回调里带给宿主
+    id: string                          // 实例 id：给宿主区分自己建的多个 Agent（例如持久化时当文件名），核心不使用
     config: Config                      // 活配置：每轮现读
     history: Message[]                  // 只增不减；宿主可直接读写，核心只原地追加
     tools: string[]                     // 工具文件 / 目录路径；增删下一轮生效
@@ -47,7 +48,7 @@ export class Agent {
     constructor(options: CreateOptions) {
         if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Agent.create options must be an object')
         const { id = nanoid(), history = [], tools = [], mcp = [], contextRatio, ratios = {}, ...config } = options
-        // 边界检查：坏值当场说清楚。history 只增不删，一个坏值写进去会永久毒化会话，所以宁可在入口报错。
+        // 边界检查：坏值当场说清楚。history 只增不删，一个坏值写进去会永久毒化这段对话，所以宁可在入口报错。
         if (!config.model) throw new TypeError('model is required: a model name (with baseURL) or an AI SDK model instance')
         if (!Array.isArray(history)) throw new TypeError('history must be an array')
         if (!Array.isArray(tools)) throw new TypeError('tools must be an array of tool file / directory paths')
@@ -103,7 +104,8 @@ export class Agent {
     /*
     closeMcp：临时关闭一条 MCP 连接。把 agent.mcp 里同名元素换成 enabled: false 的新对象（原地替换元素，
     不改宿主传进来的对象，也不换掉数组本身），并立即断开连接；下一轮请求起它的工具就不在了。
-    正在执行中的该服务器工具调用会以错误结果结束。返回 { name, found, enabled: false, closed }。
+    正在执行中的该服务器工具调用会以错误结果结束。返回 { name, found, enabled: false, closed }；
+    closed 只在真的断开了一条已连上的连接时为 true（连接中 / 连接失败的记录只是被移出，之后 openMcp 会重新连）。
     */
     async closeMcp(name: string): Promise<McpToggle> {
         const index = this.mcp.findIndex(server => server.name === name)
@@ -113,8 +115,8 @@ export class Agent {
     }
 
     /*
-    openMcp：重新打开 closeMcp 关掉的连接——只把 enabled 改回 true，下一轮请求时才真正连接
-    （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。返回 { name, found, enabled }。
+    openMcp：重新打开 closeMcp 关掉的连接——只把 enabled 改回 true，下一轮请求时才在后台连接
+    （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
     */
     openMcp(name: string): McpToggle {
         const index = this.mcp.findIndex(server => server.name === name)
@@ -132,14 +134,18 @@ export class Agent {
 
     /*
     #start：同一实例一次只跑一件事。上一次还在跑就先停掉它并等它收尾（避免两条循环同时写 history），
-    再换上新的取消器开始这一次；结束时只清理自己这一次的记录（防止清掉后来居上的新运行）。
+    再开始这一次；结束时只清理自己这一次的记录（防止清掉后来居上的新运行）。
+    新的取消器和任务同步登记：等上一次收尾的这段时间里调 stop()，abort 的就是这一次，开工前查一下就不会再跑。
     */
     async #start<T>(work: () => Promise<T>): Promise<T> {
         const internal = this.#internal
         const previous = internal.running
+        const controller = new AbortController()                          // loop 在开始时取一次这个信号。
+        internal.controller?.abort()                                     // 停掉上一次（没有上一次时什么也不做）。
+        internal.controller = controller
         const task = (async () => {
-            if (previous) { internal.controller?.abort(); await killAll(internal.procs); await previous.catch(() => {}) }
-            internal.controller = new AbortController()                  // loop 在开始时取一次这个信号。
+            if (previous) { await killAll(internal.procs); await previous.catch(() => {}) }
+            if (controller.signal.aborted) throw cancelled()             // 等待期间被 stop() 或更新的一次 send 取消了：不再开工。
             return work()
         })()
         internal.running = task

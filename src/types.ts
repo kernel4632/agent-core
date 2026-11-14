@@ -25,6 +25,7 @@ export type Protocol = 'chat' | 'responses' | 'anthropic' | 'gemini'
 export type ModelInput = string | LanguageModel
 
 // 按媒体类型逐项开关；没写的一律视为 false（不发）。对象而不是布尔，因为多数模型只支持图片。
+// 没开的类型在发给模型前换成一句占位文字（history 原样保留，换个支持的模型马上能看到原件）。
 export interface MediaSwitch { image?: boolean; audio?: boolean; video?: boolean; file?: boolean }
 
 // 思考内容回传：有的供应商强制要求把上一轮的思考原样发回（如部分推理模型的工具调用），有的直接拒收。
@@ -38,8 +39,8 @@ export interface ContextKeep { head?: number; beforeSummary?: number; budget?: n
 // 提示词缓存：true 用默认键；对象自定义键、保留时长或额外请求体；false 关闭。
 export type CacheOption = boolean | { key?: string; retention?: string; body?: Record<string, unknown> }
 
-// 重试过滤：函数直接判断（返回 false = 不重试）；对象命中任一 skip 维度即不重试。
-export type RetryFilter = ((error: unknown) => boolean) | { skipCodes?: number[]; skipText?: string | RegExp; skipKinds?: ErrorKind[] }
+// 重试过滤：函数直接判断（返回 false = 不重试）；对象的 shouldRetry 返回 false、或命中任一 skip 维度即不重试。
+export type RetryFilter = ((error: unknown) => boolean) | { shouldRetry?: (error: unknown) => boolean; skipCodes?: number[]; skipText?: string | RegExp; skipKinds?: ErrorKind[] }
 
 // 重试参数：问模型时由 config 的平铺字段收拢成这一份，Agent.LLM.ask 单独用时直接传它。
 export interface RetryOptions {
@@ -62,12 +63,12 @@ export interface Config {
     stream?: boolean
     cache?: CacheOption
     textTools?: boolean                       // 显式开关：打开后用文字协议模拟工具调用
-    media?: MediaSwitch
-    mediaFallback?: 'error' | 'strip'         // 发了模型不支持的媒体：报错，或只留文字
+    media?: MediaSwitch                       // 发给模型的媒体类型开关；没开的换成占位文字，不报错、不改 history
+    includeUsage?: boolean                    // chat 协议流式时请求 usage（stream_options），默认 true；不认这个字段的中转站设 false
     reasoning?: ReasoningMode                 // 历史里的思考内容发不发回模型，默认 'strip'（与旧版一致）
     provider?: Record<string, unknown>        // 原样透传给 AI SDK 的生成参数
     maxTokens?: number                        // 单次生成的最大输出 token
-    maxToolOutput?: number                    // 单个工具结果最多保留多少字符
+    maxToolOutput?: number                    // 单个工具结果最多保留多少字符；默认不截断（截断时保留开头 70% + 结尾 30%）
     maxContextTokens?: number                 // 上下文预算，默认 128000；Infinity 关闭自动压缩
     compactThreshold?: number                 // 估算达到预算的这个比例就压缩，默认 0.8
     compact?: Partial<Config>                 // 压缩请求单独用的模型 / 参数（省钱）
@@ -121,8 +122,9 @@ export interface ToolMeta {
 // enabled: false = 临时关闭（每轮现读：断开连接、工具下一轮消失；改回 true 下一轮重连），省略视为 true。
 export interface McpServer { name: string; url: string; headers?: Record<string, string>; transport?: 'http' | 'sse'; enabled?: boolean }
 
-// 模型发出的一次工具调用。
-export interface ToolCall { toolCallId: string; toolName: string; input: unknown }
+// 模型发出的一次工具调用。invalid 有值表示这次调用本身不合法（参数解析失败、不符合 schema、文字工具写坏），
+// 值是原因：loop 不问权限、不执行，直接把原因作为错误结果交给模型重写。
+export interface ToolCall { toolCallId: string; toolName: string; input: unknown; invalid?: string }
 
 // 一次工具调用的结果：错误也是结果（写进 history 交给模型），stop 表示工具要求结束循环。
 export interface ToolResult extends ToolCall {
@@ -146,6 +148,7 @@ export interface AskRequest {
     tools?: Record<string, { description: string; parameters: JSONSchema7 }>
     textTools?: boolean
     reasoning?: ReasoningMode                                 // 默认 'strip'：发送前摘掉 messages 里的思考块
+    includeUsage?: boolean                                    // chat 协议是否请求流式 usage，默认 true
     stream?: boolean
     cache?: CacheOption
     provider?: Record<string, unknown>
@@ -153,8 +156,17 @@ export interface AskRequest {
     output?: unknown
     retry?: RetryOptions
     signal?: AbortSignal
-    onRetry?: (info: { attempt: number; error: Error; delay: number }) => void
+    onRetry?: (info: RetryInfo) => unknown
 }
+
+// 一次重试通知：第几次重试、最多几次（Infinity = 不限）、这次的错误、等多久（毫秒）。
+export interface RetryInfo { attempt: number; maxTries: number; error: Error; delay: number }
+
+// 为什么压缩：auto = 估算到阈值；overflow = 模型报上下文超长后强制压缩再重发；manual = 宿主调 agent.compact()。
+export type CompactReason = 'auto' | 'overflow' | 'manual'
+
+// 估算比例的来源：usage = 真实用量学到的；host = 宿主给的冷启动 contextRatio；default = 默认 0.6。
+export type RatioSource = 'usage' | 'host' | 'default'
 
 // 流式片段：简化后的形状，不暴露 AI SDK 原始事件。tool-result 由 loop 在执行完工具后补发。
 // 压缩期间：先发一条 compact-start，之后压缩模型的 reasoning / text / finish 片段都带 compact: true，
@@ -165,7 +177,7 @@ export type Chunk = (
     | { type: 'tool-call'; call: ToolCall }
     | { type: 'tool-result'; result: ToolResult }
     | { type: 'finish'; usage: Usage }
-    | { type: 'compact-start'; reason: 'auto' | 'manual' }
+    | { type: 'compact-start'; reason: CompactReason }
 ) & { compact?: true }
 
 // 用量：五个字段都给数字，缺的补 0，方便宿主累加。
@@ -182,8 +194,8 @@ export type ErrorKind = 'aborted' | 'auth' | 'limit' | 'timeout' | 'server' | 'n
 // 循环为什么结束：模型正常收尾 / 连续不调工具 / 工具要求停止。
 export type Reason = 'finished' | 'no-tool' | 'tool-stop'
 
-// send 的返回值：和回调里实时反馈的内容一致。
-export interface Answer { reason: Reason; text: string; usage: Usage; output?: unknown }
+// send 的返回值：和回调里实时反馈的内容一致。steps 是这次 send 发给模型的轮数（重试算同一轮，压缩不算）。
+export interface Answer { reason: Reason; text: string; steps: number; usage: Usage; output?: unknown }
 
 // stop() 的结果：只在本实例的子进程全部退出、当前运行（send / compact）已经收尾之后才兑现。
 export interface Stopped {
@@ -205,16 +217,31 @@ export type Decision = { action: 'continue' } | { action: 'remind'; reminder: st
 
 // 每次 send 传入的回调；全部可选，没传的跳过。渲染 / 钩子由宿主按 ToolResult.path 分发到插件。
 export interface Callbacks {
-    onChunk?: (chunk: Chunk) => void
-    onPermission?: (call: ToolCall & { path?: string }) => boolean | Promise<boolean>
-    onInject?: (info: { tokens: number; budget: number; ratio: number }) => string | undefined | Promise<string | undefined>
-    onToolCall?: (call: ToolCall & { path?: string }) => void
-    onToolOutput?: (output: { toolCallId: string; stream: 'stdout' | 'stderr'; data: string }) => void
-    onToolResult?: (result: ToolResult) => void
-    onStep?: (step: { step: number; reply: Reply; results: ToolResult[] }) => void
-    onCompact?: (info: { reason: 'auto' | 'manual'; before: number; after: number; usage: Usage }) => void
-    onRetry?: (info: { attempt: number; error: Error; delay: number }) => void
-    onWarning?: (warning: { path?: string; message: string }) => void   // 坏工具文件被跳过等
+    onChunk?: (chunk: Chunk) => unknown
+    onPermission?: (call: ToolCall & { path?: string }) => boolean | Promise<boolean>   // 必须严格返回布尔值，非 true 一律拒绝
+    onInject?: (info: { tokens: number; budget: number; compactThreshold: number; ratio: number; ratioSource: RatioSource }) => string | undefined | Promise<string | undefined>
+    onToolCall?: (call: ToolCall & { path?: string }) => unknown        // 会被等待：工具开跑前宿主先把调用显示出来
+    onToolOutput?: (output: { toolCallId: string; stream: 'stdout' | 'stderr'; data: string }) => unknown
+    onToolResult?: (result: ToolResult) => unknown
+    onStep?: (step: { step: number; reply: Reply; results: ToolResult[] }) => unknown   // 会被等待：这一轮已写进 history，宿主可在这里安全持久化
+    onCompact?: (info: CompactInfo) => unknown
+    onRetry?: (info: RetryInfo) => unknown
+    onWarning?: (warning: { path?: string; message: string }) => unknown   // 坏工具文件被跳过、MCP 连不上、history 里有发不出去的消息等
+}
+
+// 压缩完成的通知：为什么压、总结正文、压缩前后的估算，以及估算是怎么来的（排查"为什么压"用）。
+export interface CompactInfo {
+    reason: CompactReason
+    summary: string        // 写进 history 的总结正文
+    before: number         // 压缩前估算的输入 token
+    after: number          // 压缩后估算的输入 token
+    budget: number         // 上下文预算 maxContextTokens
+    compactThreshold: number
+    ratio: number          // 估算用的每字符 token 比例
+    ratioSource: RatioSource
+    chars: number          // 压缩前上下文的文字字符数
+    media: number          // 压缩前上下文的媒体块数
+    usage: Usage           // 这一笔压缩请求的用量
 }
 
 // Agent.create 的入参：配置平铺，另带 id、初始 history、工具路径与 MCP 连接。
@@ -229,10 +256,20 @@ export type Input = string | Exclude<UserContent, string>
 export interface Internal {
     procs: Set<Subprocess>                                      // 本实例正在跑的子进程，stop() 全杀
     toolCache: Map<string, ToolMeta>                            // 路径 → 元数据，mtime 变了就重读
-    mcpClients: Map<string, { key: string; close: () => Promise<void>; tools: Record<string, Tool> }> // name → 已连接的 MCP
+    mcpClients: Map<string, McpClient>                          // name → MCP 连接（连接中 / 已连上 / 失败）
     controller: AbortController | null                          // 当前运行的取消器
     running: Promise<unknown> | null                            // 当前运行（send 或 compact）
     warned: Set<string>                                         // 已提醒过的警告，避免每轮重复
+}
+
+// 一条 MCP 连接的记录：连接在后台进行，轮次最多等它一小会儿（tools/mcp 的 MCP_GRACE），之后只读它此刻的状态。
+// failed 的记录一直留着，直到宿主切换这条连接（enabled / closeMcp / 改配置）才会重连——不自动重试。
+export interface McpClient {
+    key: string                                       // url + headers + transport，变了就重建
+    status: 'connecting' | 'ready' | 'failed'
+    tools: Record<string, Tool>                       // ready 之后才有内容
+    pending: Promise<void>                            // 这次连接的进行中任务（永不拒绝），轮次等它时用
+    close: () => Promise<void>                        // 断开；连接中调用时，连上后立即关掉
 }
 
 // loop 看到的状态：公开字段每次读取都取 Agent 上的最新值（宿主可整份替换），internal 是私有部分。

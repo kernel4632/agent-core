@@ -10,17 +10,22 @@
     子 → 主   { ok: true, output, stop?, truncated? }           mode 'run' 的结果（已经过 shape）
     子 → 主   { ok: false, error }                              导入失败、契约不符、run 抛错
 一个子进程只做一件事：主进程收到结果后立刻 kill 它，所以这里不需要任何清理逻辑。
-工具的 console.log、process.stdout.write、以及它自己起的孙进程的输出，都直接写到本进程的 stdout / stderr，
-由 spawn 实时转给宿主（onToolOutput）。
+工具的 console.log、process.stdout.write、generator 的每次 yield、以及它自己起的孙进程的输出，都写到本进程的 stdout / stderr，
+由 spawn 实时转给宿主（onToolOutput），工具超时 / 被杀时也靠这些已产出的内容告诉模型"跑到了哪里"。
+孙进程的 stdout / stderr 默认是管道（工具要自己读结果），所以这里接管 Bun.spawn：管道里读到的每段既写到本进程输出，
+也留一份有上限的副本重放给工具，工具照常读 proc.stdout，感觉不到区别。
 
 它隔离的是生命周期，不是权限：工具拥有和宿主相同的权限（读写文件、联网、读环境变量），约束工具是上层的事。
-本文件只导入同目录的 shape；工具文件靠动态 import 加载。只有带 AGENT_CORE_CHILD=1 环境变量启动时才进入 main，
+本文件只导入同目录的 shape；工具文件靠动态 import 加载。只有带 AGENT_CORE_CHILD 环境变量启动时才进入 main（值说明 BUN_BE_BUN 是不是 spawn 替我们加的），
 被类型检查或其它模块导入时什么都不做。
 */
 
 import { pathToFileURL } from 'node:url'
 import type { ToolDefinition } from '../types.ts'
 import { shape } from './shape.ts'
+
+// 替工具留着的孙进程输出上限（8MB）：正常构建 / 测试日志都装得下，工具永远不读时内存也有天花板。
+const KEEP = 8 << 20
 
 // 主进程发来的一条指令。
 export type ChildRequest =
@@ -49,10 +54,51 @@ export function check(value: unknown, path: string): ToolDefinition {
 /*
 main：先告诉主进程"起来了"，等一条指令 → 动态 import 工具文件 → check → 按 mode 读元数据或执行 run（结果交给 shape）
 → 通过 IPC 回一条结果。任何异常都变成 { ok: false, error }。
-run 返回的是生成器（async * 写法）时，逐个收集 yield 的片段作为最终结果。
+run 返回的是生成器（async * 写法）时，每个 yield 立刻写到 stdout（宿主实时看到进度），全部片段一起作为最终结果。
 */
 export async function main(): Promise<void> {
-    delete process.env.AGENT_CORE_CHILD                                   // 别让工具起的孙进程（比如又一个 bun）误以为自己也是工具子进程。
+    // 别让工具起的孙进程（比如又一个 bun）误以为自己也是工具子进程；BUN_BE_BUN 是 spawn 为启动单文件程序加的，宿主原本没有就别漏给孙进程。
+    if (process.env.AGENT_CORE_CHILD === 'added') delete process.env.BUN_BE_BUN
+    delete process.env.AGENT_CORE_CHILD
+    // 接管 Bun.spawn：孙进程的管道输出转写到本进程（spawn 实时转给宿主），同时重放给工具自己读。工具指定了别的 stdout / stderr 就不插手。
+    const original = Bun.spawn
+    const relay = (source: ReadableStream<Uint8Array>, write: (text: string) => unknown) => {
+        const decoder = new TextDecoder()                                 // 每条流各用一个解码器：共用会把被拆开的汉字拼到别的流上。
+        const kept: string[] = []                                         // 留给工具读的副本，只保留尾部 KEEP 个字符。
+        let size = 0, ended = false, wake = null as (() => void) | null
+        void (async () => {
+            try {
+                for await (const chunk of source) {
+                    const text = decoder.decode(chunk, { stream: true })
+                    write(text)                                           // 实时写到本进程输出。
+                    kept.push(text.length > KEEP ? text.slice(-KEEP) : text)
+                    size += kept.at(-1)!.length
+                    while (size > KEEP && kept.length) size -= kept.shift()!.length // 工具不读时丢最旧的，内存有上限。
+                    wake?.()
+                }
+            } catch { /* 管道被重置、孙进程被杀：当成流结束 */ }
+            ended = true
+            wake?.()
+        })()
+        const encoder = new TextEncoder()
+        return new ReadableStream<Uint8Array>({                           // 工具拿到的是重放流，原始管道永远只有一个读者。
+            async pull(controller) {
+                while (!kept.length && !ended) await new Promise<void>(resolve => { wake = resolve })
+                if (kept.length) { const item = kept.shift()!; size -= item.length; controller.enqueue(encoder.encode(item)) }
+                else controller.close()
+            },
+        })
+    }
+    Bun.spawn = ((...args: any[]) => {
+        const options = (Array.isArray(args[0]) ? args[1] : args[0]) ?? {}
+        const child = original(...(args as [any, any]))
+        const stdout = options.stdout === undefined || options.stdout === 'pipe' ? relay(child.stdout as any, text => process.stdout.write(text)) : child.stdout
+        const stderr = options.stderr === 'pipe' ? relay(child.stderr as any, text => process.stderr.write(text)) : child.stderr
+        return new Proxy(child, {                                         // stdout / stderr 换成重放流，kill()、exited 这些照常可用。
+            get: (target, property) => property === 'stdout' ? stdout : property === 'stderr' ? stderr
+                : typeof (target as any)[property] === 'function' ? (target as any)[property].bind(target) : (target as any)[property],
+        })
+    }) as typeof Bun.spawn
     const send = (message: unknown) => process.send?.(message)
     process.on('disconnect', () => process.exit(0))                       // 主进程没了：别留孤儿进程。
     process.once('message', async (request: ChildRequest) => {
@@ -67,10 +113,15 @@ export async function main(): Promise<void> {
             // 生成器 / 迭代器（同步、异步都收）：既要 next 又要可迭代，数组不会被误判。
             if (result && typeof result.next === 'function' && (typeof result[Symbol.asyncIterator] === 'function' || typeof result[Symbol.iterator] === 'function')) {
                 const chunks: unknown[] = []
-                for await (const chunk of result) chunks.push(chunk)
+                for await (const chunk of result) {
+                    chunks.push(chunk)
+                    process.stdout.write(typeof chunk === 'string' ? chunk : `${JSON.stringify(chunk)}\n`) // 每个片段立刻送达宿主。
+                }
                 result = chunks
             }
-            send({ ok: true, ...(await shape(result, { limit: request.limit, toModelOutput: tool.toModelOutput, input: request.args, toolCallId: request.toolCallId })) })
+            const shaped = await shape(result, { limit: request.limit, toModelOutput: tool.toModelOutput, input: request.args, toolCallId: request.toolCallId })
+            await new Promise(resolve => process.stdout.write('', resolve))  // 先让已写出的输出落到管道里：主进程收到结果就会 kill 本进程。
+            send({ ok: true, ...shaped })
         } catch (error) {
             send({ ok: false, error: (error as Error)?.message || String(error) }) // 导入失败、契约不符、run 抛错：对模型都是"这个工具没成功"。
         }
@@ -79,4 +130,4 @@ export async function main(): Promise<void> {
 }
 
 // 只有被 spawn 当作工具子进程启动时才运行。
-if (process.env.AGENT_CORE_CHILD === '1') void main()
+if (process.env.AGENT_CORE_CHILD) void main()
