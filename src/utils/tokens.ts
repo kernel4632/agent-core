@@ -51,10 +51,10 @@ function measure(payload: unknown): { chars: number; media: number } {
 }
 
 /*
-modelName：比例表的键。字符串模型就是它本身；AI SDK 模型实例取 modelId。
+identify：比例表的键。字符串模型就是它本身；AI SDK 模型实例取 modelId。
 不拼协议和地址——见文件头"跨服务商共用"的理由。
 */
-export function modelName(model: ModelInput): string {
+function identify(model: ModelInput): string {
     if (typeof model === 'string') return model
     return (model as { modelId?: string }).modelId ?? ''                 // AI SDK 模型实例都有 modelId。
 }
@@ -64,7 +64,7 @@ current：这个模型现在该用的比例，以及它从哪来（usage / host 
 冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。来源一起返回，宿主据此判断估算可不可信（onInject / onCompact）。
 */
 export function current(ratios: Record<string, number>, model: ModelInput, seed?: number): { ratio: number; source: RatioSource } {
-    const learned = ratios[modelName(model)]
+    const learned = ratios[identify(model)]
     if (typeof learned === 'number' && Number.isFinite(learned) && learned > 0) return { ratio: learned, source: 'usage' } // 宿主手写的坏值当没有。
     if (typeof seed === 'number' && Number.isFinite(seed) && seed > 0) return { ratio: seed, source: 'host' }
     return { ratio: DEFAULT_RATIO, source: 'default' }
@@ -89,7 +89,7 @@ calibrate：用一次真实 usage 修正这个模型的比例，原地写进 rat
 返回更新后的比例（没采信就返回原值），方便调用方顺手发诊断。
 */
 export function calibrate(ratios: Record<string, number>, model: ModelInput, payload: unknown, real: Usage['inputTokens']): number {
-    const key = modelName(model)
+    const key = identify(model)
     const old = ratios[key]                                              // 只和"学到的值"比：冷启动值是宿主的猜测，不能当离群判据。
     if (!key || !Number.isFinite(real) || real <= 0) return old ?? DEFAULT_RATIO // 上游没回 usage：学不到。
     const { chars, media } = measure(payload)

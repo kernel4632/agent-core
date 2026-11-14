@@ -35,7 +35,7 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
         ranges.push([start, end])
     }
     // 读一个 JSON 体：工具名和参数可能在几个位置（顶层 / OpenAI 风格的 function / 平铺），按常见程度依次找。
-    const readJson = (raw: string): { name: string; input: unknown; invalid?: string } | null => {
+    const read = (raw: string): { name: string; input: unknown; invalid?: string } | null => {
         if (!raw?.trim()) return null
         let obj: any
         try { obj = JSON.parse(jsonrepair(raw)) } catch {
@@ -55,7 +55,7 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
 
     // 1. 主格式。
     for (const match of body.matchAll(/<tool_call>\s*([\s\S]*?)(?:<\/tool_call>|$)/g)) {
-        const call = readJson(match[1]!)
+        const call = read(match[1]!)
         if (call) add(call.name, call.input, match.index!, match.index! + match[0].length, call.invalid)
     }
     // 2. 工具名做标签：子标签是参数，值按 schema 类型还原；没有子标签且只有一个参数时，标签体就是它。
@@ -64,18 +64,18 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
         for (const match of body.matchAll(new RegExp(`<${safe}>([\\s\\S]*?)<\\/${safe}>`, 'g'))) {
             if (taken(match.index!)) continue
             const types = spec.params[name] ?? {}
-            const toType = (value: string, type?: string): unknown => {
+            const coerce = (value: string, type?: string): unknown => {
                 if (type === 'number' || type === 'integer') { const n = Number(value); return Number.isNaN(n) ? value : n }
                 if (type === 'boolean') return value === 'true'
                 if (type === 'object' || type === 'array') { try { return JSON.parse(value) } catch { return value } }
                 return value
             }
             const input: Record<string, unknown> = {}
-            for (const child of match[1]!.matchAll(/<([a-zA-Z_][\w-]*)>([\s\S]*?)<\/\1>/g)) input[child[1]!] = toType(child[2]!.trim(), types[child[1]!])
+            for (const child of match[1]!.matchAll(/<([a-zA-Z_][\w-]*)>([\s\S]*?)<\/\1>/g)) input[child[1]!] = coerce(child[2]!.trim(), types[child[1]!])
             const keys = Object.keys(types), inner = match[1]!.trim()
             let invalid: string | undefined
             if (!Object.keys(input).length && inner) {
-                if (keys.length === 1) input[keys[0]!] = toType(inner, types[keys[0]!])
+                if (keys.length === 1) input[keys[0]!] = coerce(inner, types[keys[0]!])
                 else invalid = '工具参数格式无法识别'
             }
             add(name, input, match.index!, match.index! + match[0].length, invalid)
@@ -84,7 +84,7 @@ export function parse(text: string, spec: TextToolSpec): { text: string; calls: 
     // 3. 裸 JSON 代码块，只认已注册的工具名。
     for (const match of body.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)```/g)) {
         if (taken(match.index!)) continue
-        const call = readJson(match[1]!)
+        const call = read(match[1]!)
         if (call && spec.names.includes(call.name)) add(call.name, call.input, match.index!, match.index! + match[0].length, call.invalid)
     }
 

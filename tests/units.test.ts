@@ -18,8 +18,8 @@ import { configure } from '../src/model/configure.ts'
 
 // 造一个 State：只填 build 用得到的字段。
 const stateOf = (history: Message[], config: Record<string, unknown> = {}): State => ({
-    id: 't', config: { model: 'm', ...config } as any, history, tools: [], mcp: [], contextRatio: undefined, ratios: {},
-    internal: { procs: new Set(), toolCache: new Map(), mcpClients: new Map(), controller: null, running: null, warned: new Set() },
+    id: 't', config: { model: 'm', ...config } as any, history, tools: [], MCP: [], contextRatio: undefined, ratios: {},
+    internal: { procs: new Set(), toolCache: new Map(), MCPClients: new Map(), controller: null, running: null, warned: new Set() },
 })
 // 造一段历史：n 个用户回合（每个回合一问一答），然后一条总结，再一个新回合。
 const withSummary = (n: number, size = 10) => {

@@ -2,11 +2,11 @@
 MCP：远程工具连接，留在主进程（卡住断开连接即可，不需要子进程）。用官方 @ai-sdk/mcp 客户端。
 
 调用示例（在 loop/run 每轮开头）：
-    const mcpTools = await connect(state.mcp, state.internal.mcpClients, callbacks.onWarning, signal)
+    const MCPTools = await connect(state.MCP, state.internal.MCPClients, callbacks.onWarning, signal)
     // { 'github_search': Tool, ... }——工具名加 `${server.name}_` 前缀，交给 tools/run 执行；只含已连上的
 
-为什么每轮都调：agent.mcp 和 agent.tools 一样是宿主随时可改的数组。连接记录缓存在
-Agent 实例的 internal.mcpClients 里（按 name，配置变了就重建），所以平时没有额外开销。
+为什么每轮都调：agent.MCP.list 和 agent.tools 一样是宿主随时可改的数组。连接记录缓存在
+Agent 实例的 internal.MCPClients 里（按 name，配置变了就重建），所以平时没有额外开销。
 
 规则（issue #30 Q9、Q10）：
 - 元素是 { name, url, headers?, transport?, enabled? }；transport 默认 'http'（Streamable HTTP），老服务器写 'sse'；
@@ -20,13 +20,13 @@ Agent 实例的 internal.mcpClients 里（按 name，配置变了就重建），
 也不该拖住 stop()。所以连接在后台跑，轮次最多等 MCP_GRACE（刚打开的连接通常这么久就连上了，第一句话就能用上它的工具；
 stop() 一到立刻不等），之后连上了的下一轮才出现。连不上（含超过 MCP_TIMEOUT）就通过 onWarning 报一次，记录停在 failed：
 不自动重连——反复重连一台坏服务器每轮都在烧时间、刷警告；要不要重试由用户决定，切一下这条连接的开关
-（closeMcp / openMcp、enabled、改配置）就会重新连。
+（MCP.close / MCP.open、enabled、改配置）就会重新连。
 本文件只导入 utils/errors（tell），依赖 @ai-sdk/mcp；没有模块级可变状态。
 */
 
 import type { Tool } from 'ai'
 import { createMCPClient } from '@ai-sdk/mcp'
-import type { Internal, McpClient, McpServer } from '../types.ts'
+import type { Internal, MCPClient, MCPServer } from '../types.ts'
 import { tell } from '../utils/errors.ts'
 
 // 一轮最多等正在连接的服务器多久（毫秒）：够一次正常握手，又不至于让坏服务器明显拖慢对话。
@@ -35,12 +35,12 @@ export const MCP_GRACE = 2000
 export const MCP_TIMEOUT = 15000
 
 /*
-connect：按文件头的规则同步 internal.mcpClients 与 servers，返回这一轮已连上的全部 MCP 工具（已加前缀）。
+connect：按文件头的规则同步 internal.MCPClients 与 servers，返回这一轮已连上的全部 MCP 工具（已加前缀）。
 新连接在后台进行；本轮最多等 MCP_GRACE，signal 一 abort 就不等。返回的 Tool 保留 AI SDK 的 execute(input, { abortSignal }) 契约。
 */
 export async function connect(
-    servers: McpServer[],
-    clients: Internal['mcpClients'],
+    servers: MCPServer[],
+    clients: Internal['MCPClients'],
     onWarning?: (warning: { path?: string; message: string }) => unknown,
     signal?: AbortSignal,
 ): Promise<Record<string, Tool>> {
@@ -52,7 +52,7 @@ export async function connect(
         const existing = clients.get(server.name)
         if (existing?.key === key) continue                                 // 配置没变：复用（包括 failed——不自动重试）。
         if (existing) { clients.delete(server.name); void existing.close().catch(() => {}) } // 配置变了：重建。
-        const entry: McpClient = { key, status: 'connecting', tools: {}, pending: Promise.resolve(), close: async () => {} }
+        const entry: MCPClient = { key, status: 'connecting', tools: {}, pending: Promise.resolve(), close: async () => {} }
         const attempt = (async () => {
             const client = await createMCPClient({ transport: { type: server.transport ?? 'http', url: server.url, headers: server.headers } })
             try { return { client, tools: await client.tools() as Record<string, Tool> } } catch (error) { void client.close().catch(() => {}); throw error }
@@ -88,23 +88,16 @@ export async function connect(
 }
 
 /*
-close：立即断开一条连接（Agent.closeMcp 用），返回是否真的断开了一条已连上的连接（连接中 / 失败的记录只移出缓存）。
-只动连接缓存，不改 agent.mcp——"之后别再连"由调用方把 enabled 置为 false 表达。
+close：立即断开连接（agent.MCP.close 用），只动连接缓存，不改 MCP.list——"之后别再连"由调用方把 enabled 置为 false 表达。
+- 给了 name：只断开这一条；
+- 不给 name：断开全部并清空缓存（例如 Agent 被丢弃前立即释放连接；宿主清空 MCP.list 时下一轮 connect 也会做同样的事）。
+先移出缓存再关：连接中的那次连上后发现自己已不在缓存，会自己关掉；关闭失败也已移出，下一轮不会再用它。
+返回是否断开了至少一条已连上的连接（连接中 / 失败的记录只移出缓存）。单个关闭失败不影响其它。
 */
-export async function close(name: string, clients: Internal['mcpClients']): Promise<boolean> {
-    const client = clients.get(name)
-    if (!client) return false
-    clients.delete(name)                                                // 先移出：连接中的那次连上后发现自己已不在缓存，会自己关掉。
-    await client.close().catch(() => {})                                // 关闭失败也已移出缓存，下一轮不会再用它。
-    return client.status === 'ready'
-}
-
-/*
-closeAll：关闭全部 MCP 连接并清空缓存。宿主把 agent.mcp 清空时下一轮 connect 也会做同样的事；
-这个函数给需要立即释放连接的场景用（例如 Agent 被丢弃前）。单个关闭失败不影响其它。
-*/
-export async function closeAll(clients: Internal['mcpClients']): Promise<void> {
-    const all = [...clients.values()]
-    clients.clear()
-    await Promise.all(all.map(client => client.close().catch(() => {})))
+export async function close(clients: Internal['MCPClients'], name?: string): Promise<boolean> {
+    const picked = name === undefined ? [...clients.values()] : clients.has(name) ? [clients.get(name)!] : []
+    if (name === undefined) clients.clear()
+    else clients.delete(name)
+    await Promise.all(picked.map(client => client.close().catch(() => {})))
+    return picked.some(client => client.status === 'ready')
 }

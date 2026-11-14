@@ -6,7 +6,7 @@ loop：唯一的编排者，也是整个项目里唯一写 history 的地方。�
     const { summary } = await compact(state, callbacks, 'manual') // agent.compact()：强制压缩一次
 
 run 的一轮（循环直到 decide 说结束，不设最大轮数）：
-1. 现读工具：tools/load（agent.tools 的元数据）+ tools/mcp connect（agent.mcp，后台连接，只用已连上的），合成这一轮的工具描述表；
+1. 现读工具：tools/load（agent.tools 的元数据）+ tools/mcp connect（agent.MCP.list，后台连接，只用已连上的），合成这一轮的工具描述表；
 2. context/build 现拼上下文；over 为 true 就调 compact('auto') 后重新 build——"何时压"只在这里判断一处；
 3. onInject 问宿主要不要临时附一句话；连同上一轮 decide 给的提醒，只挂在这一次请求上，不写进 history；
 4. model/ask 问模型（流式片段转给 onChunk）；拿到真实 usage 后用 utils/tokens.calibrate 校准 state.ratios；
@@ -34,11 +34,11 @@ import * as summarize from '../context/summarize.ts'
 import { ask } from '../model/ask.ts'
 import { load } from '../tools/load.ts'
 import { connect } from '../tools/mcp.ts'
-import { run as runTools } from '../tools/run.ts'
+import { run as execute } from '../tools/run.ts'
 import { append, unanswered } from '../history.ts'
 import { calibrate } from '../utils/tokens.ts'
 import { cancelled, classify, tell } from '../utils/errors.ts'
-import { options as retryOptions } from '../utils/retry.ts'
+import { options as options } from '../utils/retry.ts'
 
 // 上下文超长时最多"压缩后重发"几次（照抄 Roo Code 的 MAX_CONTEXT_WINDOW_RETRIES）。
 export const OVERFLOW_RETRIES = 3
@@ -55,7 +55,7 @@ function add(total: Usage, usage: Usage): void {
 /*
 run：按文件头的八步跑完一次 send，返回最终结果。
 
-- 每一轮都从 state 现读 config / history / tools / mcp，宿主运行中改它们，下一轮立即生效；
+- 每一轮都从 state 现读 config / history / tools / MCP，宿主运行中改它们，下一轮立即生效；
 - 宿主回调一律经 utils/errors.tell 调用：回调抛错或返回被拒绝的 Promise 都不影响循环；onToolCall / onStep 会等它跑完；
 - 返回的 text 是最后一次模型回复的正文，steps 是这次 run 问了模型几轮，usage 是全部请求（含压缩请求）的合计，
   output 是结构化输出（config.output 有值时）；和回调里实时给出的内容一致；
@@ -74,10 +74,10 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             const config = state.config                                 // 这一轮的配置快照：宿主运行中整份替换也只影响下一轮。
 
             // --- 1. 现读工具：路径元数据（mtime 缓存）+ MCP；合成发给模型的描述表 ---
-            const [metas, mcpTools] = await Promise.all([load(state.tools, internal, callbacks.onWarning), connect(state.mcp, internal.mcpClients, callbacks.onWarning, signal)])
+            const [metas, MCPTools] = await Promise.all([load(state.tools, internal, callbacks.onWarning), connect(state.MCP, internal.MCPClients, callbacks.onWarning, signal)])
             const schemas: Record<string, { description: string; parameters: JSONSchema7 }> = {}
             for (const meta of metas) schemas[meta.name] = { description: meta.description, parameters: meta.parameters }
-            for (const [name, tool] of Object.entries(mcpTools)) schemas[name] = { description: typeof tool.description === 'string' ? tool.description : '', parameters: await asSchema(tool.inputSchema as any).jsonSchema as JSONSchema7 }
+            for (const [name, tool] of Object.entries(MCPTools)) schemas[name] = { description: typeof tool.description === 'string' ? tool.description : '', parameters: await asSchema(tool.inputSchema as any).jsonSchema as JSONSchema7 }
             if (signal.aborted) throw cancelled()
 
             // --- 2. 现拼上下文；超长就压一次再拼（每轮最多压一次：压完仍超长通常是压不动了，循环压只会烧钱）---
@@ -101,7 +101,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                     cache: config.cache, provider: config.provider, maxTokens: config.maxTokens, stream: config.stream, includeUsage: config.includeUsage,
                     output: config.output, textTools: config.textTools, reasoning: config.reasoning,
                     system: built.system, messages, tools: Object.keys(schemas).length ? schemas : undefined,
-                    retry: retryOptions(config), signal, onRetry: callbacks.onRetry,
+                    retry: options(config), signal, onRetry: callbacks.onRetry,
                 }
                 try {
                     reply = await ask(request, callbacks.onChunk)
@@ -122,9 +122,9 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
 
             // --- 6. 权限：逐个问宿主（并行问），等待期间 stop() 一到就不再等（宿主钩子可能永远不返回）---
             // verdict：true 放行；false 拒绝；'invalid' 调用本身无效（不问权限、不执行）。
-            const pathOf = (name: string) => metas.find(meta => meta.name === name)?.path
+            const locate = (name: string) => metas.find(meta => meta.name === name)?.path
             const verdicts = await Promise.all(reply.toolCalls.map(async (call): Promise<boolean | 'invalid'> => {
-                const info = { ...call, path: pathOf(call.toolName) }
+                const info = { ...call, path: locate(call.toolName) }
                 await tell(callbacks.onToolCall, info)
                 if (call.invalid !== undefined) return 'invalid'               // 无效调用问用户也没意义：执行不了。
                 if (signal.aborted) return false                               // 已停止：不再问，下面按"已取消"写结果。
@@ -141,14 +141,14 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                 } finally { signal.removeEventListener('abort', stop) }       // 每次都摘掉监听：一次运行里问上千次权限也不会堆积。
             }))
             const allowed = reply.toolCalls.filter((_, index) => verdicts[index] === true)
-            const ran = await runTools(allowed, { metas, mcpTools }, internal.procs, { signal, limit: config.maxToolOutput, onOutput: callbacks.onToolOutput })
+            const ran = await execute(allowed, { metas, MCPTools }, internal.procs, { signal, limit: config.maxToolOutput, onOutput: callbacks.onToolOutput })
 
             // --- 7. 结果按调用顺序写回（被拒绝的写拒绝结果，被打断的写"已取消"）---
             const results: ToolResult[] = reply.toolCalls.map((call, index) => verdicts[index] === true
                 ? ran[allowed.indexOf(call)]!
-                : verdicts[index] === 'invalid' ? { ...call, output: { type: 'error-text', value: `工具调用无效：${call.invalid}` }, error: call.invalid, path: pathOf(call.toolName) }
+                : verdicts[index] === 'invalid' ? { ...call, output: { type: 'error-text', value: `工具调用无效：${call.invalid}` }, error: call.invalid, path: locate(call.toolName) }
                 : signal.aborted ? { ...call, output: { type: 'error-text', value: '工具执行已取消' }, error: '工具执行已取消', cancelled: true }
-                : { ...call, output: { type: 'execution-denied', reason: '工具执行被用户拒绝' }, path: pathOf(call.toolName) })
+                : { ...call, output: { type: 'execution-denied', reason: '工具执行被用户拒绝' }, path: locate(call.toolName) })
             for (const result of results) {
                 append(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: result.toolCallId, toolName: result.toolName, output: result.output as any }] })
                 void tell(callbacks.onToolResult, result)

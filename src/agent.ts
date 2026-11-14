@@ -7,23 +7,25 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
     agent.tools = agent.tools.filter(p => !p.startsWith('/plugins/a/'))   // 关掉插件 a：下一次请求就没有它的工具
     agent.config = { ...agent.config, model: 'claude-sonnet-4' }          // 中途换模型：下一轮生效
     const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
-    await agent.closeMcp('github')                                        // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
-    agent.openMcp('github')                                               // 重新打开：enabled 置 true，下一轮在后台重连（连不上走 onWarning）
+    agent.MCP.list.push({ name: 'github', url })                          // 加一条 MCP 连接：下一轮在后台连接
+    await agent.MCP.close('github')                                       // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
+    agent.MCP.open('github')                                              // 重新打开：enabled 置 true，下一轮在后台重连（连不上走 onWarning）
     await agent.compact()                                                 // 宿主点"压缩"：强制压缩一次
     const reply = await Agent.LLM.ask({ model, baseURL, apiKey, messages })  // 不建实例也能直接问模型
 
-公开状态（宿主直接读写）：config、history、tools、mcp、contextRatio、ratios，以及 id。
+公开状态（宿主直接读写）：config、history、tools、MCP.list、contextRatio、ratios，以及 id。
+方法统一是"名字.动词"、只用一个动词（send / stop / compact、MCP.open / MCP.close、LLM.ask），缩写全大写（MCP、LLM）。
 私有状态（#internal，不对外）：工具元数据缓存、MCP 连接、正在跑的子进程 procs、当前运行的取消器、警告去重。
 每个实例完全隔离，不共享任何可变状态；一个实例就是一段对话，核心里没有"会话"概念，要多段对话就 create 多个实例。
 
-导入：loop/run（run、compact）、tools/spawn（killAll）、tools/mcp（close）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
+导入：loop/run（run、compact）、tools/spawn（kill）、tools/mcp（close，在这里叫 disconnect）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
 */
 
 import { nanoid } from 'nanoid'
-import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, McpServer, McpToggle, Message, State, Stopped } from './types.ts'
+import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, MCP, MCPToggle, Message, State, Stopped } from './types.ts'
 import { run, compact } from './loop/run.ts'
-import { killAll } from './tools/spawn.ts'
-import { close } from './tools/mcp.ts'
+import { kill } from './tools/spawn.ts'
+import { close as disconnect } from './tools/mcp.ts'
 import { append } from './history.ts'
 import { ask } from './model/ask.ts'
 import { cancelled } from './utils/errors.ts'
@@ -36,36 +38,63 @@ export class Agent {
     config: Config                      // 活配置：每轮现读
     history: Message[]                  // 只增不减；宿主可直接读写，核心只原地追加
     tools: string[]                     // 工具文件 / 目录路径；增删下一轮生效
-    mcp: McpServer[]                    // MCP 连接配置；增删下一轮生效
+    readonly MCP: MCP                   // MCP 入口：list 是连接配置（增删 / 整份替换下一轮生效），open / close 立即开关一条
     contextRatio: number | undefined    // 冷启动估算比例（宿主持久化的值）；没学到真实值之前用它
     ratios: Record<string, number>      // 学到的比例 { 模型名: 比例 }，跨服务商共用；宿主可持久化
     #internal: Internal                 // 私有：缓存、连接、子进程、当前运行
 
     /*
     构造函数不对外推荐使用，统一走 Agent.create（保持和旧 API 一致的工厂写法）。
-    只做字段赋值和入口校验（config 必须有 model、history 必须是数组、tools / mcp 必须是数组），不做任何 I/O。
+    只做字段赋值和入口校验（config 必须有 model、history 必须是数组、tools / MCP 必须是数组），不做任何 I/O。
     */
     constructor(options: CreateOptions) {
         if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Agent.create options must be an object')
-        const { id = nanoid(), history = [], tools = [], mcp = [], contextRatio, ratios = {}, ...config } = options
+        const { id = nanoid(), history = [], tools = [], MCP = [], contextRatio, ratios = {}, ...config } = options
         // 边界检查：坏值当场说清楚。history 只增不删，一个坏值写进去会永久毒化这段对话，所以宁可在入口报错。
         if (!config.model) throw new TypeError('model is required: a model name (with baseURL) or an AI SDK model instance')
         if (!Array.isArray(history)) throw new TypeError('history must be an array')
         if (!Array.isArray(tools)) throw new TypeError('tools must be an array of tool file / directory paths')
-        if (!Array.isArray(mcp)) throw new TypeError('mcp must be an array of { name, url, headers?, transport? }')
+        if (!Array.isArray(MCP)) throw new TypeError('MCP must be an array of { name, url, headers?, transport?, enabled? }')
         if (contextRatio !== undefined && !(typeof contextRatio === 'number' && Number.isFinite(contextRatio) && contextRatio > 0)) throw new RangeError('contextRatio must be a positive number')
         this.id = id
         this.config = config
         this.history = history                                           // 不复制：宿主传进来的数组就是 agent.history。
         this.tools = tools
-        this.mcp = mcp
+        // MCP 的两个动作：按 name 找 list 里的元素，原地换成改了 enabled 的新对象（不改宿主传进来的对象，也不换掉数组本身）。
+        // 用 agent 而不是 this：宿主把 open / close 解构出来单独调用也照常工作。
+        const agent = this
+        this.MCP = {
+            list: MCP,
+            /*
+            close：临时关闭一条连接——enabled 置 false，并立即断开；下一轮请求起它的工具就不在了。
+            正在执行中的该服务器工具调用会以错误结果结束。返回 { name, found, enabled: false, closed }；
+            closed 只在真的断开了一条已连上的连接时为 true（连接中 / 连接失败的记录只是被移出，之后 open 会重新连）。
+            */
+            async close(name: string): Promise<MCPToggle> {
+                const list = agent.MCP.list
+                const index = list.findIndex(server => server.name === name)
+                if (index >= 0) list[index] = { ...list[index]!, enabled: false }
+                const closed = await disconnect(agent.#internal.MCPClients, name)
+                return { name, found: index >= 0, enabled: false, closed }
+            },
+            /*
+            open：重新打开 close 关掉的连接——只把 enabled 改回 true，下一轮请求时才在后台连接
+            （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
+            */
+            open(name: string): MCPToggle {
+                const list = agent.MCP.list
+                const index = list.findIndex(server => server.name === name)
+                if (index >= 0) list[index] = { ...list[index]!, enabled: true }
+                return { name, found: index >= 0, enabled: index >= 0 }
+            },
+        }
         this.contextRatio = contextRatio
         this.ratios = ratios
-        this.#internal = { procs: new Set(), toolCache: new Map(), mcpClients: new Map(), controller: null, running: null, warned: new Set() }
+        this.#internal = { procs: new Set(), toolCache: new Map(), MCPClients: new Map(), controller: null, running: null, warned: new Set() }
     }
 
     /*
-    create：同步创建一个独立实例。参数平铺：配置字段直接写在顶层，另带 id、history、tools、mcp、contextRatio、ratios。
+    create：同步创建一个独立实例。参数平铺：配置字段直接写在顶层，另带 id、history、tools、MCP、contextRatio、ratios。
     工具不在这里读取——每轮请求前由 loop 现读，所以 create 不需要 async。
     */
     static create(options: CreateOptions): Agent {
@@ -88,40 +117,17 @@ export class Agent {
 
     /*
     stop：立即停止当前运行，返回 { stopped: true, wasRunning, killed }。
-    abort 当前取消器（中断模型请求和 MCP 调用），killAll 本实例的子进程（不给工具任何反应时间）；
+    abort 当前取消器（中断模型请求和 MCP 调用），kill 本实例的子进程（不给工具任何反应时间）；
     只有在子进程全部确认退出、loop 补完"已取消"结果并退出之后才兑现——拿到返回值就说明已经停干净了。
     循环收尾后再清一次子进程：防止 abort 生效前恰好又起了一个（例如正在读工具元数据）。没有运行时直接返回。
     */
     async stop(): Promise<Stopped> {
         const { controller, running, procs } = this.#internal
         controller?.abort()                                              // 中断模型请求、MCP 调用、权限等待。
-        let killed = await killAll(procs)                                // 立刻杀掉本实例的工具子进程，并等它们退出。
+        let killed = await kill(procs)                                // 立刻杀掉本实例的工具子进程，并等它们退出。
         await running?.catch(() => {})                                   // 等 loop 补完"已取消"结果，history 完整后再返回。
-        killed += await killAll(procs)
+        killed += await kill(procs)
         return { stopped: true, wasRunning: running !== null, killed }
-    }
-
-    /*
-    closeMcp：临时关闭一条 MCP 连接。把 agent.mcp 里同名元素换成 enabled: false 的新对象（原地替换元素，
-    不改宿主传进来的对象，也不换掉数组本身），并立即断开连接；下一轮请求起它的工具就不在了。
-    正在执行中的该服务器工具调用会以错误结果结束。返回 { name, found, enabled: false, closed }；
-    closed 只在真的断开了一条已连上的连接时为 true（连接中 / 连接失败的记录只是被移出，之后 openMcp 会重新连）。
-    */
-    async closeMcp(name: string): Promise<McpToggle> {
-        const index = this.mcp.findIndex(server => server.name === name)
-        if (index >= 0) this.mcp[index] = { ...this.mcp[index]!, enabled: false }
-        const closed = await close(name, this.#internal.mcpClients)
-        return { name, found: index >= 0, enabled: false, closed }
-    }
-
-    /*
-    openMcp：重新打开 closeMcp 关掉的连接——只把 enabled 改回 true，下一轮请求时才在后台连接
-    （与"宿主改状态、下一轮生效"一致；连不上同样走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
-    */
-    openMcp(name: string): McpToggle {
-        const index = this.mcp.findIndex(server => server.name === name)
-        if (index >= 0) this.mcp[index] = { ...this.mcp[index]!, enabled: true }
-        return { name, found: index >= 0, enabled: index >= 0 }
     }
 
     /*
@@ -144,7 +150,7 @@ export class Agent {
         internal.controller?.abort()                                     // 停掉上一次（没有上一次时什么也不做）。
         internal.controller = controller
         const task = (async () => {
-            if (previous) { await killAll(internal.procs); await previous.catch(() => {}) }
+            if (previous) { await kill(internal.procs); await previous.catch(() => {}) }
             if (controller.signal.aborted) throw cancelled()             // 等待期间被 stop() 或更新的一次 send 取消了：不再开工。
             return work()
         })()
@@ -165,7 +171,7 @@ export class Agent {
             get config() { return agent.config },
             get history() { return agent.history },
             get tools() { return agent.tools },
-            get mcp() { return agent.mcp },
+            get MCP() { return agent.MCP.list },
             get contextRatio() { return agent.contextRatio },
             set contextRatio(value) { agent.contextRatio = value },
             get ratios() { return agent.ratios },

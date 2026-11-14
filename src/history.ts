@@ -5,7 +5,7 @@ history 的读写规则：只增不减，宿主手里的那个数组就是它，
     append(state.history, { role: 'user', content: '帮我写个爬虫' })   // 补 id、校验后 push，返回带 id 的那条
     turns(state.history)                                               // 按用户回合切分，context/build 用
     unanswered(state.history)                                          // 还没有结果的工具调用，stop 时补"已取消"
-    partProblem(part)                                                  // 一个内容块能不能写进 history；tools/shape 校验工具输出也用它
+    check(part)                                                  // 一个内容块能不能写进 history；tools/shape 校验工具输出也用它
 
 history 的形状（issue #30 Q1）：AI SDK 标准消息 + id，外加两种自定义 role：
 - 'compact'：压缩总结，build 把最新一条折进 system；
@@ -24,13 +24,13 @@ const ROLES = new Set(['user', 'assistant', 'tool', 'compact', 'error'])
 // tools/shape 用它判断工具输出的 content 块里有没有认不出的部件。
 export const PARTS: ReadonlySet<string> = new Set(['text', 'image', 'audio', 'video', 'file', 'file-data', 'file-url'])
 // 媒体值能不能当内联数据：字符串（base64 / 网址）、URL 对象或二进制。别的形状 AI SDK 会在本地拒收。
-const okMedia = (value: unknown) => typeof value === 'string' || value instanceof URL || value instanceof Uint8Array || value instanceof ArrayBuffer
+const valid = (value: unknown) => typeof value === 'string' || value instanceof URL || value instanceof Uint8Array || value instanceof ArrayBuffer
 
 /*
 append：把一条草稿追加到 history 末尾，原地 push，返回追加进去的那条（带 id）。
 
 - 草稿没给 id 就补一个；给了就保留（宿主 UI 用它定位、更新消息）；
-- 入口校验：role 必须合法，content 不能是空串 / 空数组，每个内容块都要过 partProblem。
+- 入口校验：role 必须合法，content 不能是空串 / 空数组，每个内容块都要过 check。
   history 只增不删，一条坏消息写进去之后每次请求都会被 AI SDK 拒收，等于永久毒化这段对话，所以宁可在这里抛错；
 - 不复制数组、不换引用：宿主持有的 agent.history 和这里改的是同一个对象。
 */
@@ -44,7 +44,7 @@ export function append(history: Message[], draft: Draft): Message {
     // compact / error 只存文字：build 要把总结折进 system，error 只给宿主渲染。
     if ((draft.role === 'compact' || draft.role === 'error') && typeof content !== 'string') throw new TypeError(`${draft.role} message content must be a string`)
     if (Array.isArray(content)) for (const part of content) {
-        const problem = partProblem(part)
+        const problem = check(part)
         if (problem) throw new TypeError(problem)
     }
     const id = draft.id ?? nanoid()                                      // 宿主给了 id 就保留，UI 靠它定位消息。
@@ -55,27 +55,27 @@ export function append(history: Message[], draft: Draft): Message {
 }
 
 /*
-partProblem：一个内容块的形状能不能写进 history，合法返回 null，否则返回一句原因（append 抛 TypeError，tools/shape 变成工具失败）。
+check：一个内容块的形状能不能写进 history，合法返回 null，否则返回一句原因（append 抛 TypeError，tools/shape 变成工具失败）。
 两处都要守住同一条线：history 只增不删，一个 AI SDK 在本地就拒收的块写进去，之后每次请求都发不出去。
 - text 要字符串 text；mediaType / filename 写了就必须是字符串；
 - 旧写法 image / audio / video / file-data / file-url 的载荷要是字符串 / URL / 二进制；
 - file 还要 mediaType，data 可以是裸值，也可以是 { type:'data', data } / { type:'url', url } 标签对象；
 - 只查形状，不查"模型支不支持"（那是 context/build 按 media 开关在发出前处理的）；认不得的 type 不归这里管，返回 null。
 */
-export function partProblem(part: unknown): string | null {
+export function check(part: unknown): string | null {
     const one = (part ?? {}) as Record<string, any>
     if (!part || typeof part !== 'object') return '内容块必须是对象'
     if (one.mediaType !== undefined && typeof one.mediaType !== 'string') return `${one.type} 块的 mediaType 必须是字符串`
     if (one.filename !== undefined && typeof one.filename !== 'string') return `${one.type} 块的 filename 必须是字符串`
     if (one.type === 'text') return typeof one.text === 'string' ? null : 'text 块需要字符串 text'
     const legacy = { image: one.image, audio: one.audio, video: one.video, 'file-data': one.data, 'file-url': one.url ?? one.data } as Record<string, unknown>
-    if (one.type in legacy) return okMedia(legacy[one.type]) ? null : `${one.type} 块的载荷必须是字符串 / URL / 二进制`
+    if (one.type in legacy) return valid(legacy[one.type]) ? null : `${one.type} 块的载荷必须是字符串 / URL / 二进制`
     if (one.type !== 'file') return null
     if (typeof one.mediaType !== 'string') return 'file 块需要 mediaType'
     const data = one.data ?? one.url
     const tagged = data && typeof data === 'object' && !(data instanceof URL) && !(data instanceof Uint8Array) && !(data instanceof ArrayBuffer)
-    if (!tagged) return okMedia(data) ? null : 'file 块的 data 必须是字符串 / URL / 二进制'
-    if (data.type === 'data') return okMedia(data.data) ? null : "file 块的 { type:'data' } 需要字符串或二进制 data"
+    if (!tagged) return valid(data) ? null : 'file 块的 data 必须是字符串 / URL / 二进制'
+    if (data.type === 'data') return valid(data.data) ? null : "file 块的 { type:'data' } 需要字符串或二进制 data"
     if (data.type === 'url') return data.url instanceof URL || typeof data.url === 'string' ? null : "file 块的 { type:'url' } 需要 url"
     return null                                                          // reference / text 等其它标签交给 AI SDK 自己认。
 }

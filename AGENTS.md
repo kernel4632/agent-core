@@ -37,15 +37,18 @@
 ## 代码结构规则（issue #30）
 
 - **TypeScript，运行在 Bun 上**（engines `bun >= 1.4.4`）。源码在 `src/`，包入口是根目录 `index.ts`，脚本在 `scripts/*.ts`。
-- **Agent 是唯一的状态持有者。** 公开字段 `config / history / tools / mcp / contextRatio / ratios / id`，私有 `#internal`（子进程、工具缓存、MCP 连接、取消器、警告去重）。
+- **Agent 是唯一的状态持有者。** 公开字段 `config / history / tools / MCP（list / open / close） / contextRatio / ratios / id`，私有 `#internal`（子进程、工具缓存、MCP 连接、取消器、警告去重）。
   **模块里不允许有任何可变的顶层状态**，需要状态就放进 `#internal`、作为参数往下传。
 - **loop 是 history 唯一的写入者**；history 只增不删（压缩只追加 `role: 'compact'`）。
 - **导入只往下指：** `agent > loop > {context, model, tools} > history > utils > types`。同层能力模块（context / model / tools）互不导入，
   不允许循环导入。`bun run check` 里的 `scripts/check-imports.ts` 负责检查。
 - **工具只认文件路径。** 插件、技能、渲染、开关都是宿主的概念，不进核心。工具子进程一律用 `process.execPath` 启动，不写死 `bun`。
 - **默认值在读取处套用**，不在构造时写回 config。
-- **宿主改状态、下一轮生效。** 开关类能力（`media`、`reasoning`、`mcp[].enabled`、`tools` 路径）都做成宿主可改的状态，每轮现读；
-  需要"立即"语义的才加方法（`stop()`、`closeMcp()`），方法也要返回能确认结果的值。
+- **宿主改状态、下一轮生效。** 开关类能力（`media`、`reasoning`、`MCP.list[].enabled`、`tools` 路径）都做成宿主可改的状态，每轮现读；
+  需要"立即"语义的才加方法（`stop()`、`MCP.close()`），方法也要返回能确认结果的值。
+- **命名：方法一律是"名字.动词"，只用一个动词**（`agent.send`、`agent.MCP.close`、`Agent.LLM.ask`），不写 `closeMcp` 这种动宾连写；
+  需要区分对象就挂到一个名字下面（`MCP.open` / `MCP.close`）。模块内部的函数同样只用一个词（`kill`、`close`、`check`）。
+  **缩写全大写**：`MCP`、`LLM`、`MCPServer`、`MCPClients`。配置字段和回调（`onX`）是属性 / 事件，不受这条约束。
 - **一个 Agent 实例就是一段对话。** 核心里没有"会话 / session"概念，`id` 只给宿主区分实例用，核心不读它；多段对话就建多个实例。
 - **宿主回调一律经 `utils/errors.tell` 调用**：同步抛错和被拒绝的 Promise 都吞掉（Bun 遇到未处理的拒绝会退出进程）；
   需要宿主先做完的（`onToolCall`、`onStep`）就 `await tell(...)`，高频的（`onChunk`、`onToolOutput`）用 `void tell(...)`。

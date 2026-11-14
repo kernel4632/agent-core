@@ -75,33 +75,40 @@ describe('MCP', () => {
         },
     })
 
-    test('agent.mcp 的工具加 name 前缀进工具表，在主进程执行', async () => {
+    test('agent.MCP.list 的工具加 name 前缀进工具表，在主进程执行', async () => {
         const fake = server()
         try {
             const { model, calls } = script([{ calls: [{ name: 'fake_echo', input: { text: '你好' } }] }, { text: '好' }])
-            const agent = Agent.create({ model, stream: false, noToolRounds: 1, mcp: [{ name: 'fake', url: `http://localhost:${fake.port}/mcp` }] })
+            const agent = Agent.create({ model, stream: false, noToolRounds: 1, MCP: [{ name: 'fake', url: `http://localhost:${fake.port}/mcp` }] })
             await agent.send('hi')
             expect(toolNames(calls[0])).toEqual(['fake_echo'])
             expect(JSON.stringify(results(agent.history)[0].output)).toContain('echo:你好')
         } finally { fake.stop(true) }
     })
 
-    test('单条 MCP 临时关闭：enabled false 不连接；closeMcp 立即断开、下一轮工具消失；openMcp 下一轮重连', async () => {
+    test('单条 MCP 临时关闭：enabled false 不连接；MCP.close 立即断开、下一轮工具消失；MCP.open 下一轮重连；整份替换 MCP.list 也生效', async () => {
         const fake = server()
         try {
             const { model, calls } = script([{ text: '好' }])
             const mcp = [{ name: 'fake', url: `http://localhost:${fake.port}/mcp`, enabled: false }]
-            const agent = Agent.create({ model, stream: false, noToolRounds: 1, mcp })
+            const agent = Agent.create({ model, stream: false, noToolRounds: 1, MCP: mcp })
             await agent.send('1')
             expect(toolNames(calls[0])).toEqual([])
-            expect(agent.openMcp('fake')).toEqual({ name: 'fake', found: true, enabled: true })
+            expect(agent.MCP.open('fake')).toEqual({ name: 'fake', found: true, enabled: true })
             await agent.send('2')
             expect(toolNames(calls[1])).toEqual(['fake_echo'])
-            expect(await agent.closeMcp('fake')).toEqual({ name: 'fake', found: true, enabled: false, closed: true })
+            expect(await agent.MCP.close('fake')).toEqual({ name: 'fake', found: true, enabled: false, closed: true })
             expect(mcp[0]!.enabled).toBe(false)                            // 原地替换元素，宿主手里的数组同步可见
             await agent.send('3')
             expect(toolNames(calls[2])).toEqual([])
-            expect(await agent.closeMcp('nope')).toEqual({ name: 'nope', found: false, enabled: false, closed: false })
+            expect(await agent.MCP.close('nope')).toEqual({ name: 'nope', found: false, enabled: false, closed: false })
+            agent.MCP.list = [{ name: 'fake', url: `http://localhost:${fake.port}/mcp` }] // 整份换成新数组：下一轮按新数组连接
+            const { open, close } = agent.MCP                               // 解构出来单独调用也照常工作
+            await agent.send('4')
+            expect(toolNames(calls[3])).toEqual(['fake_echo'])
+            expect((await close('fake')).closed).toBe(true)
+            expect(agent.MCP.list[0]!.enabled).toBe(false)
+            expect(open('fake').enabled).toBe(true)
         } finally { fake.stop(true) }
     })
 })
@@ -136,15 +143,15 @@ describe('MCP 连接不阻塞', () => {
     test('连不上的服务器：这一轮照常进行，onWarning 报一次，之后不自动重连；切一下开关才重试', async () => {
         const dead = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
         const { model } = script([{ text: '好' }])
-        const agent = Agent.create({ model, stream: false, mcp: [{ name: 'dead', url: `http://localhost:${dead.port}/mcp` }] })
+        const agent = Agent.create({ model, stream: false, MCP: [{ name: 'dead', url: `http://localhost:${dead.port}/mcp` }] })
         const warnings: string[] = []
         const onWarning = (warning: { message: string }) => { warnings.push(warning.message) }
         try {
             await agent.send('1', { onWarning })
             await agent.send('2', { onWarning })
             expect(warnings.filter(message => message.includes('dead'))).toHaveLength(1)
-            expect(await agent.closeMcp('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
-            agent.openMcp('dead')
+            expect(await agent.MCP.close('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
+            agent.MCP.open('dead')
             await agent.send('3', { onWarning })
             expect(warnings.filter(message => message.includes('dead'))).toHaveLength(2)
         } finally { dead.stop(true) }
@@ -154,7 +161,7 @@ describe('MCP 连接不阻塞', () => {
         const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
         try {
             const { model, calls } = script([{ text: '好' }])
-            const agent = Agent.create({ model, stream: false, mcp: [{ name: 'hang', url: `http://localhost:${hang.port}/mcp` }] })
+            const agent = Agent.create({ model, stream: false, MCP: [{ name: 'hang', url: `http://localhost:${hang.port}/mcp` }] })
             const started = Date.now()
             await agent.send('1')
             expect(Date.now() - started).toBeLessThan(3500)

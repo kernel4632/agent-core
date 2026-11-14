@@ -1,10 +1,10 @@
 /*
-spawn / killAll：子进程的生命周期。普通工具的每次读取、每次执行都在一个新的子进程里，
+spawn / kill：子进程的生命周期。普通工具的每次读取、每次执行都在一个新的子进程里，
 停止就是 kill，不给工具任何反应时间（主进程里的函数本质上杀不掉：一个同步死循环会卡死整个事件循环）。
 
 调用示例：
     const result = await spawn({ mode: 'run', path, args, limit, toolCallId }, internal.procs, { timeout, onOutput })
-    await killAll(internal.procs)   // agent.stop()：只杀本实例的子进程，等它们退出，返回个数
+    await kill(internal.procs)   // agent.stop()：只杀本实例的子进程，等它们退出，返回个数
 
 启动方式：用 process.execPath（当前运行时自己）而不是写死 'bun'——将来宿主打成 Bun 单文件可执行程序时，
 execPath 就是那个程序，配合 BUN_BE_BUN=1 让它表现得像 bun 本身。
@@ -40,7 +40,7 @@ spawn：启动一个 child 子进程执行一条指令，等它通过 IPC 回结
 - 工具自己的 stdout / stderr 实时交给 onOutput（宿主显示工具进度），同时攒进一个有上限的头尾缓冲
   （开头 70% + 结尾 30%，上限取 limit，没有就 MAX_PARTIAL），没拿到结果就结束时，错误里带上这些已产出的内容；
 - timeout 到了就 kill 并返回 { ok: false, timedOut: true }；
-- 被 killAll 杀掉（killAll 先把它移出 procs 再杀）返回 { ok: false, killed: true }，由调用方补"已取消"；
+- 被 kill 杀掉（kill 先把它移出 procs 再杀）返回 { ok: false, killed: true }，由调用方补"已取消"；
 - 别的原因死掉（崩溃、被系统 OOM 杀掉——同样是 SIGKILL，但不是我们杀的）返回 { ok: false, error: 退出原因 }，不算取消。
 永远不抛错：工具的错都是结果，交给模型处理。
 */
@@ -89,24 +89,24 @@ export async function spawn(
     const timer = options.timeout && Number.isFinite(options.timeout) ? setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, options.timeout) : null
     const code = await proc.exited
     if (timer) clearTimeout(timer)
-    const cancelled = !procs.delete(proc) && !timedOut && !answer        // 已经不在 procs 里 = killAll 先移出再杀的，这才是"取消"。
+    const cancelled = !procs.delete(proc) && !timedOut && !answer        // 已经不在 procs 里 = kill 先移出再杀的，这才是"取消"。
     await Promise.race([reading, Bun.sleep(50)])                          // 给输出一点时间读完；孙进程占着管道时不无限等。
     if (answer) return answer
     // 已产出的内容放在原因前面，模型能看到工具停在了哪一步。
     const partial = (dropped ? `${head}\n\n……[输出过长，中间省略 ${dropped} 个字符]……\n\n${tail}` : head + tail).trim()
-    const withPartial = (reason: string) => partial ? `${partial}\n${reason}` : reason
-    if (timedOut) return { ok: false, timedOut: true, error: withPartial(`工具执行超时（${options.timeout}ms）`) }
-    if (cancelled) return { ok: false, killed: true, error: withPartial('工具执行已取消') }
+    const attach = (reason: string) => partial ? `${partial}\n${reason}` : reason
+    if (timedOut) return { ok: false, timedOut: true, error: attach(`工具执行超时（${options.timeout}ms）`) }
+    if (cancelled) return { ok: false, killed: true, error: attach('工具执行已取消') }
     const why = proc.signalCode ? `被信号 ${proc.signalCode} 终止${proc.signalCode === 'SIGKILL' ? '（可能是内存不足被系统杀掉）' : ''}` : `退出码 ${code}`
-    return { ok: false, error: withPartial(`工具子进程异常退出（${why}）`) }
+    return { ok: false, error: attach(`工具子进程异常退出（${why}）`) }
 }
 
 /*
-killAll：先清空集合、再 kill 里面的全部子进程（SIGKILL，不给它们收尾的机会）——先移出是 spawn 区分"被取消"和"自己死掉"的依据，
+kill：先清空集合、再 kill 里面的全部子进程（SIGKILL，不给它们收尾的机会）——先移出是 spawn 区分"被取消"和"自己死掉"的依据，
 等到它们全部确认退出后返回被杀的个数（stop() 据此告诉宿主"已经停干净了"）。
 各自的 spawn 调用会因此以 killed 结束。
 */
-export async function killAll(procs: Set<Subprocess>): Promise<number> {
+export async function kill(procs: Set<Subprocess>): Promise<number> {
     const all = [...procs]
     procs.clear()
     for (const proc of all) proc.kill('SIGKILL')

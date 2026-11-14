@@ -7,7 +7,7 @@
 分组：
 1. 配置（Config 及其子项）——宿主随时可改，下一轮生效；
 2. 历史消息（Message）——AI SDK 标准消息 + id，外加 compact / error 两种自定义 role；
-3. 工具（ToolDefinition 工具文件契约、ToolMeta 元数据、McpServer 连接配置、调用与结果）；
+3. 工具（ToolDefinition 工具文件契约、ToolMeta 元数据、MCPServer 连接配置、调用与结果）；
 4. 问模型（AskRequest / Reply / Chunk）——Agent.LLM.ask 的公开契约；
 5. 回调与返回值（Callbacks / Answer）；
 6. 运行时状态（State / Internal）——loop 通过参数拿到它，从不导入 agent。
@@ -120,7 +120,7 @@ export interface ToolMeta {
 
 // MCP 连接配置：核心负责连接，工具名加 `${name}_` 前缀。默认 Streamable HTTP，老服务器用 sse。
 // enabled: false = 临时关闭（每轮现读：断开连接、工具下一轮消失；改回 true 下一轮重连），省略视为 true。
-export interface McpServer { name: string; url: string; headers?: Record<string, string>; transport?: 'http' | 'sse'; enabled?: boolean }
+export interface MCPServer { name: string; url: string; headers?: Record<string, string>; transport?: 'http' | 'sse'; enabled?: boolean }
 
 // 模型发出的一次工具调用。invalid 有值表示这次调用本身不合法（参数解析失败、不符合 schema、文字工具写坏），
 // 值是原因：loop 不问权限、不执行，直接把原因作为错误结果交给模型重写。
@@ -204,12 +204,20 @@ export interface Stopped {
     killed: number         // 被杀掉的工具子进程数（均已确认退出）
 }
 
-// closeMcp / openMcp 的结果。
-export interface McpToggle {
+// MCP.close / MCP.open 的结果。
+export interface MCPToggle {
     name: string
-    found: boolean         // agent.mcp 里有没有这个名字；没有就什么也没改
+    found: boolean         // MCP.list 里有没有这个名字；没有就什么也没改
     enabled: boolean       // 改完之后的 enabled
-    closed?: boolean       // 仅 closeMcp：是否真的断开了一条活连接（本来就没连上则为 false）
+    closed?: boolean       // 仅 MCP.close：是否真的断开了一条已连上的连接（连接中 / 失败的记录则为 false）
+}
+
+// agent.MCP：MCP 连接的宿主入口。list 是活配置（每轮现读，可原地增删，也可整份换成新数组）；
+// open / close 是需要"立即"语义的两个动作，按 name 找 list 里的元素。
+export interface MCP {
+    list: MCPServer[]
+    open: (name: string) => MCPToggle                 // enabled 置 true，下一轮在后台连接
+    close: (name: string) => Promise<MCPToggle>       // enabled 置 false，并立即断开
 }
 
 // decide 的判断结果：继续、挂一条临时提醒后继续、或结束并给出原因。
@@ -245,7 +253,7 @@ export interface CompactInfo {
 }
 
 // Agent.create 的入参：配置平铺，另带 id、初始 history、工具路径与 MCP 连接。
-export type CreateOptions = Config & { id?: string; history?: Message[]; tools?: string[]; mcp?: McpServer[]; contextRatio?: number; ratios?: Record<string, number> }
+export type CreateOptions = Config & { id?: string; history?: Message[]; tools?: string[]; MCP?: MCPServer[]; contextRatio?: number; ratios?: Record<string, number> }
 
 // send 的输入：一句话或内容块数组；省略 = 从当前历史继续。
 export type Input = string | Exclude<UserContent, string>
@@ -256,15 +264,15 @@ export type Input = string | Exclude<UserContent, string>
 export interface Internal {
     procs: Set<Subprocess>                                      // 本实例正在跑的子进程，stop() 全杀
     toolCache: Map<string, ToolMeta>                            // 路径 → 元数据，mtime 变了就重读
-    mcpClients: Map<string, McpClient>                          // name → MCP 连接（连接中 / 已连上 / 失败）
+    MCPClients: Map<string, MCPClient>                          // name → MCP 连接（连接中 / 已连上 / 失败）
     controller: AbortController | null                          // 当前运行的取消器
     running: Promise<unknown> | null                            // 当前运行（send 或 compact）
     warned: Set<string>                                         // 已提醒过的警告，避免每轮重复
 }
 
 // 一条 MCP 连接的记录：连接在后台进行，轮次最多等它一小会儿（tools/mcp 的 MCP_GRACE），之后只读它此刻的状态。
-// failed 的记录一直留着，直到宿主切换这条连接（enabled / closeMcp / 改配置）才会重连——不自动重试。
-export interface McpClient {
+// failed 的记录一直留着，直到宿主切换这条连接（enabled / MCP.close / 改配置）才会重连——不自动重试。
+export interface MCPClient {
     key: string                                       // url + headers + transport，变了就重建
     status: 'connecting' | 'ready' | 'failed'
     tools: Record<string, Tool>                       // ready 之后才有内容
@@ -278,7 +286,7 @@ export interface State {
     readonly config: Config
     readonly history: Message[]
     readonly tools: string[]
-    readonly mcp: McpServer[]
+    readonly MCP: MCPServer[]                                   // agent.MCP.list
     contextRatio: number | undefined
     readonly ratios: Record<string, number>
     readonly internal: Internal

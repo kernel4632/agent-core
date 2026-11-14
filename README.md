@@ -43,7 +43,7 @@ flowchart TD
 
 ## 核心设计
 
-**① Agent 是唯一的状态持有者。** 宿主能改的东西都是实例上的公开字段：`config`、`history`、`tools`、`mcp`、
+**① Agent 是唯一的状态持有者。** 宿主能改的东西都是实例上的公开字段：`config`、`history`、`tools`、`MCP.list`、
 `contextRatio`、`ratios`（以及 `id`）。直接改，下一轮请求就生效，不需要调任何"通知"方法。
 内部状态（子进程、工具缓存、MCP 连接、取消器）是私有字段，模块里没有任何全局可变状态，多个实例完全隔离。
 
@@ -144,7 +144,7 @@ export default {
 ## 接 MCP
 
 ```ts
-agent.mcp = [
+agent.MCP.list = [                       // 也可以 Agent.create({ MCP: [...] })，或者原地 push / splice
     { name: 'github', url: 'https://example.com/mcp', headers: { Authorization: 'Bearer ...' } },
     { name: 'legacy', url: 'https://old.example.com/sse', transport: 'sse' },
 ]
@@ -153,17 +153,17 @@ agent.mcp = [
 核心负责连接（默认 Streamable HTTP，老服务器用 `sse`），工具名统一加 `${name}_` 前缀。
 连接在后台进行，不阻塞对话：每轮最多等正在连接的服务器 2 秒（`stop()` 立刻不等），连上之后的那一轮起工具才出现。
 连接按配置缓存，配置变了自动重建，从数组里删掉的连接会被关闭。连不上（含握手超过 15 秒）只发一条 `onWarning`，不影响别的工具，
-**也不自动重连**——要重试就切一下这条连接的开关（`closeMcp` / `openMcp`、`enabled`、或改配置）。
+**也不自动重连**——要重试就切一下这条连接的开关（`MCP.close` / `MCP.open`、`enabled`、或改配置）。
 
 **临时关闭某一条：** 元素上的 `enabled` 每轮现读——`false` 断开连接、下一轮起它的工具消失；改回 `true`（或删掉这个字段）下一轮重连。
 也可以用方法，效果相同：
 
 ```ts
-await agent.closeMcp('github')   // → { name: 'github', found: true, enabled: false, closed: true }，立即断开
-agent.openMcp('github')          // → { name: 'github', found: true, enabled: true }，下一轮在后台重连
+await agent.MCP.close('github')   // → { name: 'github', found: true, enabled: false, closed: true }，立即断开
+agent.MCP.open('github')          // → { name: 'github', found: true, enabled: true }，下一轮在后台重连
 ```
 
-`closeMcp` 把 `agent.mcp` 里同名元素原地换成 `enabled: false` 的新对象并立即断开连接（`closed` 表示是否真的断开了一条已连上的连接，连接中 / 连接失败的记录只是被移出，
+`MCP.close` 把 `MCP.list` 里同名元素原地换成 `enabled: false` 的新对象并立即断开连接（`closed` 表示是否真的断开了一条已连上的连接，连接中 / 连接失败的记录只是被移出，
 `found: false` 表示没有这个名字、什么也没改）；正在执行的该服务器工具调用会以错误结果结束。
 
 ---
@@ -172,7 +172,7 @@ agent.openMcp('github')          // → { name: 'github', found: true, enabled: 
 
 ### `Agent.create(options)`
 
-配置平铺在顶层，另带 `id`、`history`、`tools`、`mcp`、`contextRatio`、`ratios`。同步返回实例，不做 I/O。
+配置平铺在顶层，另带 `id`、`history`、`tools`、`MCP`（MCP 连接数组，成为 `agent.MCP.list`）、`contextRatio`、`ratios`。同步返回实例，不做 I/O。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -243,7 +243,7 @@ agent.openMcp('github')          // → { name: 'github', found: true, enabled: 
 
 强制压缩一次，返回总结文字（片段同样通过 `onChunk` 流式推送）。
 
-### `agent.closeMcp(name)` / `agent.openMcp(name)`
+### `agent.MCP.close(name)` / `agent.MCP.open(name)`
 
 临时关闭 / 重新打开一条 MCP 连接，见[接 MCP](#接-mcp)。
 
@@ -257,7 +257,7 @@ agent.openMcp('github')          // → { name: 'github', found: true, enabled: 
 | 字段 | 说明 |
 |------|------|
 | `history` | 消息数组（AI SDK 标准消息 + `id`，外加 `compact` 总结和宿主写的 `error` 记录）。宿主可直接读写；`error` 永远不发给模型 |
-| `tools` / `mcp` | 工具路径 / MCP 连接配置，增删下一轮生效 |
+| `tools` / `MCP.list` | 工具路径 / MCP 连接配置，增删或整份替换下一轮生效 |
 | `config` | 活配置，下一轮生效 |
 | `contextRatio` | 冷启动的"每字符 token"估算比例；学到真实值之前用它 |
 | `ratios` | 按模型名学到的比例 `{ 模型名: 比例 }`，宿主可持久化后下次传回 |

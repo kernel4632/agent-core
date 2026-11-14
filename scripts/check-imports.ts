@@ -21,7 +21,7 @@ const src = join(root, 'src')
 const LAYER: Record<string, number> = { agent: 4, loop: 3, context: 2, model: 2, tools: 2, history: 1, utils: 0, types: -1 }
 
 // 文件属于哪个模块：src 下第一级目录名，或根级文件名（去掉 .ts）。
-const moduleOf = (file: string) => relative(src, file).split('/')[0]!.replace(/\.ts$/, '')
+const layer = (file: string) => relative(src, file).split('/')[0]!.replace(/\.ts$/, '')
 
 // 递归列出 src 下的全部 .ts 文件。
 const list = (dir: string): string[] => readdirSync(dir).flatMap(name => {
@@ -30,16 +30,16 @@ const list = (dir: string): string[] => readdirSync(dir).flatMap(name => {
 })
 
 // 抽出一个文件的相对导入：[目标绝对路径, 是否仅类型]。
-const importsOf = (file: string) => [...readFileSync(file, 'utf8').matchAll(/^import\s+(type\s+)?[^'"]*from\s+'(\.[^']+)'/gm)]
+const scan = (file: string) => [...readFileSync(file, 'utf8').matchAll(/^import\s+(type\s+)?[^'"]*from\s+'(\.[^']+)'/gm)]
     .map(match => ({ to: resolve(dirname(file), match[2]!), typeOnly: Boolean(match[1]) }))
 
 const files = list(src)
-const graph = new Map(files.map(file => [file, importsOf(file)]))
+const graph = new Map(files.map(file => [file, scan(file)]))
 const problems: string[] = []
 
 // 规则 2：跨模块必须向下；types 不导入任何东西。
 for (const [from, edges] of graph) for (const { to } of edges) {
-    const a = moduleOf(from), b = moduleOf(to)
+    const a = layer(from), b = layer(to)
     if (a === 'types') problems.push(`types.ts 不能导入任何文件：${relative(src, to)}`)
     if (a !== b && !(LAYER[a]! > LAYER[b]!)) problems.push(`越级 / 同级导入：${relative(src, from)} → ${relative(src, to)}`)
 }

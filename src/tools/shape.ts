@@ -4,7 +4,7 @@ shape：把工具的任意返回值整理成"能写进 history、能发给模型
 
 调用示例：
     await shape(await tool.run(args), { limit: 20000, toModelOutput: tool.toModelOutput, input: args, toolCallId })  // 子进程里
-    await shape(await mcpTool.execute(args, options), { limit, toModelOutput: mcpTool.toModelOutput, ... })          // 主进程（MCP）里
+    await shape(await MCPTool.execute(args, options), { limit, toModelOutput: MCPTool.toModelOutput, ... })          // 主进程（MCP）里
 
 规则：
 1. 返回值可以是 { output, stop } 包装（stop:true 是工具"要求结束循环"的约定），也可以直接是值；
@@ -13,14 +13,14 @@ shape：把工具的任意返回值整理成"能写进 history、能发给模型
 4. 空返回 → 一句交代，让模型知道工具跑成功了；字符串 → text 块；Error → error-text 块；其余 → json 块；
 5. 只留纯 JSON：二进制转 base64、Date 变字符串，循环引用这类序列化不了的值变成 error-text，保证子进程能把结果传回来；
 6. 校验形状（旧实现 outputProblem 的规则）：text 要字符串 value、json 要有 value、content 要数组且每个部件都过
-   history.partProblem——不合法就变成一条正常的工具失败。history 只增不删，一个 AI SDK 拒收的块写进去会让之后每次请求都发不出去；
+   history.check——不合法就变成一条正常的工具失败。history 只增不删，一个 AI SDK 拒收的块写进去会让之后每次请求都发不出去；
 7. 超过 limit 字符时截断：保留开头 70% 和结尾 30%（报错、汇总通常在日志末尾），中间注明省略了多少并提示缩小范围；
    content 块里的文字部件同样截断，媒体部件不动。limit 缺省 = 不截断。
-不导入 tools 以外的能力模块，只导入下层的 history（partProblem / PARTS）；没有模块级可变状态。
+不导入 tools 以外的能力模块，只导入下层的 history（check / PARTS）；没有模块级可变状态。
 */
 
 import type { ToolDefinition } from '../types.ts'
-import { PARTS, partProblem } from '../history.ts'
+import { PARTS, check } from '../history.ts'
 
 // AI SDK 认得的输出块类型：工具直接返回成形的块时，认出来才不会再给它套一层 json。
 const BLOCK = new Set(['text', 'json', 'content', 'error-text', 'error-json', 'execution-denied'])
@@ -57,7 +57,7 @@ export async function shape(
             : output.type === 'execution-denied' && output.reason !== undefined && typeof output.reason !== 'string' ? 'execution-denied 输出块的 reason 必须是字符串'
             : output.type !== 'content' ? null
             : !Array.isArray(output.value) ? 'content 输出块的 value 必须是数组'
-            : output.value.map((part: any) => PARTS.has(part?.type) ? partProblem(part) : `content 块里的 ${JSON.stringify(part?.type)} 部件不合法，只能是 ${[...PARTS].join(' / ')}`).find(Boolean) ?? null
+            : output.value.map((part: any) => PARTS.has(part?.type) ? check(part) : `content 块里的 ${JSON.stringify(part?.type)} 部件不合法，只能是 ${[...PARTS].join(' / ')}`).find(Boolean) ?? null
         if (problem) output = { type: 'error-text', value: `工具输出不合法：${problem}` }
     } catch (error) {
         output = { type: 'error-text', value: `工具输出无法整理：${(error as Error)?.message ?? String(error)}` }
