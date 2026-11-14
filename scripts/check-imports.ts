@@ -20,8 +20,8 @@ const src = join(root, 'src')
 // 层级：数字越大越高；只允许从高层导入低层。能力模块共享第 2 层。
 const LAYER: Record<string, number> = { agent: 4, loop: 3, context: 2, model: 2, tools: 2, history: 1, utils: 0, types: -1 }
 
-// 文件属于哪个模块：src 下第一级目录名，或根级文件名（去掉 .ts）。
-const layer = (file: string) => relative(src, file).split('/')[0]!.replace(/\.ts$/, '')
+// 文件属于哪个模块：src 下第一级目录名，或根级文件名（去掉 .ts）；Windows 的路径分隔符是 \，两种都认。
+const layer = (file: string) => relative(src, file).split(/[\\/]/)[0]!.replace(/\.ts$/, '')
 
 // 递归列出 src 下的全部 .ts 文件。
 const list = (dir: string): string[] => readdirSync(dir).flatMap(name => {
