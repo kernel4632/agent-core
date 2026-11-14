@@ -102,7 +102,7 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
             }
             // 流中途出错时，AI SDK 会让所有"最后才结算"的 promise 一起 reject；没被 await 到的会变成未处理拒绝，
             // Bun 会因此直接退出宿主进程（旧实现 issue #26）。先挂上兜底 catch，真正的错误仍在 await 处抛出。
-            for (const settled of [running.text, running.reasoningText, running.toolCalls, running.finishReason, running.usage, running.responseMessages, running.output]) (settled as any)?.catch?.(() => {})
+            for (const settled of [running.toolCalls, running.finishReason, running.usage, running.responseMessages, running.output]) (settled as any)?.catch?.(() => {})
             let failure: unknown = null
             const parts: string[] = []                                            // 推送过的正文片段
             const thoughts: string[] = []                                         // 推送过的思考片段
@@ -116,9 +116,8 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
             flush(true)                                                           // 文字工具模式：把扣着、最后证明不是调用的正文补推。
             if (await running.finishReason === 'error') throw new Error('模型请求失败：供应商返回了错误但没有给出原因')
             const toolCalls = await running.toolCalls
-            // 思考全文：优先用推送过的片段拼（和宿主看到的逐字一致）；流里一片都没有时再取 AI SDK 结算的 reasoningText。
-            const reasoning = thoughts.join('') || (await running.reasoningText) || ''
-            return { text: parts.join('') || await running.text, reasoning, toolCalls, usage: await running.usage, messages: await running.responseMessages, output: call.output && !toolCalls.length ? await running.output : undefined }
+            // 正文 / 思考全文就是推送过的片段拼起来（AI SDK 的 text / reasoningText 也是这样拼的），宿主拿它逐字核对。
+            return { text: parts.join(''), reasoning: thoughts.join(''), toolCalls, usage: await running.usage, messages: await running.responseMessages, output: call.output && !toolCalls.length ? await running.output : undefined }
         }, { ...request.retry, signal: request.signal, onRetry: request.onRetry })
 
         // --- 4. 文字工具：从回复文字里读回调用，改写成和原生调用完全一样的形状（history 只有一种格式）---
