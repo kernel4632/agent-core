@@ -54,7 +54,7 @@ describe('坏插件文件', () => {
         const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
         await agent.send('hi', { onWarning: warning => warnings.push(warning.path ?? '') })
         expect(toolNames(calls[0])).toEqual(['good'])
-        expect(warnings.map(path => path.split('/').pop()).sort()).toEqual(['norun.ts', 'spin.ts', 'syntax.ts']) // 同一个坏文件只警告一次
+        expect(warnings.map(path => path.split(/[\\/]/).pop()).sort()).toEqual(['norun.ts', 'spin.ts', 'syntax.ts']) // 同一个坏文件只警告一次
         expect(results(agent.history)[0].output.value).toBe('好')
     }, 15000)
 })
@@ -156,7 +156,7 @@ describe('工具子进程细节', () => {
         const second = outputs.find(output => output.toolCallId === 'g' && output.data.includes('第二步'))!
         expect(second.at - first.at).toBeGreaterThan(200)                  // 第一步没等到工具结束才出现
         expect(steps.output.type).not.toBe('error-text')
-        expect(oom.output.value).toContain('SIGKILL')
+        expect(oom.output.value).toContain(process.platform === 'win32' ? '异常退出' : 'SIGKILL') // Windows 没有信号：自杀表现为退出码 1
         expect(oom.output.value).not.toContain('已取消')
         if (process.env.BUN_BE_BUN === undefined) expect(env.output.value).toBe('none,none')
     }, 15000)
