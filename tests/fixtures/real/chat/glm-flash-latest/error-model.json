@@ -35,7 +35,7 @@
     "status": 503,
     "headers": {
      "content-type": "application/json; charset=utf-8",
-     "date": "Sat, 14 Nov 2026 06:31:43 GMT",
+     "date": "Sat, 14 Nov 2026 12:53:00 GMT",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin",
      "server": "nginx",
@@ -43,10 +43,59 @@
      "x-content-type-options": "nosniff",
      "x-frame-options": "SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140631434644411168268d9d65GFsioup"
+     "x-oneapi-request-id": "20261114125300594705568268d9d6T8h2xaWe"
     },
     "chunks": [
-     "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model agent-core-no-such-model under group auto (distributor) (request id: 202611140631434644411168268d9d65GFsioup)\",\"type\":\"new_api_error\"}}"
+     "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model agent-core-no-such-model under group auto (distributor) (request id: 20261114125300594705568268d9d6T8h2xaWe)\",\"type\":\"new_api_error\"}}"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "283",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "agent-core-no-such-model",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "hi"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/error-model/v1:agent-core-no-such-model:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 503,
+    "headers": {
+     "content-type": "application/json; charset=utf-8",
+     "date": "Sat, 14 Nov 2026 12:53:00 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611141253003688131208268d9d6LEkcVL2N"
+    },
+    "chunks": [
+     "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model agent-core-no-such-model under group auto (distributor) (request id: 202611141253003688131208268d9d6LEkcVL2N)\",\"type\":\"new_api_error\"}}"
     ]
    }
   }

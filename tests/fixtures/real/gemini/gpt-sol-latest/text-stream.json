@@ -11,7 +11,7 @@
      "connection": "keep-alive",
      "content-length": "123",
      "content-type": "application/json",
-     "host": "127.0.0.1:47310",
+     "host": "127.0.0.1:47313",
      "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
      "x-goog-api-key": "<redacted>"
     },
@@ -36,7 +36,7 @@
     "headers": {
      "cache-control": "no-cache",
      "content-type": "text/event-stream",
-     "date": "Sat, 14 Nov 2026 06:30:05 GMT",
+     "date": "Sat, 14 Nov 2026 13:16:42 GMT",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin",
      "server": "nginx",
@@ -44,7 +44,7 @@
      "x-content-type-options": "nosniff",
      "x-frame-options": "SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140630024817441398268d9d63N3DeX01"
+     "x-oneapi-request-id": "202611141316406344407698268d9d6TivWeX6K"
     },
     "chunks": [
      "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":null,\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":9,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":9,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":12,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":5,\"totalTokenCount\":17,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n"

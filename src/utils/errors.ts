@@ -80,7 +80,9 @@ export function explain(error: unknown, info: Record<string, unknown> = {}): { r
     if (kind === 'aborted') return null
     const target = (error ?? {}) as Record<string, any>
     const status = target.statusCode ?? target.status
-    const said = target.data?.error?.message ?? target.data?.message ?? target.message ?? String(error) // 服务端原话最具体。
+    // 服务端原话最具体：SDK 按厂商格式解析出的 data 优先；解析不了（中转站换了错误格式）就从原始响应体里取，再不行用 message。
+    const body = (() => { try { return JSON.parse(target.responseBody) } catch { return undefined } })()
+    const said = target.data?.error?.message ?? target.data?.message ?? body?.error?.message ?? body?.message ?? target.message ?? String(error)
     const content = `模型请求出错（${LABEL[kind]}${status ? `，HTTP ${status}` : ''}）：${String(said).slice(0, 1000)}`
     return { role: 'error', content, request: { kind, ...(status ? { statusCode: status } : {}), ...info } }
 }

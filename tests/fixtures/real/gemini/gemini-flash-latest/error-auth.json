@@ -35,7 +35,7 @@
     "status": 401,
     "headers": {
      "content-type": "application/json; charset=utf-8",
-     "date": "Sat, 14 Nov 2026 07:03:17 GMT",
+     "date": "Sat, 14 Nov 2026 13:18:36 GMT",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin",
      "server": "nginx",
@@ -43,10 +43,59 @@
      "x-content-type-options": "nosniff",
      "x-frame-options": "SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140703172620851378268d9d6IMeiHLPX"
+     "x-oneapi-request-id": "202611141318365312015968268d9d6ZaIJlr4j"
     },
     "chunks": [
-     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611140703172620851378268d9d6IMeiHLPX)\",\"type\":\"new_api_error\"}}"
+     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611141318365312015968268d9d6ZaIJlr4j)\",\"type\":\"new_api_error\"}}"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "97",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "hi"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 401,
+    "headers": {
+     "content-type": "application/json; charset=utf-8",
+     "date": "Sat, 14 Nov 2026 13:18:36 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611141318367703030488268d9d6thWL6Pi0"
+    },
+    "chunks": [
+     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611141318367703030488268d9d6thWL6Pi0)\",\"type\":\"new_api_error\"}}"
     ]
    }
   }

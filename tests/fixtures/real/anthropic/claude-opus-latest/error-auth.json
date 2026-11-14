@@ -40,7 +40,7 @@
     "status": 401,
     "headers": {
      "content-type": "application/json; charset=utf-8",
-     "date": "Sat, 14 Nov 2026 06:31:56 GMT",
+     "date": "Sat, 14 Nov 2026 12:53:22 GMT",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin",
      "server": "nginx",
@@ -48,10 +48,64 @@
      "x-content-type-options": "nosniff",
      "x-frame-options": "SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140631561743501798268d9d6d5M8wq2b"
+     "x-oneapi-request-id": "20261114125322818081748268d9d6GfDlXMDj"
     },
     "chunks": [
-     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611140631561743501798268d9d6d5M8wq2b)\",\"type\":\"new_api_error\"}}"
+     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 20261114125322818081748268d9d6GfDlXMDj)\",\"type\":\"new_api_error\"}}"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "167",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "hi",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 401,
+    "headers": {
+     "content-type": "application/json; charset=utf-8",
+     "date": "Sat, 14 Nov 2026 12:53:22 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611141253223084911898268d9d6hx5ysYcv"
+    },
+    "chunks": [
+     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611141253223084911898268d9d6hx5ysYcv)\",\"type\":\"new_api_error\"}}"
     ]
    }
   }

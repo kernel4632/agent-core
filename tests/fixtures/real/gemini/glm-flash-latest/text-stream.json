@@ -36,7 +36,7 @@
     "headers": {
      "cache-control": "no-cache",
      "content-type": "text/event-stream",
-     "date": "Sat, 14 Nov 2026 06:36:54 GMT",
+     "date": "Sat, 14 Nov 2026 12:53:09 GMT",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin",
      "server": "nginx",
@@ -44,11 +44,10 @@
      "x-content-type-options": "nosniff",
      "x-frame-options": "SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140636505803497518268d9d6eHCv0hyv"
+     "x-oneapi-request-id": "202611141253087986757988268d9d6nWxdDvn5"
     },
     "chunks": [
-     "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":null,\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n",
-     "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":17,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":57,\"totalTokenCount\":74,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n"
+     "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":null,\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":17,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":80,\"totalTokenCount\":97,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n"
     ]
    }
   }

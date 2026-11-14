@@ -19,7 +19,7 @@ import { tools } from './helpers.ts'
 const RECORD = process.env.RECORD === '1'
 const KEY = RECORD ? process.env.LINGLOFT_API_KEY! : 'replay-key'
 const ONLY = process.env.REAL_MODELS?.split(',')
-const WAIT = RECORD ? 900_000 : 20_000                                    // gemini 经这个中转站首字常要两分钟
+const WAIT = RECORD ? 1_800_000 : 20_000                                   // gemini 经这个中转站首字常要两分钟
 
 const NAMES = ['claude-opus-latest', 'gemini-flash-latest', 'glm-flash-latest', 'gpt-sol-latest']
 // cache：这个中转站上实测的缓存表现（read 第二次读到缓存 / write 只看到写入，读不到——请求被路由到不同账号 / none 不报缓存）；
@@ -33,8 +33,7 @@ const MODELS: Target[] = [
     { model: 'gpt-sol-latest', protocol: 'responses', base: '/v1', port: 47304, think: { openai: { forceReasoning: true, reasoningEffort: 'low', reasoningSummary: 'auto' } }, cache: 'read', thinking: 'none' },
 ].filter(one => !ONLY || ONLY.includes(one.model)) as Target[]
 const CROSS: Target[] = ([
-    ['claude-opus-latest', 'chat', '/v1'], ['gemini-flash-latest', 'chat', '/v1'], ['glm-flash-latest', 'anthropic', '/v1'], ['glm-flash-latest', 'gemini', '/v1beta'],
-    ['gpt-sol-latest', 'chat', '/v1'], ['gpt-sol-latest', 'anthropic', '/v1'], ['gpt-sol-latest', 'gemini', '/v1beta'],
+    ['claude-opus-latest', 'chat', '/v1'], ['gemini-flash-latest', 'chat', '/v1'], ['glm-flash-latest', 'anthropic', '/v1'], ['glm-flash-latest', 'gemini', '/v1beta'], ['gpt-sol-latest', 'chat', '/v1'], ['gpt-sol-latest', 'anthropic', '/v1'], ['gpt-sol-latest', 'gemini', '/v1beta'],
 ] as const).map(([model, protocol, base]) => ({ model, protocol, base, port: 47310 + NAMES.indexOf(model) })).filter(one => !ONLY || ONLY.includes(one.model))
 
 const relays = new Map<number, Relay>()                                   // 一个端口一个中转，按需启动，结束后关掉
@@ -43,8 +42,8 @@ afterAll(() => { for (const relay of relays.values()) relay.stop() })
 
 // 场景公共参数：Agent.LLM.ask 用 request()，Agent.create 用 config()；重试最多 1 次、单次 5 分钟（录制时防止无限重试烧额度）。
 const base = (m: Target, scenario: string) => ({ model: m.model, protocol: m.protocol, baseURL: relayOf(m.port).url(m.protocol, m.model, scenario, m.base), apiKey: KEY, maxTokens: 400 })
-const request = (m: Target, scenario: string, extra: Partial<AskRequest> = {}): AskRequest => ({ ...base(m, scenario), messages: [], retry: { maxTries: 1, timeout: 300_000, baseDelay: 10 }, ...extra })
-const config = (m: Target, scenario: string, extra: Partial<Config> = {}): Config => ({ ...base(m, scenario), retryMaxTries: 1, requestTimeout: 300_000, retryBaseDelay: 10, noToolRounds: 1, ...extra })
+const request = (m: Target, scenario: string, extra: Partial<AskRequest> = {}): AskRequest => ({ ...base(m, scenario), messages: [], retry: { maxTries: 1, timeout: 400_000, baseDelay: 10 }, ...extra })
+const config = (m: Target, scenario: string, extra: Partial<Config> = {}): Config => ({ ...base(m, scenario), retryMaxTries: 1, requestTimeout: 400_000, retryBaseDelay: 10, noToolRounds: 1, ...extra })
 const user = (content: string) => [{ role: 'user' as const, content }]
 // 收集流式片段，返回按类型拼好的全文，用来和返回值逐字核对。
 const collect = (chunks: Chunk[] = []) => ({ chunks, onChunk: (chunk: Chunk) => void chunks.push(chunk), joined: (type: 'text' | 'reasoning') => chunks.map(one => one.type === type && !one.compact ? one.text : '').join('') })
@@ -97,12 +96,21 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
         if (m.thinking !== 'none') expect(parts(reply.messages, 'reasoning').length).toBeGreaterThan(0) // 思考块（含签名）进 history，发不发回由 reasoning 配置决定
     }, WAIT)
 
+    // responses + reasoning 'send'：加密思考进 history，第二轮把它当完整条目发回（encrypted_content），不发 item_reference。
+    if (m.protocol === 'responses') test('reasoning-send：思考原样回传的多轮对话', async () => {
+        const agent = Agent.create(config(m, 'reasoning-send', { reasoning: 'send', maxTokens: 2000, provider: { providerOptions: m.think } }))
+        await agent.send('一个正整数除以 3 余 2、除以 5 余 3、除以 7 余 2，最小是几？只给数字')
+        expect((await agent.send('再加 100 是多少？只给数字')).text).toContain('123')
+        expect(parts(agent.history, 'reasoning').some((part: any) => part.providerOptions?.openai?.reasoningEncryptedContent)).toBe(true)
+        const sent = readFileSync(join(import.meta.dir, 'fixtures', 'real', 'responses', m.model, 'reasoning-send.json'), 'utf8').split('"exchanges"')[1].split('"request"')[2] // 第二次请求起的录制
+        expect([sent.includes('"encrypted_content"'), sent.includes('item_reference')]).toEqual([true, false])
+    }, WAIT)
+
     test('tools-parallel：一次回复里并行调两个工具', async () => {
         const agent = Agent.create({ ...config(m, 'tools-parallel'), tools: [dir] })
         const answer = await agent.send('同时查询北京和上海今天的天气：在同一次回复里并行调用 weather 两次，拿到结果后用一句话汇报。')
         const first = agent.history.find(one => one.role === 'assistant') as any
-        expect(parts([first], 'tool-call').length).toBe(2)
-        expect(parts(agent.history, 'tool-result').length).toBe(2)
+        expect([parts([first], 'tool-call').length, parts(agent.history, 'tool-result').length]).toEqual([2, 2])
         expect(answer.text).toContain('晴')
     }, WAIT)
 
@@ -110,15 +118,15 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
         const agent = Agent.create({ ...config(m, 'tools-multi'), tools: [dir] })
         const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。')
         expect(parts(agent.history, 'tool-result').length).toBeGreaterThanOrEqual(2)
-        expect(answer.text).toContain('6')
-        expect(answer.steps).toBeGreaterThanOrEqual(3)
+        expect([answer.text.includes('6'), answer.steps >= 3]).toEqual([true, true])
         usageOK(answer.usage)
     }, WAIT)
 
     test('text-tools：文字工具模式，history 里仍是标准 tool-call 块', async () => {
         const { onChunk, joined } = collect()
         const agent = Agent.create({ ...config(m, 'text-tools', { textTools: true, noToolRounds: 2, maxTokens: m.toolTokens ?? 400 }), tools: [dir] })
-        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onChunk })
+        // claude 常要提醒一次才开始调用，故 noToolRounds 2；听话的模型会"回答→被提醒→再调一次"永不收尾（见报告），第 10 轮强停省额度。
+        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onChunk, onStep: ({ step }) => { if (step >= 10) agent.stop() } })
         const values = parts(agent.history, 'tool-result').map((part: any) => part.output.value)
         expect([values[0], values.includes(6)]).toEqual([3, true])                       // 真的一步步算了（模型偶尔重复调用；最终回答可能被提醒轮覆盖成空）
         expect(joined('text')).not.toContain('<tool_call')                             // 调用文字不推给宿主
@@ -140,34 +148,31 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
 
     test('compact：手动压缩，总结追加进 history', async () => {
         const history = [
-            { id: 'a', role: 'user', content: '我叫小林，在做一个记账 App，用 Bun 写后端。' },
-            { id: 'b', role: 'assistant', content: '好的，小林。记账 App 的后端用 Bun。' },
-            { id: 'c', role: 'user', content: '数据库决定用 SQLite，金额一律存成分（整数）。' },
-            { id: 'd', role: 'assistant', content: '明白：SQLite，金额存整数分。' },
+            { id: 'a', role: 'user', content: '我叫小林，在做一个记账 App，用 Bun 写后端。' }, { id: 'b', role: 'assistant', content: '好的，小林。记账 App 的后端用 Bun。' },
+            { id: 'c', role: 'user', content: '数据库决定用 SQLite，金额一律存成分（整数）。' }, { id: 'd', role: 'assistant', content: '明白：SQLite，金额存整数分。' },
         ] as any
         const agent = Agent.create({ ...config(m, 'compact'), history })
         const summary = await agent.compact()
-        expect(summary).toContain('记账')                                                 // gemini 思考吃掉大半 maxTokens，总结会被截断（见报告）
-        expect(agent.history.at(-1)!.role).toBe('compact')
-        expect(agent.history).toHaveLength(5)
+        // 压缩不带输出上限：总结不再被截断。gemini 的录制还是去掉上限前的旧回复（中转站 gemini 渠道 2026-11-14 不可用，待重录）。
+        for (const fact of m.protocol === 'gemini' ? ['记账'] : ['记账', 'Bun', 'SQLite']) expect(summary).toContain(fact)
+        expect([agent.history.length, agent.history.at(-1)!.role]).toEqual([5, 'compact'])
     }, WAIT)
 
     test('cache：同一段长 system 连问两次，缓存用量字段对得上', async () => {
         const ask = () => Agent.LLM.ask(request(m, 'cache', { stream: false, maxTokens: 50, system: LONG, messages: user('第 7 条守则说了什么？一句话') }))
-        const first = await ask()
-        const second = await ask()
+        const [first, second] = [await ask(), await ask()]
         for (const usage of [first.usage, second.usage]) for (const value of Object.values(usage)) expect(typeof value).toBe('number')
         if (m.cache === 'read') expect(second.usage.cacheReadTokens).toBeGreaterThan(0)
         if (m.cache === 'write') expect(second.usage.cacheWriteTokens).toBeGreaterThan(0)
     }, WAIT)
 
-    test('error-auth：错的 key 分类为 auth，不重试', async () => {
-        expect(await kindOf(Agent.LLM.ask(request(m, 'error-auth', { apiKey: 'sk-wrong-key-for-agent-core-test', retry: { maxTries: 0 }, messages: user('hi') })))).toBe('auth')
-    }, WAIT)
-
-    // 这个中转站对不存在的模型回 503 model_not_found，按状态码只能归为 server（默认会无限重试，见报告“待决定”）。
-    test('error-model：不存在的模型名（中转站回 503）', async () => {
-        expect(await kindOf(Agent.LLM.ask(request(m, 'error-model', { model: 'agent-core-no-such-model', retry: { maxTries: 0 }, messages: user('hi') })))).toBe('server')
+    // 出错写进 history：retryMaxTries 1 截住默认的无限重试，重试前和最终失败各记一条（内容相同只记一条）；中转站对不存在的模型回 503，归 server。
+    for (const [scenario, extra, kind, status] of [['error-auth', { apiKey: 'sk-wrong-key-for-agent-core-test' }, 'auth', 401], ['error-model', { model: 'agent-core-no-such-model' }, 'server', 503]] as const) test(`${scenario}：分类为 ${kind}，错误记进 history`, async () => {
+        const agent = Agent.create({ ...config(m, scenario), ...extra })
+        expect(await kindOf(agent.send('hi'))).toBe(kind)
+        const errors = agent.history.filter(one => one.role === 'error') as any[]
+        expect(errors.length > 0 && errors.every(one => one.content.includes(`HTTP ${status}`) && one.request.kind === kind && one.request.statusCode === status)).toBe(true)
+        expect([errors.length, errors[0].request.attempt, errors[1].request.final, errors[1].content.includes('request id')]).toEqual([2, 1, true, true]) // 原话含 request id，两条不重样
     }, WAIT)
 
     test('abort：收到第一个片段就取消，抛 aborted', async () => {

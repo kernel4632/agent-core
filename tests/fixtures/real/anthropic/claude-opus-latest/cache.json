@@ -48,26 +48,26 @@
     "status": 200,
     "headers": {
      "alt-svc": "h3=\":443\"; ma=86400",
-     "cache-control": "public, max-age=0",
      "cf-cache-status": "DYNAMIC",
-     "cf-ray": "a5a3f9cb4a1ad829-LAX",
-     "content-type": "application/json; charset=utf-8",
-     "date": "Sat, 14 Nov 2026 06:31:55 GMT",
+     "cf-ray": "a5a628490ada502d-LAX",
+     "content-type": "application/json",
+     "date": "Sat, 14 Nov 2026 12:53:13 GMT",
      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
-     "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=Caxf62CJG8VPhkIqq5Mmg%2F2TkQXYwdKDxk4XeWFVF7dutKga4kEqgjCXdFhYWOZc9%2BdTqYixokAqEw9%2FzAzcmyYn0CHn4twrX%2Bjkj6T62WqtAurUqAOhFyRzBpZ7KqTwg9s%3D\"}]}",
+     "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=rFXL1awsSyugNJIebKCEosjTx%2B2e2jgzIkQHGEQecsF9NY0V2S2pz3J%2F6ltfiekoOf%2FQAETn3yHW046lMjfqG%2F9QNwof595o5n%2BF1HIR0P0p2C5b0RB7mzHBNqLVvjR0ado%3D\"}]}",
      "server": "nginx",
      "strict-transport-security": "max-age=31536000; includeSubDomains",
-     "x-client-request-id": "4636872c-cba8-4322-81c0-612dec8156f0",
+     "vary": "Accept-Encoding, Accept-Encoding",
+     "x-client-request-id": "f2524808-25d1-47e6-b25f-120f91c57d8b",
      "x-content-type-options": "nosniff, nosniff",
      "x-frame-options": "DENY, SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140631528343870578268d9d6vRipftoK",
-     "x-request-id": "cdc3824e-9766-47a2-b9b9-9a79aab1028b"
+     "x-oneapi-request-id": "202611141253086450163288268d9d6fWFan5oK",
+     "x-request-id": "fda1e075-d2f8-4237-ad68-d18f3f084d33"
     },
     "chunks": [
-     "{\"model\":\"claude-opus-5-5\",\"id\":\"msg_011CgjlSi66yLW9NVVfYwrUW\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"第 7 条守则要求回答准确、简短，遇到不确定的事实先说明不确定，不编造数据，引用时注明来源，代码示例必须能\"}],\"stop_reason\":\"max_tokens\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":7731,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7731,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"}}"
+     "{\"model\":\"claude-opus-5-5\",\"id\":\"msg_011Ch2rRwiXfypk1e1Kf2Tvp\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSrgQKEAgSGAI4AUIIdGhpbmtpbmcSDGCgFWqFRWFlCHkmXxoMyo0UkGe2eyz9HL2QIjClxw4pVI1HZiePVda3F0hYACzhCjtw+52zURi5BDw47IkUPIY0SfbxI2zuqUuKjjMqywNthQjOWmnKzJMkhp1vPjJ0NLyb5nKMkiC8Vy4G+yiQIyTlEPjPHdYicN5ijAFbz6jVjwqMerhT3qbaYRYtE7j35Jxq6G2ItKdUk+h4ULlOl3sK45n7coTy26Oniife2L0T6ahKbCYpdd4KKIGlwyf0Aw1h2NToY3owdAIeB2jjBZkN87FCvVSZ4u/GL7xBR7Pr+o+qp8EelMICEQK1u7p3bZ/Z32kFPrnvSHkFRs7Dxc3q+DtGo4cFl9BTbZfsBOX6WiKYWcj3kwZOfiM0Qte+UiNyVL3849Ztaz3g8oSANvNBQ4TuKaD28nLR8jZ6+oFLuTNd0X4vD3SXdpUwLdqJyPF/xZpNuvJGrhteLqyqJryN1lmZNAgk3crlC32aGKXy2oSjWEOTc85rydx+zTt2smpZedCWJ+ZdN+gWxQC4nzJWpJ3AYlt4EUGCiPVU/BXBOWipS+Y30dNdE6wsePjlwVfAP4TwNs082HRhvVkupjQd1SIaUYOK4b/IaYYLNC6MCbOPE8H41Gp/bd1EKqaR5FdctLs0TMWdACK0P2SYw/Sp8kAzHnHV0bCTJnwAc+UyXI2dXoxu8CCwPFKlRn97M1zySuqf4uOPaiEYASIe4Y2FWM8zOuNBotijHudEhO6otkH5JwA4Tsob7AF3\"},{\"type\":\"text\",\"text\":\"第 7 条守则要求回答准确简\"}],\"container\":null,\"stop_reason\":\"max_tokens\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":6979,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":6979,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":36},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null,\"context_management\":{\"applied_edits\":[]}}"
     ]
    }
   },
@@ -118,26 +118,26 @@
     "status": 200,
     "headers": {
      "alt-svc": "h3=\":443\"; ma=86400",
-     "cache-control": "public, max-age=0",
      "cf-cache-status": "DYNAMIC",
-     "cf-ray": "a5a3f9dbebe2d829-LAX",
-     "content-type": "application/json; charset=utf-8",
-     "date": "Sat, 14 Nov 2026 06:31:55 GMT",
+     "cf-ray": "a5a628669846502d-LAX",
+     "content-type": "application/json",
+     "date": "Sat, 14 Nov 2026 12:53:21 GMT",
      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
      "permissions-policy": "geolocation=(), microphone=(), camera=()",
      "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
-     "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=AwKZJIu1mH5%2B6HertmPd6m%2FvWtcpNU77Gngdx39lbbUO0IzeJmZy6HwB9qpuXg11s7aF5%2BVoA3ln14t0dfcvl4%2B4t9ub5aPv7BtPRIplSD0QxIsc2aPFemvXyBZqHdnOyCo%3D\"}]}",
+     "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=hMzxON2Iu79hQIfsHFNb1oBO%2F9iCYNZBuHSuh3PoBGzCeLSST6UXLYi%2BGgY6d7C6kE6boUGskGDE4%2BOZqP9G97LxGYz2hkEJf%2BdNmgojBLNHH08h7E2Zlo5pdUfkXDF7bP4%3D\"}]}",
      "server": "nginx",
      "strict-transport-security": "max-age=31536000; includeSubDomains",
-     "x-client-request-id": "2afde6f8-103e-4d02-bc96-e268558afe12",
+     "vary": "Accept-Encoding, Accept-Encoding",
+     "x-client-request-id": "a8cb531e-4b8e-4d26-95ae-be039877764e",
      "x-content-type-options": "nosniff, nosniff",
      "x-frame-options": "DENY, SAMEORIGIN",
      "x-new-api-version": "v1.0.0-rc.12",
-     "x-oneapi-request-id": "202611140631554970391938268d9d6JZ5hAiTA",
-     "x-request-id": "f9a4601a-f0eb-408a-ad02-8d662efb88d6"
+     "x-oneapi-request-id": "202611141253133752714088268d9d6gev7YmdH",
+     "x-request-id": "7d7a71ca-ffc7-4ffc-9fbe-381812d2626d"
     },
     "chunks": [
-     "{\"model\":\"claude-opus-5-5\",\"id\":\"msg_011CgjlSvTg4ZJwhUDwopp4R\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"第 7 条守则要求回答准确、简短，遇到不确定的事实先说明不确定，不编造数据，引用时注明来源，代码示例必须能\"}],\"stop_reason\":\"max_tokens\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":7731,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":7731,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"}}"
+     "{\"model\":\"claude-opus-5-5\",\"id\":\"msg_011Ch2rSHMibwp3hPFcQU42M\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"CAQSqwQKEAgSGAI4AUIIdGhpbmtpbmcSDLoXZXTRwWECUDagtBoMqOr+qXNUNdVKHfv3IjCuqYV1DlCh/wclnsZuwlyNUxbgTmrCxjF9qdVbXy3WgL2BDnqpsrhVUvJB6dTLKqwqyAMYVogcGctRh0kQeuh5jig7ohChE7JPmud6vYAG8PM07I7IglL0QvLVrePT/P8yzJTdpTJ6sOvHHhPi9b1+l/kLx+aZhlLfqlqn59uKiNMbXVbqc3Ywnm6DfO+h/w9rASFhCBAuvO8f9C6aUeymhXWNWhDcDV00IUw5w+xKXTjnNasLXc6OyYAYZXFSve2fJoSpaJqYRp8YAgX+ghrVNa74clw1oSKmBS85h4UFF4TgqH3pg5ZSRGTkED3UXFRkE3yOmTkItvinEQoBtUUFbNAlf5puy+YcMtCPFZEBRVk7PbJxklgWjNYgjpUlzVeXKpGd/3oMwbgazLRy+cMjINLBxCWRyxK2oMcM81nwDcYVdjgRtxqBjtztmjL0csxVwEYLLWbubtrU5+ypY2Y6ZoLJuobBDrhT47ORlRG0ZPXiyPCWQa0jsf0rYx6qD+vt+Q9nxj5fk56GSg/CyjJGRyywOkXhmGdkgb6SIQsHm02bmPD/XJO+5N1NGm+2Oe+HzrDd8uY0UmbvbsheBEI9t5IQ9kimktFv7vGQ/XGMm7rh1F7DBjWD2693j4MQHuDUMwwCrFnMOgaIqCXV4oeaG6ELjs4bXsdPfB0YASIWV7F7dVCGxmhT9CxJ19x61dkaIXfvHA==\"},{\"type\":\"text\",\"text\":\"第 7 条守则要求回答准确、简短，遇到不确定的事实\"}],\"container\":null,\"stop_reason\":\"max_tokens\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":838,\"cache_read_input_tokens\":6141,\"cache_creation\":{\"ephemeral_5m_input_tokens\":838,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":24},\"service_tier\":\"standard\",\"inference_geo\":\"global\",\"speed\":\"standard\"},\"diagnostics\":null,\"context_management\":{\"applied_edits\":[]}}"
     ]
    }
   }

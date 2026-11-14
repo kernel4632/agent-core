@@ -56,7 +56,7 @@ flowchart TD
 
 **④ history 只增不删，只有 loop 写它。** 模型消息、工具结果按发生顺序追加；压缩也只追加一条 `role: 'compact'` 的总结。
 每个出口都补一条模型能读的结果（工具失败、调用无效、被取消都会写一条结果），绝不留下"有调用、没结果"的残缺记录。
-问模型出错（每次重试前、最终失败、上下文超长，压缩请求也一样）追加一条 `role: 'error'`：`content` 是给人看的错误描述，
+问模型出错（每次重试前、最终失败、上下文超长，压缩请求也一样）追加一条 `role: 'error'`：`content` 是给人看的错误描述（分类、状态码、服务端原话；厂商格式解析不了就取原始响应体里的 message），
 `request` 存 `{ kind, statusCode, model, protocol, attempt | final, compact? }`；和上一条是同一个错误（内容相同）就不重复记，用户 `stop()` 不记。
 模型回复写进 history 前去掉 AI SDK 的 `custom` 元数据块（发请求用不上），思考块、签名和各块的 `providerOptions` 原样保留。
 
