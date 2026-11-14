@@ -184,7 +184,8 @@ export type Chunk = (
 export interface Usage { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
 
 // ask 的统一结果：流式与非流式完全一致。messages 是要追加进 history 的 AI SDK 消息（不带 id）。
-export interface Reply { text: string; toolCalls: ToolCall[]; usage: Usage; output?: unknown; messages: ModelMessage[] }
+// reasoning 是这次回复的思考全文（没有就是空串），宿主可以拿它和流式推送过的 reasoning 片段核对。
+export interface Reply { text: string; reasoning: string; toolCalls: ToolCall[]; usage: Usage; output?: unknown; messages: ModelMessage[] }
 
 // 错误分类：抛出的模型错误都带 kind，宿主按它分支。
 export type ErrorKind = 'aborted' | 'auth' | 'limit' | 'timeout' | 'server' | 'network' | 'request' | 'overflow' | 'unknown'

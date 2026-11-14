@@ -3,7 +3,7 @@ loop：唯一的编排者，也是整个项目里唯一写 history 的地方。�
 
 调用示例（只在 agent.ts 里）：
     const answer = await run(state, callbacks)              // send：跑到结束，返回 { reason, text, steps, usage, output }
-    const { summary } = await compact(state, callbacks, 'manual') // agent.compact()：强制压缩一次
+压缩本身在同目录的 compact.ts（agent.compact() 直接用它）；这里只决定"何时压"。
 
 run 的一轮（循环直到 decide 说结束，不设最大轮数）：
 1. 现读工具：tools/load（agent.tools 的元数据）+ tools/mcp connect（agent.MCP.list，后台连接、从不等待，只用此刻已连上的），合成这一轮的工具描述表；
@@ -21,16 +21,16 @@ run 的一轮（循环直到 decide 说结束，不设最大轮数）：
 每个出口（正常结束、stop()、出错）都会用 history.unanswered 给悬空的调用补一条"已取消"结果，保证 history 不坏。
 stop() 时 state.internal.controller 被 abort：ask 抛 kind 'aborted'，run 补完结果后以 cancelled() 拒绝。
 
-导入：同目录 decide；context/build、context/summarize；model/ask；tools/load、tools/run、tools/mcp；
+导入：同目录 decide、compact；context/build；model/ask；tools/load、tools/run、tools/mcp；
 history；utils/tokens、utils/errors。全部是向下或同目录，从不导入 agent。
 */
 
 import { asSchema } from 'ai'
 import type { JSONSchema7, ModelMessage } from 'ai'
-import type { Answer, AskRequest, Callbacks, CompactReason, Reply, State, ToolResult, Usage } from '../types.ts'
+import type { Answer, AskRequest, Callbacks, Reply, State, ToolResult, Usage } from '../types.ts'
 import { decide } from './decide.ts'
+import { compact } from './compact.ts'
 import { build } from '../context/build.ts'
-import * as summarize from '../context/summarize.ts'
 import { ask } from '../model/ask.ts'
 import { load } from '../tools/load.ts'
 import { connect } from '../tools/mcp.ts'
@@ -38,7 +38,7 @@ import { run as execute } from '../tools/run.ts'
 import { append, unanswered } from '../history.ts'
 import { calibrate } from '../utils/tokens.ts'
 import { cancelled, classify, tell } from '../utils/errors.ts'
-import { options as options } from '../utils/retry.ts'
+import { options } from '../utils/retry.ts'
 
 // 上下文超长时最多"压缩后重发"几次（照抄 Roo Code 的 MAX_CONTEXT_WINDOW_RETRIES）。
 export const OVERFLOW_RETRIES = 3
@@ -170,28 +170,4 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             append(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: call.toolCallId, toolName: call.toolName, output: { type: 'error-text', value: '工具执行已取消' } }] })
         }
     }
-}
-
-/*
-compact：整个项目唯一的压缩逻辑（取代旧实现的三个同名 compact）。只负责压缩，不判断要不要压。
-
-1. build 当前上下文；
-2. summarize.request 拼"写总结"的请求（可用 config.compact 里的便宜模型）；
-3. ask 问模型，取回总结文字；开始前发一条 onChunk({ type: 'compact-start' })，压缩模型的思考 / 正文 / finish
-   片段带上 compact: true 实时转给 onChunk（宿主能看到压缩时模型在想什么、总结正文是什么）；
-4. summarize.wrap 包成 role:'compact' 消息，append 进 history；
-5. 发 onCompact（reason、总结正文、压缩前后估算及其诊断、用量），返回总结文字和这一笔请求的用量（run 要把它计进合计）。
-reason：'manual' 来自宿主的 agent.compact()；'auto' 来自 run 的阈值判断（估算到了 compactThreshold）；
-'overflow' 来自模型报上下文超长后的强制压缩（说明估算偏小，宿主排查时要分开看）。
-压缩请求不带工具；是否流式跟随配置（config.compact.stream ?? config.stream，默认流式），非流式时只有 compact-start。
-*/
-export async function compact(state: State, callbacks: Callbacks = {}, reason: CompactReason = 'manual'): Promise<{ summary: string; usage: Usage }> {
-    const signal = state.internal.controller?.signal
-    const before = build(state, {}, callbacks.onWarning)
-    void tell(callbacks.onChunk, { type: 'compact-start', reason, compact: true })
-    const reply = await ask({ ...summarize.request(before, state.config), signal, onRetry: callbacks.onRetry }, chunk => tell(callbacks.onChunk, { ...chunk, compact: true }))
-    const message = append(state.history, summarize.wrap(reply.text)) as { content: string }
-    const { budget, threshold: compactThreshold, ratio, ratioSource, chars, media } = before
-    void tell(callbacks.onCompact, { reason, summary: message.content, before: before.tokens, after: build(state, {}).tokens, budget, compactThreshold, ratio, ratioSource, chars, media, usage: reply.usage })
-    return { summary: message.content, usage: reply.usage }
 }

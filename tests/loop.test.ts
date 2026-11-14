@@ -229,6 +229,21 @@ describe('Agent.LLM.ask', () => {
         expect(reply.usage.inputTokens).toBe(100)
     })
 
+    test('Reply.reasoning：流式与非流式都给思考全文，和推送过的片段一致；没有思考是空串；文字工具模式同样带上', async () => {
+        const messages = [{ role: 'user' as const, content: 'hi' }]
+        const plain = await Agent.LLM.ask({ model: script([{ reasoning: '先想想', text: '答' }]).model, messages, stream: false })
+        expect(plain).toMatchObject({ text: '答', reasoning: '先想想' })
+        let streamed = ''
+        const live = await Agent.LLM.ask({ model: script([{ reasoning: '边想边说', text: '答' }]).model, messages }, chunk => { if (chunk.type === 'reasoning') streamed += chunk.text })
+        expect(live.reasoning).toBe('边想边说')
+        expect(live.reasoning).toBe(streamed)
+        expect((await Agent.LLM.ask({ model: script([{ text: '没想' }]).model, messages })).reasoning).toBe('')
+        const tools = { add: { description: '加法', parameters: { type: 'object' as const, properties: { x: { type: 'number' as const } } } } }
+        const texty = await Agent.LLM.ask({ model: script([{ reasoning: '要算', text: '<tool_call>{"name":"add","arguments":{"x":1}}</tool_call>' }]).model, messages, tools, textTools: true })
+        expect(texty.reasoning).toBe('要算')
+        expect(texty.toolCalls).toHaveLength(1)
+    })
+
     test('reasoning 开关：默认摘掉 messages 里的思考块，send 原样发回', async () => {
         const messages: any[] = [{ role: 'user', content: '问' }, { role: 'assistant', content: [{ type: 'reasoning', text: '旧想法' }, { type: 'text', text: '答' }] }, { role: 'user', content: '再问' }]
         const strip = script([{ text: '好' }])

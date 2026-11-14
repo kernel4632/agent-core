@@ -18,12 +18,13 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
 私有状态（#internal，不对外）：工具元数据缓存、MCP 连接、正在跑的子进程 procs、当前运行的取消器、警告去重。
 每个实例完全隔离，不共享任何可变状态；一个实例就是一段对话，核心里没有"会话"概念，要多段对话就 create 多个实例。
 
-导入：loop/run（run、compact）、tools/spawn（kill）、tools/mcp（connect；close，在这里叫 disconnect）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
+导入：loop/run（run）、loop/compact（compact）、tools/spawn（kill）、tools/mcp（connect；close，在这里叫 disconnect）、history（append）、model/ask（挂到 Agent.LLM）、utils/errors（cancelled）。
 */
 
 import { nanoid } from 'nanoid'
 import type { Answer, Callbacks, Config, CreateOptions, Input, Internal, MCP, MCPToggle, Message, State, Stopped } from './types.ts'
-import { run, compact } from './loop/run.ts'
+import { run } from './loop/run.ts'
+import { compact } from './loop/compact.ts'
 import { kill } from './tools/spawn.ts'
 import { close as disconnect, connect } from './tools/mcp.ts'
 import { append } from './history.ts'
@@ -140,7 +141,7 @@ export class Agent {
     }
 
     /*
-    compact：宿主点"压缩"——强制压缩一次，只委托给 loop.compact，返回总结文字。
+    compact：宿主点"压缩"——强制压缩一次，只委托给 loop/compact，返回总结文字。
     和 send 一样受"一次只跑一件事"约束，可以被 stop() 打断。
     */
     async compact(callbacks: Callbacks = {}): Promise<string> {

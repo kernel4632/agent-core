@@ -255,7 +255,8 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 ### `Agent.LLM.ask(request, onChunk?)`
 
 不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, includeUsage, cache, provider, maxTokens, output, retry, signal, onRetry }`，
-返回 `{ text, toolCalls, usage, output?, messages }`，流式与非流式形状一致。`tools` 只要 `{ description, parameters }`，不会执行。
+返回 `{ text, reasoning, toolCalls, usage, output?, messages }`，流式与非流式形状一致。
+`reasoning` 是这次回复的思考全文（没有思考就是空串），`text` 是正文全文：流式时宿主可以拿它们核对 `onChunk` 推送过的片段有没有漏。`tools` 只要 `{ description, parameters }`，不会执行。
 
 ### 公开字段
 
@@ -307,10 +308,10 @@ history 里发不出去的消息（`system`、未知 role、没有 content）跳
 index.ts                包入口：导出 Agent 和类型
 src/
   agent.ts              唯一的状态持有者：create / send / stop / compact、Agent.LLM
-  loop/run.ts           一次 send 的完整循环；history 唯一的写入者；compact
+  loop/run.ts           一次 send 的完整循环（loop 是 history 唯一的写入者）
+  loop/compact.ts       压缩：拼总结请求、问模型、写 role:compact、发 onCompact
   loop/decide.ts        每轮结束后的继续 / 提醒 / 结束判定
   context/build.ts      从 history 现挑这一次要发的上下文
-  context/summarize.ts  压缩请求与总结消息
   model/ask.ts          问一次模型（流式 / 非流式 / 文字工具），重试
   model/configure.ts    按协议建 provider、提示词缓存
   model/text-tools/     文字协议工具：describe 描述、parse 解析

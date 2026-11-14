@@ -25,7 +25,7 @@ export const DEFAULT_MAX_DELAY = 600000
 export interface Attempt { attempt: number; signal: AbortSignal }
 
 /*
-options：把 config 里平铺的重试字段收拢成 RetryOptions。主请求（loop）和压缩请求（summarize）都要用，
+options：把 config 里平铺的重试字段收拢成 RetryOptions。主请求（loop/run）和压缩请求（loop/compact）都要用，
 所以放在这里，规则只写一处。没写的字段保持 undefined，由 retry 补默认值。
 */
 export function options(config: Config): RetryOptions {
