@@ -1,0 +1,367 @@
+{
+ "scenario": "chat/glm-flash-latest/tools-multi",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "839",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "add",
+        "description": "两个数相加，返回和",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "a": {
+           "type": "number"
+          },
+          "b": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "a",
+          "b"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "weather",
+        "description": "查询一个城市今天的天气",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ]
+        }
+       }
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/tools-multi/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:24 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631245263488328268d9d6O4rYhUVC"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":245,\"completion_tokens\":0,\"total_tokens\":245,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.3409087657928467}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user wants me to:\\n1. First\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" call add with 1+2\\n2. Then\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" use that result to call add with result+3\\n3.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" These are dependent calls, so I must wait\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" for the first result before making the second call\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"\\n4. Finally only reply with the final number\\n\\nLet me make\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":14,\"total_tokens\":14,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.636363685131073}}\n\ndata: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" the first call.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":\"call_d0656d6a025b4996974a6833\",\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"add\",\"arguments\":\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"{\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"\\\"a\\\": 1, \\\"b\\\": \"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"2\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":5,\"total_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.22727274894714355}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637884863\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"matched_stop\":154829}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637884863\",\"object\":\"chat.completion.chunk\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637884863\",\"object\":\"chat.completion.chunk\",\"created\":1794637884,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":245,\"completion_tokens\":86,\"total_tokens\":331,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":7.250000137835741}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "1082",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_d0656d6a025b4996974a6833",
+         "type": "function",
+         "function": {
+          "name": "add",
+          "arguments": "{\"a\":1,\"b\":2}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_d0656d6a025b4996974a6833",
+       "content": "3"
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "add",
+        "description": "两个数相加，返回和",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "a": {
+           "type": "number"
+          },
+          "b": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "a",
+          "b"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "weather",
+        "description": "查询一个城市今天的天气",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ]
+        }
+       }
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/tools-multi/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:26 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631257279910748268d9d6bVHtJ6Uf"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":267,\"completion_tokens\":0,\"total_tokens\":267,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.64090895652771}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" first call returned 3. Now I need to\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" add 3 to that result.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\ndata: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":\"call_7b782979d6f34c5ca2f81b61\",\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"add\",\"arguments\":\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"{\\\"a\\\": \"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"3, \\\"b\\\": \"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"3\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":3,\"total_tokens\":3,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.1363636553287506}}\n\ndata: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"matched_stop\":154829}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637886758\",\"object\":\"chat.completion.chunk\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637886758\",\"object\":\"chat.completion.chunk\",\"created\":1794637886,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":267,\"completion_tokens\":35,\"total_tokens\":302,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":5.231818247586489}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "1325",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_d0656d6a025b4996974a6833",
+         "type": "function",
+         "function": {
+          "name": "add",
+          "arguments": "{\"a\":1,\"b\":2}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_d0656d6a025b4996974a6833",
+       "content": "3"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_7b782979d6f34c5ca2f81b61",
+         "type": "function",
+         "function": {
+          "name": "add",
+          "arguments": "{\"a\":3,\"b\":3}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_7b782979d6f34c5ca2f81b61",
+       "content": "6"
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "add",
+        "description": "两个数相加，返回和",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "a": {
+           "type": "number"
+          },
+          "b": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "a",
+          "b"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "weather",
+        "description": "查询一个城市今天的天气",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ]
+        }
+       }
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/tools-multi/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:28 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631277984518228268d9d6hxXFOe0B"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":289,\"completion_tokens\":0,\"total_tokens\":289,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.940908908843994}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user asked me to compute 1+2 first,\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" then add 3 to the result, using tools step\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" by step, and reply only with the final number.\\n\\nFirst call\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\": add(1, 2) = \"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"3\\nSecond call: add(3\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\", 3) = 6\\n\\n\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Final answer: 6\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":\"6\",\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637888317\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"matched_stop\":154827}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637888317\",\"object\":\"chat.completion.chunk\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637888317\",\"object\":\"chat.completion.chunk\",\"created\":1794637888,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":289,\"completion_tokens\":70,\"total_tokens\":359,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":7.1227274723351}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  }
+ ]
+}

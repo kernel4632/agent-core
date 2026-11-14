@@ -1,0 +1,56 @@
+{
+ "scenario": "gemini/glm-flash-latest/text-stream",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/glm-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "123",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47312",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 1000
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "只回复两个字：你好"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:36:54 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140636505803497518268d9d6eHCv0hyv"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":null,\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":0,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":0,\"totalTokenCount\":0,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0,\"safetyRatings\":[]}],\"usageMetadata\":{\"promptTokenCount\":17,\"toolUsePromptTokenCount\":0,\"candidatesTokenCount\":57,\"totalTokenCount\":74,\"thoughtsTokenCount\":0,\"cachedContentTokenCount\":0,\"promptTokensDetails\":null,\"toolUsePromptTokensDetails\":null,\"candidatesTokensDetails\":null}}\n\n"
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,62 @@
+{
+ "scenario": "gemini/gemini-flash-latest/image",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "527",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "这张图是什么颜色？只回答颜色"
+        },
+        {
+         "inlineData": {
+          "mimeType": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAAxklEQVR42u3RQQEAAATAQGTQP5kwYvC4RdjldIfuKgsAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAA+tJJcAgRGf5rkAAAAAElFTkSuQmCC"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:02:34 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "20261114070221910021498268d9d6N3WLbTEI"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"红色\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"gwf4arEdhb-q2w_rjZ2JBw\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":1098,\"thoughtsTokenCount\":46,\"totalTokenCount\":1145}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"Er8CCrwCAWkUfRNEyH5VLZsFoGKI/YqXnw50Xyyssj3Nuht0eQqoOD1MZt+ce2v+3ta+35UABHMkeQlL8uPdJok2aEiM3MUjY4cGJNweF1MYFUxAyzt1K4fM9Hhe7ICUSnHHdFowRPRF/FXSKrpW9py3Vj6s3IpgV6DoXOFIJc/vdgMlYxX98ZTckxWPNfMc3Z4GSIy40/I3+ImSPBd/Gbc2W9MyAajl+Ypwh2F4ezDUDX85ABF97vBngFbnkFIoL1qlKKVqV5dVH7dXs2c0wSz0nOJLejRV2ajr0YOKSL07zo+RmaVyI6Mar6LmDUbuBO5lO5U+4uZBDLZrkVszfLoLoji0amAbJtnbI9GpOjMt/E+w02G5916h6JhTNYdyHU0YII1/QJUZx5HDeKtlU8fLWmDnppap8Z0y51yCsXfjZw==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"gwf4arEdhb-q2w_rjZ2JBw\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":1098,\"thoughtsTokenCount\":46,\"totalTokenCount\":1145}}\n\n"
+    ]
+   }
+  }
+ ]
+}

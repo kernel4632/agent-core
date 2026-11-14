@@ -1,0 +1,56 @@
+{
+ "scenario": "responses/gpt-sol-latest/error-model",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "281",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47304",
+     "user-agent": "ai-sdk-openai/4.0.108 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "agent-core-no-such-model",
+     "input": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "input_text",
+         "text": "hi"
+        }
+       ]
+      }
+     ],
+     "max_output_tokens": 400,
+     "stream": true,
+     "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/error-model/v1:agent-core-no-such-model:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 503,
+    "headers": {
+     "content-type": "application/json; charset=utf-8",
+     "date": "Sat, 14 Nov 2026 06:29:54 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629545221101058268d9d6u6Or2Duo"
+    },
+    "chunks": [
+     "{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model agent-core-no-such-model under group auto (distributor) (request id: 202611140629545221101058268d9d6u6Or2Duo)\",\"type\":\"new_api_error\"}}"
+    ]
+   }
+  }
+ ]
+}

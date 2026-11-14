@@ -1,0 +1,472 @@
+{
+ "scenario": "anthropic/claude-opus-latest/text-tools",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "1409",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "system": [
+      {
+       "type": "text",
+       "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ],
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:37:45 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140637418971909778268d9d6QgyYZ9Xj"
+    },
+    "chunks": [
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\",\"id\":\"msg_011CgjluVumLcSM2FpdgnObY\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":448,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":1,\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"}}    }\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}  }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQSxAsKEAgRGAI4AUIIdGhpbmtpbmcSDClK57ErZNJQkQtYTxoMX+ptp7tDZIDj6sbGIjCqg4bLVgfPDWhqLHcaFE9ANdDVSZZfjtuHU+QdIolDVjYCU5guZVM5MLl9kWbYerkq4QrNz1AzaV3oDMPaimKygObcQUqTDOjlfel4lUb1+s0FyhwFeffNH6X4LynprkApgy7GIDyNQyvqpoA5Yh63TZPCH9j7vpwvvAUSfhGmw2KFdbdnad9VqRQaqVuPhtS88lbTAH86bORUENhGeGxzDOBSL6xT70jQOnWfkbRsTf5S3kLJqjL0wDBcarvfJI2+bb4x8w5tsW9MmYXVZOdBvfO1YCg5THZYdOThJn88ZHpvNusw6P6tEIoKuL+LAjpxO8bSg2MnTFJMkXNfqEFqkLTGn3drOZK2uyFjpLR5cDeK0yx+8plE3a9giybfgv8AB1qNYhVN3qeT0uI29rwSjaNwISrp+tIkPN5i28F0FZVi3463Nk01dHH5qXN+oRDqzHqDJbqPcjOYqt8yiSCALTRscs2r8P8WLyIh/dgB5CESjt+nHdooJawGzQUjIkcwnUcjKUy20s/Zd1fJD5TYZrp9rRmREDfm1hPAsGsA6p5Pnljf2cT8EjpJDiesXYSy90PwZ7zPIQT7p42lw20rz32W6KQ+46xYB0b0vKfW6J+FGihN0pbpjdKMJ7B8VD7iObufPRn98bDrm0egir6W8id7nrkZKcucGg58jovGIGLsxsFZUjO64scq140otZuasWagtgQkUNiv6JxSQxX5DSmGRkTl50g6u/O5alXEiT5fN4nLlesQsXJ+e0mGC/Ve7DvpBmM9993Wwhl5npAVE63MrcheCLpaOac+/+88G+ITzdNkzuFVftvf6xz+eI5vqT5LdQtSrArBw0XmQ/QnUcWJOyZbdr9jNdv6hrwYy+XSBoWJm8EJCyLzgsX+dcYWmPu3zrsNIsEZsnWheB/izL1vmA2t5pldd3hOrcCYw/kRfUW+uYrjSVIYbgk2+UQco1VptvKN2xVH2/UO7zn73YbtaaoXfIhY6g+3pa2WQ6YsW1IlfGiw255DSyG0uQD/uPNP9VLBD34CHO6F3VkVPZjkj7NtIBF4Mg+OXHYsvEolHHJoj6mrrRKHyLJNjMJjBn4Yw/0iZMsjzGI/6HKROO03iuqBpAa4L/6+7yYMzY/GDLg06qQarKFlbydfr3Me0cJEYbP+mraRT+rrOilXti0dotkFaVnAX+vq2CHkm3lwa1Tsiaj5paU0Kx9hq3NxE1aKKEYmbFe7jaYvux0HCoazrwf7M98Zq6G8FpnGfLbMhBrQ3b8KFHoNk0up9x6gpsoyVcbG8Lxt6uVFe3T+GDWJnEu2igbeZavuGoPVGq3fBtwB/Cha+2yBSM9tGXaBbZzsygpsQJPwhkSd0ZQ/hJP61dZy6igz0XzGQTHAFXrN+aIxCdBMvGqyIIzCMX2H7P2JJdx3Hb1eQkZQ20he5Jkm+S1qaJKZGNLKyw23R0rLtfDcQR+M3vRPFXbU+R4l2kd/E9bzNYkmw6AdfboKEjp4pnuDarw8rY2QeUontYm6Jl244gisws0YfZ36iahyQrEUxr46c+gNvVmzAfciAIdnEDTJfAkNCOsN58MDTXFpifQssC0qDBQwfwsyW+xJJiZ7KJWWwivS4HOV2uDxjxDoTpLo0DJXsxy2NWiOygKSQelGkbX5xwhj92SyeiqEHiOGwaBl41tzReeWUAclhOe3oLKescEAxY9UrP9XyRZxsOCMV52nQHXtwKqxuhCFuvX3F9A3+8FYsUB0t1EIQVICF5sUsYyBZKN/cFJ59mm43OdTUzQLkzqivRI2402mzCtusD7Z40mY6uSE9bBDpR3cv+4DA7sbOiqtWsk3NFkyku20XM/dCddCVQiAllP7WhbKh1BK4DFIEVObfNuoY0stdLDxpWRbGNjWOizPP9aO75wYAQ==\"}  }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}        }\n\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"先\",\"type\":\"text_delta\"},\"index\":1,\"type\":\"content_block_delta\"}\n\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"计\",\"type\":\"text_delta\"},\"index\":1,\"type\":\"content_block_delta\"}\n\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"算 \",\"type\":\"text_delta\"},\"index\":1,\"type\":\"content_block_delta\"}\n\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"1+2。\",\"type\":\"text_delta\"},\"index\":1,\"type\":\"content_block_delta\"}\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1           }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":448,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":186,\"output_tokens_details\":{\"thinking_tokens\":176}} }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"  }\n\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "1676",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "system": [
+      {
+       "type": "text",
+       "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ],
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "先计算 1+2。"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "[错误] 你刚才的响应中没有使用工具！请继续使用工具（这是一条系统提醒消息，请勿以对话形式回复）",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:38:15 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140637452065258608268d9d6Wwi68gOD"
+    },
+    "chunks": [
+     ": PING\n\n",
+     ": PING\n\n",
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_dmuq66d49msl6x9r9\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}      }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\"}           }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQS7gQKEAgTGAI4AUIIdGhpbmtpbmcSDHKuWDnZEh8gy4w0lRoMZypstqUQRNlBnU32IjCd4TaW9QUFePBwUz0zMduBy0DYhG5YLu+FEokVSl7dhplDp2iHAfdR5IrZGCaFuT4qiwTm4waVeMCYCt9Odg0KxUWI9x82ww3y5XFmm/4tcCB59yZedEILxSeTRu5NKi9hvVW+jm0Wp3cOmwESQJW2P8oQZ09xGa6nG670D0kiMKMXIvXSnBkuVZyLxjblPpShv8j899shpd929lyHnEkA67N+AE+2lsgxvtrM9d90f+fdTtGY34gIiLafMMPV6i/U+dqCy1y/ws3kLGOnG9kLkMrYwY3AZH4wokPvk4kZICATqfWyfTMf5MnFDNWhcsNPo95Rw5o4Fmq+6jpJs6DkWq7IhXWPwNX8vDxS9E1OPmIWMjoqBLF0hYrPOGB1uU1gi+xfM+qE7PO9P0sFAf8om0mmaObfa5HxIdCf8BmWxZpJoQvXJYyWiyovSw+MibYr9HKXvQeybH4EPbYM+AZWEVEjA3ss8MDruWXBgwoqoto06BwygVYHAmmYXhfJ+zYD98AaBs03QIT5iWThIrwnLdEy+2sLTmZ9Ssg5sJ7g98COvluBOajwzf14K62xw+ds6p0E2vahKmHHjQVo5gu3QPCGDtpvl4ZpKu63GRtNro+sciJnGxyVxDBCulvUAkq/qaEmlm9m6NIiasCddeaF1kpsQYmhy06HKpmd1FmtoWRCTHw8fczjdoKNHNqS3W3SRsg4pEVnhUFr79zAKXvY2iA7IoLSs3CA+8DBzGTRccdeisakFYJjvro/X2i8GAEiFmNSAVqYXE1oseSIeSZn04MMD7ka3iw=\"}    }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0             }\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}             }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"<\"}         }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"tool_call>\\n{\\\"name\"}           }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\\": \\\"add\\\", \\\"arguments\"}   }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\\": {\\\"a\\\": 1,\"}             }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" \\\"b\\\": 2}}\"}  }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\n</tool_call\"}       }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\">\"}}\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1          }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"container\":null},\"usage\":{\"input_tokens\":485,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":110,\"output_tokens_details\":{\"thinking_tokens\":68}},\"context_management\":{\"applied_edits\":[]}       }\n\n\n",
+     "event: message_stop\ndata: {\"type\":\"message_stop\"         }\n\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "1686",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "system": [
+      {
+       "type": "text",
+       "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ],
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "先计算 1+2。"
+        },
+        {
+         "type": "text",
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:38:51 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140638491956859528268d9d6hCsbDu8l"
+    },
+    "chunks": [
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_dmuq6zc3gd1riytn\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}           }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"<tool_call>\\n{\"}     }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\\"name\\\":\\\"add\\\",\\\"argu\"}        }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ments\\\":{\\\"a\\\":3,\"}          }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\\"b\\\":3}}\\n</\"}         }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"tool_call\"}         }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\">\"}      }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0            }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"container\":null},\"usage\":{\"input_tokens\":489,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":39,\"output_tokens_details\":{\"thinking_tokens\":0}},\"context_management\":{\"applied_edits\":[]}   }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"            }\n\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "1921",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "system": [
+      {
+       "type": "text",
+       "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ],
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "先计算 1+2。"
+        },
+        {
+         "type": "text",
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":3,\"b\":3}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_result name=\"add\">\n6\n</tool_result>",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:39:22 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140638522212732758268d9d67sqzSLGx"
+    },
+    "chunks": [
+     ": PING\n\n",
+     ": PING\n\n",
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_dmuq70psxnmn2cx3k\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"} }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"6\"}         }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0               }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"container\":null},\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":544,\"cache_read_input_tokens\":0,\"output_tokens\":3,\"output_tokens_details\":{\"thinking_tokens\":0},\"cache_creation\":{\"ephemeral_5m_input_tokens\":544}},\"context_management\":{\"applied_edits\":[]}     }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"            }\n\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "2173",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47301",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 400,
+     "system": [
+      {
+       "type": "text",
+       "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ],
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "先计算 1+2。"
+        },
+        {
+         "type": "text",
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":3,\"b\":3}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "<tool_result name=\"add\">\n6\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "6"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "[错误] 你刚才的响应中没有使用工具！请继续使用工具（这是一条系统提醒消息，请勿以对话形式回复）",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:40:00 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140639536454768568268d9d6OalsYfkd"
+    },
+    "chunks": [
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_dmuq7t5uao1bqmt\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n\n",
+     "event: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}       }\n\n\n",
+     "event: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\"}       }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"CAQShAUKEAgTGAI4AUIIdGhpbmtpbmcSDE4OHk52g1YQDpmAMRoMXxaRCgWFyKB2v9FHIjCXxpn5y5uuQ+eHxMEEyBUP0kgOn/azauZoeq0BlyXX8PqvcmXx1kfpEUGQpRdXmyYqoQRHQMPOPl4fvccVjLShEGRn1Oo5Po6IHqa8RFBkRiMGM09WCpNH2gjgZhXqK/m/w7OIux5FWnen041W7vGyEpfCLZiomGQOvk8EIGbGJ3AW3iIzzihM+W473xBsLsrWNwAtIqRrqeFkteggTJrH9oVM/Cx5BzImlILwHy+fzYK1cRI/O0ePWnlGeakFO3irjnXq1o2wlEOHx3Fd08r4Eipp7yS6H1le8IXpnhVeLkYGZcm6xEs3fBIKP97ZOi8eGFaGdYDCRci2rPQjQjYFNsMC1j5qp8RAYznl3nEln9gnn2Zdx7mr5x5qb0YdrSUgIrDbWr0UeDNBWvPZ/LRXLSTOM7mEn0VuAN/NLSKhwEEnfaqdC/uSIzYELsQaWdoce1QY+dLJToR5V8/EV/AWPGCLcHSNWsZiRr7ZTH20IIuHX4ai068VslG0mjMLXOW7bmq653P/5PcuEVePlYS3n/lRPF3Ubqpc3K0eowYzJt64XUDOZ7Q0ZTKBBR4CIThRG/YzlYMZxAwSwlk7V4oGgDJRZAnkTmkcl9zvYNXGa/NasQ2EE+SWnUbZeWvpWTMRoLDdBP/mZ6UlEguh5JFJpdRd4TId79FadOoLykVXby5ZXZKp7zv9EKuZJjOh8YAhAF761RCNC05SACxCskjtFXy1aRsIHqpdqGvglqh4wns3ER7BRQZRHnUrFUeA4dgNQHTLOWJQ8wI1P4WG6EPhLBTAQRgBIibkOeANOFQRY2fPXkvNFFGPSFki8iYu8eJVzeM1QZtb4Rk/NxXESA==\"}            }\n\n\n",
+     "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0 }\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}     }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"两次\"} }\n\n\n",
+     "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" \"}   }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"add 调用都已完成\"}       }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"（\"}              }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"1+2=3，3+\"}              }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"3=6），\"}       }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"不需要再调用工具。\"}     }\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\n\\n6\"}              }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1        }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"container\":null},\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":127,\"cache_read_input_tokens\":473,\"output_tokens\":129,\"output_tokens_details\":{\"thinking_tokens\":92},\"cache_creation\":{\"ephemeral_5m_input_tokens\":127}},\"context_management\":{\"applied_edits\":[]}     }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"              }\n\n\n"
+    ]
+   }
+  }
+ ]
+}

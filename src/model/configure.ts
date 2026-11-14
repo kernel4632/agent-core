@@ -17,6 +17,7 @@ configure：把"统一请求数据"翻译成 AI SDK generateText / streamText �
     anthropic：服务端不自动缓存，必须在内容块上标 cache_control（system 一个、最后一条消息一个），与宿主已有的 providerOptions 合并；
     gemini：隐式缓存由服务端决定，请求里没有可发的字段；
 - 结构化输出：output 有值就挂上 AI SDK 的 output 参数，没值就不挂（不需要单独开关）；
+- responses：assistant 文字块不发 item_reference，发全文（请求自包含，见下面的注释）；
 - maxRetries 固定为 0：重试在这个项目里只有 utils/retry 一个实现，交给 AI SDK 会一次请求变三次、错误被包成 AI_RetryError。
 
 configure 只做翻译，不发请求、不重试、不处理文字工具（那些在 ask 里）。
@@ -79,6 +80,11 @@ export function configure(request: AskRequest, system: string | undefined, messa
         const content = (Array.isArray(last.content) ? last.content : [{ type: 'text', text: last.content }]) as Record<string, any>[]
         if (content.length) sentMessages = [...messages.slice(0, -1), { ...last, content: [...content.slice(0, -1), { ...content.at(-1), providerOptions: { ...content.at(-1)!.providerOptions, anthropic: { ...content.at(-1)!.providerOptions?.anthropic, ...EPHEMERAL.anthropic } } }] } as ModelMessage]
     }
+    // responses：上一次回复的文字块带着 itemId，AI SDK 见到就只发 item_reference（指向服务端存档）而不是全文。
+    // 请求必须自包含——history 才是事实来源，换 key / 中转站 / 存档过期后引用都会失效（实测中转站直接 400 拒收，默认重试还会卡死）。
+    // 只去掉 itemId，文字原样发出；思考块（reasoning: 'send'）不动。
+    if (protocol === 'responses') sentMessages = sentMessages.map(message => message.role !== 'assistant' || !Array.isArray(message.content) ? message
+        : { ...message, content: (message.content as Record<string, any>[]).map(part => part.type === 'text' && part.providerOptions?.openai?.itemId ? { ...part, providerOptions: { ...part.providerOptions, openai: { ...part.providerOptions.openai, itemId: undefined } } } : part) } as ModelMessage)
     const sentSystem = anthropicCache && system ? { role: 'system' as const, content: system, providerOptions: EPHEMERAL } : system
 
     return {

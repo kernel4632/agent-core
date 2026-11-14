@@ -1,0 +1,69 @@
+{
+ "scenario": "chat/glm-flash-latest/image",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "732",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "这张图是什么颜色？只回答颜色"
+        },
+        {
+         "type": "image_url",
+         "image_url": {
+          "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAAxklEQVR42u3RQQEAAATAQGTQP5kwYvC4RdjldIfuKgsAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAAACAAAAQAgAAAEAIAAABAAAAIAQAA+tJJcAgRGf5rkAAAAAElFTkSuQmCC"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/image/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:38 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "2026111406313875641688268d9d6nmm1fUpW"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":47,\"completion_tokens\":0,\"total_tokens\":47,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.6409090757369995}}\n\n",
+     "data: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n",
+     "data: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user is asking in Chinese: \\\"What color is this image? Only\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":14,\"total_tokens\":14,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.636363685131073}}\n\n",
+     "data: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" answer the color\\\"\\n\\nLooking at the image, it's a red\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\ndata: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" square/image.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":6,\"total_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2727273106575012}}\n\ndata: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"content\":\"红色\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637898781\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"matched_stop\":154827}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637898781\",\"object\":\"chat.completion.chunk\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637898781\",\"object\":\"chat.completion.chunk\",\"created\":1794637898,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":47,\"completion_tokens\":34,\"total_tokens\":81,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":2.1863638050854206}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  }
+ ]
+}

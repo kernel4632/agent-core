@@ -1,0 +1,84 @@
+{
+ "scenario": "responses/gpt-sol-latest/output",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "529",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47304",
+     "user-agent": "ai-sdk-openai/4.0.108 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "gpt-sol-latest",
+     "input": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "input_text",
+         "text": "中国的首都是哪个城市？按格式回答"
+        }
+       ]
+      }
+     ],
+     "max_output_tokens": 400,
+     "text": {
+      "format": {
+       "type": "json_schema",
+       "strict": true,
+       "name": "response",
+       "schema": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         },
+         "country": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city",
+         "country"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "stream": true,
+     "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/output/v1:gpt-sol-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:29:37 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629362281550878268d9d6NKJMTIVy"
+    },
+    "chunks": [
+     "event: response.metadata\ndata: {\"headers\":{\"x-codex-turn-state\":\"gAAAAABq9__RzJ0knpCaQQWHGm-5qXxIrecGU-DXsiZavb8TybJpRILNwQuA6kYHSVh5ogJYjhSpafzFRp-r8bIzgwSjSGR_R9j5mmxksqJBq1YSEBNDr8v_8kXDD7Kqtt6Wq_5CORN5Ylhg8jgHwMNnw7fio_PN7YBOlHZFWC00ZTdIzqvJbmo0nYdjADoRbGT6guaXKQEVACM76hZSZ0LSFinZSw6IOCmDz4sZeGm3JWQw2jqz-TLS8uYNyr7SNSocq3HnJAC2lf1JYcfutHy1dRgaPAQnzhJYq-gmdkc8AJjxzGpeTBVz0Td_p4vBzd1sKNjAJC9LL8AwH0Q8x_C2sJkdXfGYlun14AWdjIOeoz0MNMWcNjeTYs8eSB-kwnO_STsdO5tsdyS5UxVUE9EBiqMfrZpfCIQFFULFaAZEJbWOAlbsNyVPBIfYtGYNMBpDZMUslLjwDYmH9Hdg3yQc1RjQMSGUVG4YWWfsumM2bHdnLxh8_vwK1on90BuZ7D0jjkC4HDjv5vTPxqWSHlsng9hlcf6aFedzP9iWbeUZlR6bj1fixlBhnUCw29Krd-GENGqkuKo0PuDjf7_QY-ZC6ifDhKSyMVhQALEy1hK5hUbBOI4lsCpPbURN225AcsUHkXmGaeSx7aRba6Zfmd-6zeNHnxB2l9AaK7Sbmqcm79KIyOFuH2ijRylL320G4CKfE2M48KUrhh6jLpxAe-S7j3Qa6G94bCHgK1u-x8YXauTpdzIJC53me0oQbU1yXZqPaiD5fjXY\"},\"type\":\"response.metadata\"}\n\nevent: response.created\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637777,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0c2b2a0f75dd7a88016af7ffd10fdc87d09aaeb5ff07d77a1b\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"response\",\"description\":null,\"schema\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"},\"country\":{\"type\":\"string\"}},\"required\":[\"city\",\"country\"],\"type\":\"object\"},\"strict\":true},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637777,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0c2b2a0f75dd7a88016af7ffd10fdc87d09aaeb5ff07d77a1b\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"response\",\"description\":null,\"schema\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"},\"country\":{\"type\":\"string\"}},\"required\":[\"city\",\"country\"],\"type\":\"object\"},\"strict\":true},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n",
+     "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\"}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":3,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[],\"logprobs\":[]}}\n\n",
+     "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"{\\\"\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"ARReFSZf6tBMnL\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":5,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"city\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"gmx6eqHGuePM\"}\n\n",
+     "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":6,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"\\\":\\\"\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"Ey6gdvDy1IDou\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":7,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"北京\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"L3luFTStaKQxn9\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":8,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"\\\",\\\"\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"QYKNHgf23FQ2t\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":9,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"country\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"oWuzpu34o\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":10,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"\\\":\\\"\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"B5wJeqjQn8773\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":11,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"中国\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"5ytgPMNVbVsf32\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":12,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"delta\":\"\\\"}\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"9q4ATf26jWFdrV\"}\n\n",
+     "event: response.metadata\ndata: {\"response_id\":\"resp_0c2b2a0f75dd7a88016af7ffd10fdc87d09aaeb5ff07d77a1b\",\"sequence_number\":13,\"type\":\"response.metadata\"}\n\nevent: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"sequence_number\":14,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"text\":\"{\\\"city\\\":\\\"北京\\\",\\\"country\\\":\\\"中国\\\"}\",\"logprobs\":[]}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":15,\"item_id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"{\\\"city\\\":\\\"北京\\\",\\\"country\\\":\\\"中国\\\"}\",\"annotations\":[],\"logprobs\":[]}}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":16,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"{\\\"city\\\":\\\"北京\\\",\\\"country\\\":\\\"中国\\\"}\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}}\n\nevent: response.completed\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":1794637779,\"created_at\":1794637777,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0c2b2a0f75dd7a88016af7ffd10fdc87d09aaeb5ff07d77a1b\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[{\"type\":\"message\",\"id\":\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"{\\\"city\\\":\\\"北京\\\",\\\"country\\\":\\\"中国\\\"}\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"default\",\"status\":\"completed\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"response\",\"description\":null,\"schema\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"},\"country\":{\"type\":\"string\"}},\"required\":[\"city\",\"country\"],\"type\":\"object\"},\"strict\":true},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":44,\"input_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0},\"output_tokens\":16,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":60,\"attribution\":{\"items\":{\"msg_0c2b2a0f75dd7a88016af7ffd1100c87d0ad3923fb57bfe75f\":{\"input_tokens\":14,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":14,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"msg_0c2b2a0f75dd7a88016af7ffd33dd887d085c8f08c2cd9b1af\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":16,\"content\":[{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":16}]}},\"request_fields\":{\"text.format\":{\"input_tokens\":28,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}}}}},\"safety_buffering\":false,\"sequence_number\":17,\"type\":\"response.completed\"}\n\n"
+    ]
+   }
+  }
+ ]
+}

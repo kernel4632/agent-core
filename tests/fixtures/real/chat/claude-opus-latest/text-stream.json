@@ -1,0 +1,55 @@
+{
+ "scenario": "chat/claude-opus-latest/text-stream",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "299",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47310",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "claude-opus-latest",
+     "max_tokens": 1000,
+     "messages": [
+      {
+       "role": "user",
+       "content": "只回复两个字：你好"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47310/chat/claude-opus-latest/text-stream/v1:claude-opus-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:40:02 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140640005582691888268d9d6WsuCf7O3"
+    },
+    "chunks": [
+     "data: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{\"reasoning_content\":\"\\n\"},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{\"content\":\"你\"},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{\"content\":\"好\"},\"logprobs\":null,\"finish_reason\":null,\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[{\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\",\"index\":0}],\"usage\":null}\n\ndata: {\"id\":\"msg_011Cgjm5Nlne8XWZMN2GEyHU\",\"object\":\"chat.completion.chunk\",\"created\":1794638402,\"model\":\"claude-opus-5-5\",\"system_fingerprint\":null,\"choices\":[],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":66,\"total_tokens\":80,\"usage_semantic\":\"openai\",\"usage_source\":\"anthropic\",\"prompt_tokens_details\":{\"cached_tokens\":0,\"text_tokens\":0,\"audio_tokens\":0,\"image_tokens\":0},\"completion_tokens_details\":{\"text_tokens\":0,\"audio_tokens\":0,\"image_tokens\":0,\"reasoning_tokens\":0},\"input_tokens\":14,\"output_tokens\":0,\"input_tokens_details\":null,\"claude_cache_creation_5_m_tokens\":0,\"claude_cache_creation_1_h_tokens\":0}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  }
+ ]
+}

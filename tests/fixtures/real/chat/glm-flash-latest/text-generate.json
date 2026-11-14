@@ -1,0 +1,55 @@
+{
+ "scenario": "chat/glm-flash-latest/text-generate",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "240",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai/7.0.162 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "只回复两个字：你好"
+      }
+     ],
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/text-generate/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "api-version": "2026-10-01.epoch",
+     "cache-control": "no-store",
+     "cf-ai-neurons": "3.82",
+     "cf-auditlog-id": "01a1d8c0-d158-7182-85ca-e9c27c58a532",
+     "cf-ray": "a5a3f8eeebc107b3-LAX",
+     "content-type": "application/json",
+     "date": "Sat, 14 Nov 2026 06:31:18 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631175795240918268d9d6NxtJJ6a3"
+    },
+    "chunks": [
+     "{\"id\":\"id-1794637878242\",\"object\":\"chat.completion\",\"created\":1794637878,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"你好\",\"reasoning_content\":\"The user is asking me to reply with only two characters: \\\"你好\\\" (which means \\\"hello\\\" in Chinese).\\n\\nThis is a simple, harmless request. The user wants me to respond with just \\\"你好\\\" - literally \\\"only reply with two characters: 你好\\\".\\n\\nThis is a straightforward instruction-following request. I should just reply with exactly \\\"你好\\\" as requested.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":79,\"total_tokens\":96,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.822727680206299}}"
+    ]
+   }
+  }
+ ]
+}

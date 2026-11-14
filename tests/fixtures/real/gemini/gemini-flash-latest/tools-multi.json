@@ -1,0 +1,385 @@
+{
+ "scenario": "gemini/gemini-flash-latest/tools-multi",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "688",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      }
+     ],
+     "tools": [
+      {
+       "functionDeclarations": [
+        {
+         "name": "add",
+         "description": "两个数相加，返回和",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "a": {
+            "type": "number"
+           },
+           "b": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "a",
+           "b"
+          ]
+         }
+        },
+        {
+         "name": "weather",
+         "description": "查询一个城市今天的天气",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ]
+         }
+        }
+       ]
+      }
+     ],
+     "toolConfig": {
+      "functionCallingConfig": {
+       "mode": "AUTO"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:14:02 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140713089285710978268d9d6rmY4ijur"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"a\":1,\"b\":2},\"id\":\"call_17657109501051104453\",\"name\":\"add\"},\"thoughtSignature\":\"EtoECtcEAWkUfRNMMJDVJrf2gyvczws82/FeInkWKiIXwWpSPk3xiTN1ae/PmSrrvW+ilktLZZdK9sZbCPwW9OyG7yBDT5kxT4dWVPs7xG/YSBNqf4SSRXS1VS3onJ8TkSHUVJbvy2WqTn4FqVhbBgOYXD84LFPgwVDPFIhFEsKIfqMmacDSGZtdQ7JzYP6x03sMQv8Nznz5xHzgI/lkD040o4Ev5XpFZwQsIQ+RJ+T721M3BfOvh39HreOLcW20qGjZ3pX5uJrCDEPrFEuU8fFR1STpY6Kigaos4e4GbJjHCh1G7Or9ccvOfWR/CrXtw/gbnSG1fXaM/4FSZmr+iFJxweJS6bNhq+58sR3CvYKaltEywyhZu1GSWgC26JDWjAMSaWw0RMjDmT6txjW8jeZ9A4WnRaI4SwBIBoECFzNOdXNM/27tWCsEiqLJGjZeHSwqXVPMxIXh+im1K8sZUyE/YQATGVsUSoIg/qFMmJA/bCk5Kj+Z1kcZ1jzW2ttOMRbsdGrbviWhHX6yzAPf9nmGeo3LuVIw8zArXxguAGYSVxakUkGk5PTsMdsOUGplll/c/XbwOUACjL+5cgOHT/0P1+7Q36BeXlIQCWGPV/YzpPifZ4pfFjgpsQIttdu5XPhtfCuUsivfIyOw1My4YkziB0JikFSfmt5vZ4m6zfT5HkwOBDyWXHO9UmU/RQvNxdGmQYMhNywBSj4V4f1EAViI8vW+7P7oDR/XqPHt5adcds51voiARfPrueiMZn9F3hW1rP+7sLnouXrA7wHaXlXiPozYBOWYuDTXl8Q=\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"OAr4asepIrPUz7IPj9qQiAY\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":133,\"thoughtsTokenCount\":138,\"totalTokenCount\":287}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"OAr4asepIrPUz7IPj9qQiAY\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":133,\"thoughtsTokenCount\":138,\"totalTokenCount\":287}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1764",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "functionCall": {
+          "id": "call_17657109501051104453",
+          "name": "add",
+          "args": {
+           "a": 1,
+           "b": 2
+          }
+         },
+         "thoughtSignature": "EtoECtcEAWkUfRNMMJDVJrf2gyvczws82/FeInkWKiIXwWpSPk3xiTN1ae/PmSrrvW+ilktLZZdK9sZbCPwW9OyG7yBDT5kxT4dWVPs7xG/YSBNqf4SSRXS1VS3onJ8TkSHUVJbvy2WqTn4FqVhbBgOYXD84LFPgwVDPFIhFEsKIfqMmacDSGZtdQ7JzYP6x03sMQv8Nznz5xHzgI/lkD040o4Ev5XpFZwQsIQ+RJ+T721M3BfOvh39HreOLcW20qGjZ3pX5uJrCDEPrFEuU8fFR1STpY6Kigaos4e4GbJjHCh1G7Or9ccvOfWR/CrXtw/gbnSG1fXaM/4FSZmr+iFJxweJS6bNhq+58sR3CvYKaltEywyhZu1GSWgC26JDWjAMSaWw0RMjDmT6txjW8jeZ9A4WnRaI4SwBIBoECFzNOdXNM/27tWCsEiqLJGjZeHSwqXVPMxIXh+im1K8sZUyE/YQATGVsUSoIg/qFMmJA/bCk5Kj+Z1kcZ1jzW2ttOMRbsdGrbviWhHX6yzAPf9nmGeo3LuVIw8zArXxguAGYSVxakUkGk5PTsMdsOUGplll/c/XbwOUACjL+5cgOHT/0P1+7Q36BeXlIQCWGPV/YzpPifZ4pfFjgpsQIttdu5XPhtfCuUsivfIyOw1My4YkziB0JikFSfmt5vZ4m6zfT5HkwOBDyWXHO9UmU/RQvNxdGmQYMhNywBSj4V4f1EAViI8vW+7P7oDR/XqPHt5adcds51voiARfPrueiMZn9F3hW1rP+7sLnouXrA7wHaXlXiPozYBOWYuDTXl8Q="
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "functionResponse": {
+          "id": "call_17657109501051104453",
+          "name": "add",
+          "response": {
+           "name": "add",
+           "content": 3
+          }
+         }
+        }
+       ]
+      }
+     ],
+     "tools": [
+      {
+       "functionDeclarations": [
+        {
+         "name": "add",
+         "description": "两个数相加，返回和",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "a": {
+            "type": "number"
+           },
+           "b": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "a",
+           "b"
+          ]
+         }
+        },
+        {
+         "name": "weather",
+         "description": "查询一个城市今天的天气",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ]
+         }
+        }
+       ]
+      }
+     ],
+     "toolConfig": {
+      "functionCallingConfig": {
+       "mode": "AUTO"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:14:50 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140714033414458728268d9d6fzpPE8GG"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"a\":3,\"b\":3},\"id\":\"call_12022483060359145582\",\"name\":\"add\"},\"thoughtSignature\":\"EtEBCs4BAWkUfROWF2qhKNk41K95/pEMNjHHaHDWKQOAiawkJl2QUjMW1fFxCBF/x74PmdYde57muhK+jaOYfMufInWgy4AftYoldVQah8hX3jNs3O+2wjlWHRcbNbqwYU5nKkvgFWBVWZbXTNkAuAsNvzWQZnxXLTyHMEXfQanah+pimbYmoaXlKruQ2jLRH3VyE97/a/NnFBp5b7rfpy8Y6+STEjo6rKE0Bti36KSwqJidKS17BpWcoCjMXz1tyQJlXZsHqjzX6FYMZoGVx+T1bvg=\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"aAr4asfpIe7rz7IPxfCluQc\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":165,\"thoughtsTokenCount\":26,\"totalTokenCount\":207}}\n\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"aAr4asfpIe7rz7IPxfCluQc\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":303,\"thoughtsTokenCount\":26,\"totalTokenCount\":345}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "2316",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "functionCall": {
+          "id": "call_17657109501051104453",
+          "name": "add",
+          "args": {
+           "a": 1,
+           "b": 2
+          }
+         },
+         "thoughtSignature": "EtoECtcEAWkUfRNMMJDVJrf2gyvczws82/FeInkWKiIXwWpSPk3xiTN1ae/PmSrrvW+ilktLZZdK9sZbCPwW9OyG7yBDT5kxT4dWVPs7xG/YSBNqf4SSRXS1VS3onJ8TkSHUVJbvy2WqTn4FqVhbBgOYXD84LFPgwVDPFIhFEsKIfqMmacDSGZtdQ7JzYP6x03sMQv8Nznz5xHzgI/lkD040o4Ev5XpFZwQsIQ+RJ+T721M3BfOvh39HreOLcW20qGjZ3pX5uJrCDEPrFEuU8fFR1STpY6Kigaos4e4GbJjHCh1G7Or9ccvOfWR/CrXtw/gbnSG1fXaM/4FSZmr+iFJxweJS6bNhq+58sR3CvYKaltEywyhZu1GSWgC26JDWjAMSaWw0RMjDmT6txjW8jeZ9A4WnRaI4SwBIBoECFzNOdXNM/27tWCsEiqLJGjZeHSwqXVPMxIXh+im1K8sZUyE/YQATGVsUSoIg/qFMmJA/bCk5Kj+Z1kcZ1jzW2ttOMRbsdGrbviWhHX6yzAPf9nmGeo3LuVIw8zArXxguAGYSVxakUkGk5PTsMdsOUGplll/c/XbwOUACjL+5cgOHT/0P1+7Q36BeXlIQCWGPV/YzpPifZ4pfFjgpsQIttdu5XPhtfCuUsivfIyOw1My4YkziB0JikFSfmt5vZ4m6zfT5HkwOBDyWXHO9UmU/RQvNxdGmQYMhNywBSj4V4f1EAViI8vW+7P7oDR/XqPHt5adcds51voiARfPrueiMZn9F3hW1rP+7sLnouXrA7wHaXlXiPozYBOWYuDTXl8Q="
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "functionResponse": {
+          "id": "call_17657109501051104453",
+          "name": "add",
+          "response": {
+           "name": "add",
+           "content": 3
+          }
+         }
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "functionCall": {
+          "id": "call_12022483060359145582",
+          "name": "add",
+          "args": {
+           "a": 3,
+           "b": 3
+          }
+         },
+         "thoughtSignature": "EtEBCs4BAWkUfROWF2qhKNk41K95/pEMNjHHaHDWKQOAiawkJl2QUjMW1fFxCBF/x74PmdYde57muhK+jaOYfMufInWgy4AftYoldVQah8hX3jNs3O+2wjlWHRcbNbqwYU5nKkvgFWBVWZbXTNkAuAsNvzWQZnxXLTyHMEXfQanah+pimbYmoaXlKruQ2jLRH3VyE97/a/NnFBp5b7rfpy8Y6+STEjo6rKE0Bti36KSwqJidKS17BpWcoCjMXz1tyQJlXZsHqjzX6FYMZoGVx+T1bvg="
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "functionResponse": {
+          "id": "call_12022483060359145582",
+          "name": "add",
+          "response": {
+           "name": "add",
+           "content": 6
+          }
+         }
+        }
+       ]
+      }
+     ],
+     "tools": [
+      {
+       "functionDeclarations": [
+        {
+         "name": "add",
+         "description": "两个数相加，返回和",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "a": {
+            "type": "number"
+           },
+           "b": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "a",
+           "b"
+          ]
+         }
+        },
+        {
+         "name": "weather",
+         "description": "查询一个城市今天的天气",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ]
+         }
+        }
+       ]
+      }
+     ],
+     "toolConfig": {
+      "functionCallingConfig": {
+       "mode": "AUTO"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:15:37 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140714511306570768268d9d6khxN9Q7X"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"6\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"mAr4at_8GKjqz7IP_8SQqQY\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":197,\"thoughtsTokenCount\":38,\"totalTokenCount\":236}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"Ep4CCpsCAWkUfRP0jQIXanWqQrR4i/a9g8nnNniVmvQ/cJ93tlBi6AVF60bbP2DUmk7my908/qmH/rd40LKbfmZSEN8pNLgqZYllRXPrINVgFI/O6uvL8o5QiA4zO1vZmJxu5S69yJFchJuBh58IjTUUeko8ji8EzL2GcFDLuGnfhRAxyCjKJO98CyWsn5KRjPZlQd47uy+9lga9kQvM7YfGzwQ6LSQHkIw3ndrFkIJs8rsDZJFxCrHwtTHG/WoINLkL7kXLuA+dDUFL5Bcq7KsYJJTJDJ7qObjTs/zR0VvUd9RValX/3jaewBFBT4HehxuPlpLdy2hSivUMqWeL2b9knIfaf1YYzI3TVX6Y0k9MJwEPEw2FZLIOOoZAtrYuwA==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"mAr4at_8GKjqz7IP_8SQqQY\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":361,\"thoughtsTokenCount\":38,\"totalTokenCount\":400}}\n\n"
+    ]
+   }
+  }
+ ]
+}

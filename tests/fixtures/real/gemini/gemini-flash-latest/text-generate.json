@@ -1,0 +1,56 @@
+{
+ "scenario": "gemini/gemini-flash-latest/text-generate",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:generateContent",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "122",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai/7.0.162 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "只回复两个字：你好"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/json",
+     "date": "Sat, 14 Nov 2026 06:35:56 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-client-request-id": "2967f70a-8b0a-4e37-8cdf-f675874edaf9",
+     "x-content-type-options": "nosniff, nosniff",
+     "x-frame-options": "DENY, SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "20261114063329784536048268d9d6xWlmzytv",
+     "x-request-id": "3e2b0105-f953-401a-9028-704b71c062c2"
+    },
+    "chunks": [
+     "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"你好\",\"thoughtSignature\":\"Et0DCtoDAWkUfRMxVwFGCcAP2czYCJqQYBR/xbhYySq89nRss1cGvfm1pyVx1YpDfA0sugfp1nGZ8sOzKNcQ24/pvWH3M5RbeCJxUI3WQ+UNCge4CHiyGBUZyMEooGtqMeUOrDroHSlmUNOn8rxOsBM+XqREFJUivETdasLWGRE1oeINLpHjXLTn5gSeDN8LyhpTrwRkfxTIaFhiaB1OyyobNSKSJToSdrdnyfXADMkIJqiIgPBIOd81A24lM8jPt/pMxdjVR0WAtngLmVv7l9pMSS2f8mlBI8enSix2uQckf3/k1xe1LaD4uy+3ABlj7WgKezBuuLXUoSGvoD0R/sN/BCALL/Sp/1XbierSq2FwKUevHpSA0cj1R6AxtR2ao5cwN6EbPLKVx3lMgTCSy4viSgo3SFMH10odMUtvlCYUDANVAKoeqt2L4gwmii/1zvsNAyEY+7ORvUGUg9nCEtDnX8zOrFyCNi2tpWuA5bw+RvmjDJRsw2PwxzrNvAiKfbVUfyD9wTcK6SKe8z9IpDQaAb/+v3P+uHcjuidf5MWMkTrQbdwUTbmivBzv7KAuqO0f8R/nFUr4SJxhIGmYm1hZZB304AHjAWx5GX86LHBm2CesdkpqNQm5+d/llnK8\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"SgH4atfsEZvTsNYP6fnGyAI\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":260,\"thoughtsTokenCount\":85,\"totalTokenCount\":346}}"
+    ]
+   }
+  }
+ ]
+}

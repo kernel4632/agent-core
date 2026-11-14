@@ -1,0 +1,247 @@
+{
+ "scenario": "gemini/gemini-flash-latest/tools-parallel",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "669",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "同时查询北京和上海今天的天气：在同一次回复里并行调用 weather 两次，拿到结果后用一句话汇报。"
+        }
+       ]
+      }
+     ],
+     "tools": [
+      {
+       "functionDeclarations": [
+        {
+         "name": "add",
+         "description": "两个数相加，返回和",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "a": {
+            "type": "number"
+           },
+           "b": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "a",
+           "b"
+          ]
+         }
+        },
+        {
+         "name": "weather",
+         "description": "查询一个城市今天的天气",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ]
+         }
+        }
+       ]
+      }
+     ],
+     "toolConfig": {
+      "functionCallingConfig": {
+       "mode": "AUTO"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:40:22 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "20261114063812421777678268d9d6pvuMECzk"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"city\":\"北京\"},\"id\":\"call_1459032848546844893\",\"name\":\"weather\"},\"thoughtSignature\":\"ErUDCrIDAWkUfRORrT1MgHZEjIj8p7B2AYRa2Oxx8BSQQi2QxuRB4SD7IOqgrg8nHUcqqk23S8gLviOoQaUxqvhqR6Lwn/C/9K/TFUL8X8qB4j+rXL91hcLGPipyH/RV0lHHHn4u9IpKIoo+9XutW98Rhx6DmNAwBm3xed8jJoJtWE8qsCAk39/obhk7RSKapyIuZY/f1kpJ6cU5MshiZc2V3v+3Ccbs1tommofiiYoAriiMq7WGu300PpQtnBNuZDHv8bRJZcxejShYzqyAH4nvNDN7EBZILAcCu5KWMwhGvL85yw87wSb0xP7PNtTrR06Ov8tr9LZ7cxZvXcvIJpa/y4iqk+SzSY1p/MedAN1lFM3WBOjRGA+8otp4O1mkN/nYSq3Td1SDh/giQyJ0z0ApHlWbYFM7jyNxC1UlElAWMA4UeDESce6FQrigoPTBh34iPaqCPpc44+DaOjVDuUeZVWrGpVAWRZ4L7I9p1OO2N55Myk7pjtMMn5P7z3dFx0BTeRjXtQ0u0e/v4m4uuuSWudp+UQEwTLewfKU6kt8hzKBG6tb3U9JLe77a9KtyutAoXr3uL5s=\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"UwL4atviKqyfz7IPu5TtoQk\",\"usageMetadata\":{\"candidatesTokenCount\":14,\"promptTokenCount\":377,\"thoughtsTokenCount\":72,\"totalTokenCount\":463}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"city\":\"上海\"},\"id\":\"call_1459032848546846198\",\"name\":\"weather\"}}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"UwL4atviKqyfz7IPu5TtoQk\",\"usageMetadata\":{\"candidatesTokenCount\":28,\"promptTokenCount\":377,\"thoughtsTokenCount\":72,\"totalTokenCount\":477}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"UwL4atviKqyfz7IPu5TtoQk\",\"usageMetadata\":{\"candidatesTokenCount\":28,\"promptTokenCount\":377,\"thoughtsTokenCount\":72,\"totalTokenCount\":477}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1790",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "同时查询北京和上海今天的天气：在同一次回复里并行调用 weather 两次，拿到结果后用一句话汇报。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "functionCall": {
+          "id": "call_1459032848546844893",
+          "name": "weather",
+          "args": {
+           "city": "北京"
+          }
+         },
+         "thoughtSignature": "ErUDCrIDAWkUfRORrT1MgHZEjIj8p7B2AYRa2Oxx8BSQQi2QxuRB4SD7IOqgrg8nHUcqqk23S8gLviOoQaUxqvhqR6Lwn/C/9K/TFUL8X8qB4j+rXL91hcLGPipyH/RV0lHHHn4u9IpKIoo+9XutW98Rhx6DmNAwBm3xed8jJoJtWE8qsCAk39/obhk7RSKapyIuZY/f1kpJ6cU5MshiZc2V3v+3Ccbs1tommofiiYoAriiMq7WGu300PpQtnBNuZDHv8bRJZcxejShYzqyAH4nvNDN7EBZILAcCu5KWMwhGvL85yw87wSb0xP7PNtTrR06Ov8tr9LZ7cxZvXcvIJpa/y4iqk+SzSY1p/MedAN1lFM3WBOjRGA+8otp4O1mkN/nYSq3Td1SDh/giQyJ0z0ApHlWbYFM7jyNxC1UlElAWMA4UeDESce6FQrigoPTBh34iPaqCPpc44+DaOjVDuUeZVWrGpVAWRZ4L7I9p1OO2N55Myk7pjtMMn5P7z3dFx0BTeRjXtQ0u0e/v4m4uuuSWudp+UQEwTLewfKU6kt8hzKBG6tb3U9JLe77a9KtyutAoXr3uL5s="
+        },
+        {
+         "functionCall": {
+          "id": "call_1459032848546846198",
+          "name": "weather",
+          "args": {
+           "city": "上海"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "functionResponse": {
+          "id": "call_1459032848546844893",
+          "name": "weather",
+          "response": {
+           "name": "weather",
+           "content": "北京：晴，20 度"
+          }
+         }
+        },
+        {
+         "functionResponse": {
+          "id": "call_1459032848546846198",
+          "name": "weather",
+          "response": {
+           "name": "weather",
+           "content": "上海：晴，20 度"
+          }
+         }
+        }
+       ]
+      }
+     ],
+     "tools": [
+      {
+       "functionDeclarations": [
+        {
+         "name": "add",
+         "description": "两个数相加，返回和",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "a": {
+            "type": "number"
+           },
+           "b": {
+            "type": "number"
+           }
+          },
+          "required": [
+           "a",
+           "b"
+          ]
+         }
+        },
+        {
+         "name": "weather",
+         "description": "查询一个城市今天的天气",
+         "parametersJsonSchema": {
+          "type": "object",
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ]
+         }
+        }
+       ]
+      }
+     ],
+     "toolConfig": {
+      "functionCallingConfig": {
+       "mode": "AUTO"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:42:40 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140640225277962388268d9d6QiQXidW5"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"今天北京和上海的天气均为晴天，气温都是 20 度。\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"2QL4aoGnM7Lfn88PxvaKsA0\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":451,\"thoughtsTokenCount\":25,\"totalTokenCount\":494}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EuIBCt8BAWkUfRNtALTHHqckP+wz6mMZIfUO1HqAFiFarCt4/I3z3bo9PMt04SlqS4SYaj5Ig3AO4wxxy75SW12Pw7R3HqkGpQi+3k4F0OXG1Y8lhjT78D6MuKbi0yX0qT5swwnjDjzAjbWxn71BCkdM1HEk6YaQSZ50DpgVQT4gRdytYbVkBqNto5hWZx4ZPhASidBtAjkRX/fc6jtb9gtzQMbXP6xXR4wDinAhVB2cz3h/CrK3nvwLm+Y3r2kKUxS3/QcR6VsiJB/9hKO+riFO4Z50M5wU3V8Dyf0ZRfQGk2XFrQ==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"2QL4aoGnM7Lfn88PxvaKsA0\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":523,\"thoughtsTokenCount\":25,\"totalTokenCount\":566}}\n\n"
+    ]
+   }
+  }
+ ]
+}

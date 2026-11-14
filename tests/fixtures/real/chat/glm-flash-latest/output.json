@@ -1,0 +1,216 @@
+{
+ "scenario": "chat/glm-flash-latest/output",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "551",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         },
+         "country": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city",
+         "country"
+        ],
+        "additionalProperties": false
+       },
+       "strict": true,
+       "name": "response"
+      }
+     },
+     "messages": [
+      {
+       "role": "user",
+       "content": "中国的首都是哪个城市？按格式回答"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/output/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:32 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "20261114063130325226748268d9d6wnMJOdp4"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":0,\"total_tokens\":21,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2863636314868927}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user is asking in Chinese: \\\"What is the capital of\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" China? Answer in the format\\\" (按格式回答\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" means \\\"answer according to format\\\" or\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" \\\"answer in the specified format\\\").\\n\\nHmm, this\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" is a bit odd - they say \\\"按格式回答\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"\\\" (answer according to format/in the specified\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format) but no format was specified. This might be a case\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" where they intended to include a format but it\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"'s missing, or they want me to answer in\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" some structured format.\\n\\nThe answer to the\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" question is straightforward: 中国的首都是北京.\\n\\n\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Since they asked for a format but didn't specify one\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\", I could:\\n1. Ask what\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format they want\\n2. Provide a simple structured\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" answer like:\\n   - 城市：北京\\n   - 或\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" \\\"中国的首都是北京。\\\"\\n\\nActually\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\", the most helpful approach might be to give\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" the answer in a clean, formatted way (since they\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" seem to want formatting), perhaps like:\\n\\n**\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"答案：北京**\\n\\nOr a simple key\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"-value format:\\n- 问题：中国的首都是\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"哪个城市？\\n- 答案：北京\\n\\nGiven the\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" ambiguity, I could provide the answer in\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" a simple formatted style and note that if they\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" had a specific format in mind, they can\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" let me know. But that might be over-ex\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"plaining for such a simple question.\\n\\nLet\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" me think about what's most likely intended\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\". The phrase \\\"按格式回答\\\" often\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" appears in prompts where a format template was supposed\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" to be given. Since no template was\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" provided, the safest and most helpful response is to give the\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" answer clearly, perhaps in a simple structured format, and optionally\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" mention that no specific format was provided.\\n\\nActually\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\", for a simple factual question like this, I shouldn\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"'t overcomplicate. I'll give a concise answer\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" in a simple format, maybe:\\n\\n**中国\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"首都：北京**\\n\\nAnd briefly note that if they had a specific format\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":14,\"total_tokens\":14,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.636363685131073}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" in mind, they can share it.\\n\\n\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The response should be in Chinese since the question is\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" in Chinese. Keep it short\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":6,\"total_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2727273106575012}}\n\ndata: {\"id\":\"id-1794637892693\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"length\",\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637892693\",\"object\":\"chat.completion.chunk\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637892693\",\"object\":\"chat.completion.chunk\",\"created\":1794637892,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":400,\"total_tokens\":421,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":18.46818407252431}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "551",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         },
+         "country": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city",
+         "country"
+        ],
+        "additionalProperties": false
+       },
+       "strict": true,
+       "name": "response"
+      }
+     },
+     "messages": [
+      {
+       "role": "user",
+       "content": "中国的首都是哪个城市？按格式回答"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/output/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:36 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631351437205208268d9d60LgOW53k"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":0,\"total_tokens\":21,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2863636314868927}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user is asking in Chinese: \\\"What is the capital of\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" China? Answer in format\\\" - which\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" translates to \\\"What is the capital of China? Answer in\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format.\\\"\\n\\nThe question is asking for the capital of China. The user\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":14,\"total_tokens\":14,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.636363685131073}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" says \\\"answer according to format\\\" which means\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" \\\"answer according to format\\\" but doesn't specify what format\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\". This is a bit ambiguous - they\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" may want a formatted answer, or they might\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" be testing something.\\n\\nThis is a simple factual question\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\". The capital of China is Beijing (\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Beijing).\\n\\nSince they asked to answer \\\"in format\\\" (\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":13,\"total_tokens\":13,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5909091830253601}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"in format) but didn't specify a\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format, I could:\\n1. Just\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" give a simple answer\\n2. Ask what\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format they want\\n3. Provide a simple structured answer\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"\\n\\nGiven the simplicity of the question, I think the best\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" approach is to give a concise answer,\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" perhaps in a simple clear format since they mentioned\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" format. I could use a simple structure\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" like:\\n\\nCapital: Beijing\\n\\nThat seems like a reasonable\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" interpretation - a clean, formatted answer.\\n\\nLet me answer in\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" Chinese since the question is in Chinese, and keep\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\ndata: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" it brief as the question is simple.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":10,\"total_tokens\":10,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.4545454978942871}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"content\":\"{\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"content\":\"  \\n  \\\"city\\\": \\\"北京\\\",\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"content\":\"  \\n  \\\"country\\\": \\\"中国\\\"  \\n\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\ndata: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"content\":\"}\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":2,\"total_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.09090910106897354}}\n\ndata: {\"id\":\"id-1794637896559\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"matched_stop\":154827}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637896559\",\"object\":\"chat.completion.chunk\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637896559\",\"object\":\"chat.completion.chunk\",\"created\":1794637896,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":251,\"total_tokens\":272,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":11.695455934852362}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  }
+ ]
+}

@@ -181,6 +181,9 @@ describe('文字工具', () => {
     test('认 <tool_call> JSON 块（含坏 JSON 修复）、工具名标签、已注册工具的 JSON 代码块；丢弃编造的 tool_result', () => {
         expect(parse('<tool_call>{"name":"add","arguments":{"a":1,}}</tool_call>', spec).calls[0]).toMatchObject({ toolName: 'add', input: { a: 1 } })
         expect(parse('<add><a>7</a></add>', spec).calls[0]!.input).toEqual({ a: 7 })
+        expect(parse('<tool_call>add\n{"a": 1, "b": 2}\n</tool_call>', spec).calls[0]).toMatchObject({ toolName: 'add', input: { a: 1, b: 2 } }) // glm-flash 实录的写法
+        expect(parse('<tool_call>\n{"name":"add","arguments":{"a":1,"b":', spec).calls[0]).toMatchObject({ toolName: 'add', input: {}, invalid: expect.stringContaining('没写完') }) // gemini 实录：被 maxTokens 截断
+        expect(parse('<tool_call>{"name":"add","arguments":{"a":1}}', spec).calls[0]).toMatchObject({ input: { a: 1 } })  // 只缺闭合标签：照常认
         expect(parse('```json\n{"name":"add","arguments":{"a":2}}\n```', spec).calls).toHaveLength(1)
         expect(parse('```json\n{"name":"other","arguments":{}}\n```', spec).calls).toHaveLength(0)
         const faked = parse('先算 <tool_call>{"name":"add","arguments":{"a":1}}</tool_call><tool_result>2</tool_result>', spec)

@@ -1,0 +1,60 @@
+{
+ "scenario": "gemini/gemini-flash-latest/reasoning",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "231",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 2000,
+      "thinkingConfig": {
+       "includeThoughts": true
+      }
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "一个正整数除以 3 余 2、除以 5 余 3、除以 7 余 2，最小是几？只给数字"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:13:08 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140711436824307548268d9d6EWXe3r0b"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The problem requires finding the smallest positive integer satisfying a system of congruences. Focusing first on the congruences modulo 3 and 7, since their greatest common divisor is 1, a combined congruence can be derived. The combined congruence suggests that $n$ must also be congruent to 2 modulo 21. Subsequently, investigating the combined congruences, and $n \\\\equiv 3 \\\\pmod 5$.\\n\\nNow, combining $n \\\\equiv 2 \\\\pmod{21}$ and $n \\\\equiv 3 \\\\pmod 5$, a new congruence system arises to be solved. The solution should represent the smallest positive integer that satisfies all three conditions. Finally, the Chinese Remainder Theorem will be applied to compute the final value of n.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"AQr4asivOJaLmtkPy6OcsA8\",\"usageMetadata\":{\"promptTokenCount\":35,\"thoughtsTokenCount\":369,\"totalTokenCount\":404}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"23\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"AQr4asivOJaLmtkPy6OcsA8\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":35,\"thoughtsTokenCount\":559,\"totalTokenCount\":596}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"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\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"AQr4asivOJaLmtkPy6OcsA8\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":35,\"thoughtsTokenCount\":559,\"totalTokenCount\":596}}\n\n"
+    ]
+   }
+  }
+ ]
+}

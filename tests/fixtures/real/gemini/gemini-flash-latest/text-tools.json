@@ -1,0 +1,337 @@
+{
+ "scenario": "gemini/gemini-flash-latest/text-tools",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1310",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 2000
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      }
+     ],
+     "systemInstruction": {
+      "parts": [
+       {
+        "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"
+       }
+      ]
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:33:19 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140732319073901778268d9d6bzMZo3Tp"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\u003ctool_call\\u003e\\n{\\\"name\\\": \\\"add\\\", \\\"arguments\\\": {\\\"a\\\": 1\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"vQ74asrnEaXnz7IPo7urgAo\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":292,\"thoughtsTokenCount\":180,\"totalTokenCount\":492}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\", \\\"b\\\": 2}}\\n\\u003c/tool_call\\u003e\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"vQ74asrnEaXnz7IPo7urgAo\",\"usageMetadata\":{\"candidatesTokenCount\":33,\"promptTokenCount\":292,\"thoughtsTokenCount\":180,\"totalTokenCount\":505}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EpUGCpIGAWkUfRMObIEiwrfUT7rTTMYF4wgfA8A8ipLyb2JTKbs7dymri9tAg79zM+z5Tf6ravBw0x2CwSdX6Js7FmuPb7hyIw+nD8QdiQSqRMtCF3Ij0uHMSsx4xosDOTU9MnozWb1zyC97ibnOcjFIdsj1vqdwsGb2uufJJZY5qZidf4VOawPJnjn4G3Eys0aapsCjDNP49vxOR8TvLrgF4JTXQUNVlmC/UH/z9t1FdLv8vGEtQ9MaplRHuMYq8cXoP3xvtYWHUDxWIzbgVmL+WBn6nTmVUjwKOAbojILR7WUoIuhF6onPvz1yszTMMhYh1KcFkGzB8nbHZ3pweSGjA7AsQKUtWzxcLI0md/UiiSkDe9mRKEwfO1GtCtYkQFNRVMprdlyjUj1h3USFte34u/GPqMAdklqDKN63e/UKk/5VSWXrMt87dYYzdjxZMXgwuh3ZkcaJMwzESYY9hyUT0U6kI8ibHs8fLp7d4iREbm/0Zja+azM1DBxEA7ZPmUnoEdz31BtNh5FC4v/lgeaTzBY774F9l1hc9IBZkysQCoLxDP4F5mlnSbt+Gm25tS5KyZmoCfhjA+vjg26LMCmJVsFeUv9Zt72IVK2jgVt8klhzvcVHcAQP3EfMqwNGWYjhZiZhbi6hPeSC8fIpYpXAEVb21odF0Ku324ud69UyR7FZ31VJNz94FyHa7SpWgvSMDXEWKcWgSRswuHy7/eJ9/j65UdQ03gLqbEwd4ChGyC6M9mFl99SWPtljCVXk0iXUTYhfOJaP1QsQGcHO2FOvL/SRZVc/5qhGHPsFvC7BDZBjZ5jsTjttjnD+7Wew/c/PsaHOhIS7mGY+fkikCrxXk8V4/9PZr9uiZiK72TdsCyqkGwSXZ37BKEFVWhTDyEBEcaWQrX7xKHBLnM5oV8KsO54kY8z9RUYvIXVErAXCO6cPuYXUYq35yqk0D03OV3VnsFNlrm0P5G5acqhO1mhV6dPOQvNXbY2r7C+0npz/i52eagw41shZ5UYz7mClXQ+PCCU9gnD/Vgn7h0u5uF2ZqK9qfxLc\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"vQ74asrnEaXnz7IPo7urgAo\",\"usageMetadata\":{\"candidatesTokenCount\":33,\"promptTokenCount\":292,\"thoughtsTokenCount\":180,\"totalTokenCount\":505}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1509",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 2000
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>"
+        }
+       ]
+      }
+     ],
+     "systemInstruction": {
+      "parts": [
+       {
+        "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"
+       }
+      ]
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:33:24 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140733202514292388268d9d6HgC7UV2E"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\u003ctool_call\\u003e\\n{\\\"name\\\":\\\"add\\\",\\\"arguments\\\":{\\\"a\\\":3,\\\"\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"wg74av3hGICF0PEP9JCp0Q4\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":589,\"thoughtsTokenCount\":27,\"totalTokenCount\":633}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"b\\\":3}}\\n\\u003c/tool_call\\u003e\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"wg74av3hGICF0PEP9JCp0Q4\",\"usageMetadata\":{\"candidatesTokenCount\":27,\"promptTokenCount\":589,\"thoughtsTokenCount\":27,\"totalTokenCount\":643}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EvMBCvABAWkUfRMaJ7G0lpHI76TOQuqStgDtggQ2k8ppgn+yZAbVDMc6/lvGmSnAwWPxT30yYjDIqzviqbUWxS+nUm74yzgTNcluGXlMcvqh8rZgkz0zIu0VFoUKauwl4nDXH+TJ10OLMak7FZwRoYsoFa3oTLW8Wij+pNfQDEeP+/Bi90zNXw4tuWp7ebNrSztlwGiUVg0bmQKdCozGdiVbwxeOlEdGR8PF/izmrPbYbpmCZHHtbZKfG03CL/gYbGJ9r8mKzP0QR/KSa7DQeIWWqKR4WdnDKMN17mP/5Y9kZTZ1wLxVaUMBPU3cTZAyNPrQr7os\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"wg74av3hGICF0PEP9JCp0Q4\",\"usageMetadata\":{\"candidatesTokenCount\":27,\"promptTokenCount\":589,\"thoughtsTokenCount\":27,\"totalTokenCount\":643}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1708",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 2000
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":3,\"b\":3}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "<tool_result name=\"add\">\n6\n</tool_result>"
+        }
+       ]
+      }
+     ],
+     "systemInstruction": {
+      "parts": [
+       {
+        "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"
+       }
+      ]
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:34:11 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140733244345223068268d9d6s5rumoMl"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"6\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"8Q74auTUKJ2dz7IP_5rT-A4\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":382,\"thoughtsTokenCount\":37,\"totalTokenCount\":420}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EpgCCpUCAWkUfRNOXQ4JYc1pN49FYnxmPlKUj6vPuuBUgEaLV1Pol/bzK208yl/LXO+5Qw8YpmTKk1ZmWR/liWrqxbobK/D92nqxpvS6LvCcW+tjTPPX/wh4TUulYSjr8bDt6wBChu5Zn+xLgnzCzo2mZIuuaceBXdELaYuasIGDt6+tN5hiXuQU0nF+vgjOCvAv/dJ9dL9YLSq0HddvAZlsb58qUS+NBdYJNnlmd9e21/YuF2tebT0mDFV2RDn/kgFnNNtaFe5gGFIODQuVvP3EruhXhmiW5UmCAqaz7p9K6FcyraSi1U0/sD6Bmg6ZqewFkr6RTcHlqhSzuMlStKmvE8/VM5FwsPo5seM2ln2nRB6/AcC34PZZMw==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"8Q74auTUKJ2dz7IP_5rT-A4\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":562,\"thoughtsTokenCount\":37,\"totalTokenCount\":600}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "2326",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 2000
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":1,\"b\":2}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "<tool_result name=\"add\">\n3\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "<tool_call>\n{\"name\":\"add\",\"arguments\":{\"a\":3,\"b\":3}}\n</tool_call>"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "<tool_result name=\"add\">\n6\n</tool_result>"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "6",
+         "thoughtSignature": "EpgCCpUCAWkUfRNOXQ4JYc1pN49FYnxmPlKUj6vPuuBUgEaLV1Pol/bzK208yl/LXO+5Qw8YpmTKk1ZmWR/liWrqxbobK/D92nqxpvS6LvCcW+tjTPPX/wh4TUulYSjr8bDt6wBChu5Zn+xLgnzCzo2mZIuuaceBXdELaYuasIGDt6+tN5hiXuQU0nF+vgjOCvAv/dJ9dL9YLSq0HddvAZlsb58qUS+NBdYJNnlmd9e21/YuF2tebT0mDFV2RDn/kgFnNNtaFe5gGFIODQuVvP3EruhXhmiW5UmCAqaz7p9K6FcyraSi1U0/sD6Bmg6ZqewFkr6RTcHlqhSzuMlStKmvE8/VM5FwsPo5seM2ln2nRB6/AcC34PZZMw=="
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "[错误] 你刚才的响应中没有使用工具！请继续使用工具（这是一条系统提醒消息，请勿以对话形式回复）"
+        }
+       ]
+      }
+     ],
+     "systemInstruction": {
+      "parts": [
+       {
+        "text": "# Tool calling\n\nYou can use the tools listed at the end of this message. To call a tool, output exactly this block:\n\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"argument\": \"value\"}}\n</tool_call>\n\nRules:\n- Put one JSON object inside each <tool_call> block. \"name\" is the tool name, \"arguments\" is an object of arguments.\n- You may emit several <tool_call> blocks in one reply.\n- After emitting tool calls, stop immediately and wait. The results come back in a message containing <tool_result> blocks.\n- Never write a <tool_result> block yourself; only the runtime produces those.\n- When no tool is needed, answer normally without any <tool_call> block.\n\nTools:\n- add: 两个数相加，返回和\n  arguments: {\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"]}\n- weather: 查询一个城市今天的天气\n  arguments: {\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"
+       }
+      ]
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:36:35 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140734115955765518268d9d6RGjBJRBY"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"计算任务已经完成，结果为 6。当前没有需要进一步调用的工具。如果您有\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"cg_4apHVJq-gn88P1I3ciQo\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":667,\"thoughtsTokenCount\":1916,\"totalTokenCount\":2603}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"其他计算或查询需求，请告诉我。\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"cg_4apHVJq-gn88P1I3ciQo\",\"usageMetadata\":{\"candidatesTokenCount\":29,\"promptTokenCount\":667,\"thoughtsTokenCount\":1916,\"totalTokenCount\":2612}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"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\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"cg_4apHVJq-gn88P1I3ciQo\",\"usageMetadata\":{\"candidatesTokenCount\":29,\"promptTokenCount\":667,\"thoughtsTokenCount\":1916,\"totalTokenCount\":2612}}\n\n"
+    ]
+   }
+  }
+ ]
+}

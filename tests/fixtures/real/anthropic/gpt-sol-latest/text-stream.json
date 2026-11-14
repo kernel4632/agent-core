@@ -1,0 +1,60 @@
+{
+ "scenario": "anthropic/gpt-sol-latest/text-stream",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/messages",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "anthropic-version": "2023-06-01",
+     "connection": "keep-alive",
+     "content-length": "189",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47310",
+     "user-agent": "ai-sdk-anthropic/4.0.96 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-api-key": "<redacted>"
+    },
+    "body": {
+     "model": "gpt-sol-latest",
+     "max_tokens": 1000,
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "只回复两个字：你好",
+         "cache_control": {
+          "type": "ephemeral"
+         }
+        }
+       ]
+      }
+     ],
+     "stream": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:30:02 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629584471315058268d9d6jobwpK0X"
+    },
+    "chunks": [
+     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"type\":\"message\",\"model\":\"gpt-6.1-sol\",\"usage\":{\"input_tokens\":11,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"claude_cache_creation_5_m_tokens\":0,\"claude_cache_creation_1_h_tokens\":0},\"role\":\"assistant\",\"id\":\"chatcmpl-7f74f0f9\",\"content\":[]}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你好\"}}\n\nevent: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"type\":\"message\",\"model\":\"gpt-6.1-sol\",\"usage\":{\"input_tokens\":11,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"claude_cache_creation_5_m_tokens\":0,\"claude_cache_creation_1_h_tokens\":0},\"role\":\"assistant\",\"id\":\"chatcmpl-7f74f0f9\",\"content\":[]}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":12,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":5,\"claude_cache_creation_5_m_tokens\":0,\"claude_cache_creation_1_h_tokens\":0},\"delta\":{\"stop_reason\":\"end_turn\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    ]
+   }
+  }
+ ]
+}

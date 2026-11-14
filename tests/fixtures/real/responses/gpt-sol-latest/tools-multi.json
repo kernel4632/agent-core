@@ -1,0 +1,328 @@
+{
+ "scenario": "responses/gpt-sol-latest/tools-multi",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "837",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47304",
+     "user-agent": "ai-sdk-openai/4.0.108 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "gpt-sol-latest",
+     "input": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "input_text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      }
+     ],
+     "max_output_tokens": 400,
+     "tools": [
+      {
+       "type": "function",
+       "name": "add",
+       "description": "两个数相加，返回和",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "number"
+         },
+         "b": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ]
+       },
+       "strict": false
+      },
+      {
+       "type": "function",
+       "name": "weather",
+       "description": "查询一个城市今天的天气",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city"
+        ]
+       },
+       "strict": false
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/tools-multi/v1:gpt-sol-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:29:16 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629157262592868268d9d6ZJdLFJhV"
+    },
+    "chunks": [
+     "event: response.metadata\ndata: {\"headers\":{\"x-codex-turn-state\":\"gAAAAABq9_-826T8n8Wk-I01ZhuVhcWw-Ju6lGL0vPo8Sy27WAOD-Or8DgbE_RJrZMVePZYb5GMAfwjZz2I21g75t3BpyEFeR6rzE1ywEsvy_4RgvrGQzzhyIx1naGRVc4fzcw29cl7oVOp7HjPQHnfTfVpkJiQIgc5R4SzGHnld3tpDeM7ndR_Pw4vvkh4BD8JzBjtdDJCthL8L0BdwzT16tTkPelxShXb5n3vhF52Sx5Mmeuy2O4b_v-hXggrYZ6mMJSWd0MgDSq5gqMST12ragjPpcAH4On1HGWphKcmBkAH0oCx8vzD3JyHNMzTnr9SKD-PDtVpSt4nFf0MXsrMKuQq7xWvqX4xMP_GprPpPnIT1U_LDkkRSjZjT6bs7S_JPEfA-e6OMuJ4h_whDYqTKv7FqifVA5boMbN2DwXImvcrzma6jIOWWNPqdPDm5VMno1h7oxocNopWFBAmoX48X1wgw_kpmnpIaEHyk_y75fgyWuEpex8JqOSIR5NM67ZASrfSfAKVoDPfL02K63pbkAvrWnENMWZFw9YplKnVMFcRqxs2x-xICXBGWC1_KzJyGCf7X-w-myNplpuuOdCNABNIlbkHEt-pppcWzFSPWzwD0KPxEV59-IgCO9SS43mnnXSNZIW_o-vdfCG6qRWm0aYirmEzPW6-CNZRkg_bkIBzqcD4PS8DF_Og_n1bbU7zfoce7lSfZYVGKzVkde8KlQmWiHqu2LVFRtTcIIE7GCKJ4q7htsjnsG4beTEa96ukb7uUF3HYw\"},\"type\":\"response.metadata\"}\n\nevent: response.created\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637756,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637756,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n",
+     "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"call_id\":\"call_5228510b2283495f9b3031ed2b155c47\",\"name\":\"add\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+     "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":3,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"{\\\"\",\"obfuscation\":\"N3NVQauiDaZvie\"}\n\n",
+     "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":4,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"a\",\"obfuscation\":\"N1ZTwcQwKFTeVf3\"}\n\n",
+     "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":5,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"\\\":\",\"obfuscation\":\"EH0gQRJSjnpSG8\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":6,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"1\",\"obfuscation\":\"pMGTLqoLUUysFg8\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":7,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\",\\\"\",\"obfuscation\":\"DROGI58XRkDd4u\"}\n\n",
+     "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":8,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"b\",\"obfuscation\":\"VYBIQOKPJksCVOF\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":9,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"\\\":\",\"obfuscation\":\"ONart3pzdSBzGP\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":10,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"2\",\"obfuscation\":\"EsIDFxU82SkPoVY\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":11,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"delta\":\"}\",\"obfuscation\":\"x6vTMklHyybaHuW\"}\n\nevent: response.function_call_arguments.done\ndata: {\"type\":\"response.function_call_arguments.done\",\"sequence_number\":12,\"item_id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"output_index\":0,\"arguments\":\"{\\\"a\\\":1,\\\"b\\\":2}\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":13,\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"call_id\":\"call_5228510b2283495f9b3031ed2b155c47\",\"name\":\"add\",\"arguments\":\"{\\\"a\\\":1,\\\"b\\\":2}\",\"status\":\"completed\"}}\n\nevent: response.metadata\ndata: {\"response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"sequence_number\":14,\"type\":\"response.metadata\"}\n\n",
+     "event: response.completed\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":1794637758,\"created_at\":1794637756,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\",\"call_id\":\"call_5228510b2283495f9b3031ed2b155c47\",\"name\":\"add\",\"arguments\":\"{\\\"a\\\":1,\\\"b\\\":2}\",\"status\":\"completed\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"default\",\"status\":\"completed\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":191,\"input_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0},\"output_tokens\":21,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":212,\"attribution\":{\"items\":{\"at_0aa4481d7d23403b016af7ffbc82e487d0978fa9a614244572\":{\"input_tokens\":144,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":21},\"msg_0aa4481d7d23403b016af7ffbc82e487d09ceeafd3f0adfe41\":{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]}}}}},\"safety_buffering\":false,\"sequence_number\":15,\"type\":\"response.completed\"}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "1052",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47304",
+     "user-agent": "ai-sdk-openai/4.0.108 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "gpt-sol-latest",
+     "input": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "input_text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "type": "function_call",
+       "call_id": "call_5228510b2283495f9b3031ed2b155c47",
+       "name": "add",
+       "arguments": "{\"a\":1,\"b\":2}"
+      },
+      {
+       "type": "function_call_output",
+       "call_id": "call_5228510b2283495f9b3031ed2b155c47",
+       "output": "3"
+      }
+     ],
+     "max_output_tokens": 400,
+     "tools": [
+      {
+       "type": "function",
+       "name": "add",
+       "description": "两个数相加，返回和",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "number"
+         },
+         "b": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ]
+       },
+       "strict": false
+      },
+      {
+       "type": "function",
+       "name": "weather",
+       "description": "查询一个城市今天的天气",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city"
+        ]
+       },
+       "strict": false
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/tools-multi/v1:gpt-sol-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:29:19 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629188680153698268d9d640im1CB4"
+    },
+    "chunks": [
+     "event: response.metadata\ndata: {\"headers\":{\"x-codex-turn-state\":\"gAAAAABq9_--IamTPSLvLmjBO2DlTD5PfFKYmcgQVY__nNkBF9d5MG1tNsoaFrTKYnzH1_0qjUrx4xN5T7g_Elq9WAG5D5s9F6bnD5zhWaS8D-a_PwRyn6DLrofLHrwOiGsV74Pep_MYrvDgJ6cUnBVGkcZx6PPB7mwpTYpVJYTjaJrkYYegLUhQ-oio_pxB_Ahwuv2Sa7HDKvdG6BKW7nwlqJbomPKL9i9ULYOAwET9g0GalIGoJeMcLaPZy5VpKupSo04FUSOGO33KDr3WJhL5gfxVTxMencfpLreWLBbgcmirkvPB0w6iQT_TX_QeNDjPLrAZ2K0ms5-kHdIa-UKgXMT2QHfJzNXDeBObrGn12gUT0EvnC5Z2aj26kFNrZAbUduB5kFgS_xhrE1rSO5wFk4vk1-A7AWnVzS403VLQ5r0DSqAoQs_Y7-QKndVWIz92UYONMpqW5nabjn4z-ZNXyOaEHuvP5xUVFLTTVsH3iN5yNOPkODAvcSYr_MfvoyjqupoSQfUayLO3zH5leq7oy4y8Hise8Li05AT6n4wOTRdxWrwSYOlg7lw3xtAhRCGzH_-tiyKvyvy1h8QdGm9cDbHeQ4ZCw-duHMZmaZhTKlYthJmi9jcyHTiFaiKwJimb1ztTBq6VFW_V9Hj2V8zjhMbWQNtYNsdV4SiS1e_r16HHJkDiuU3EDSxl1dAPOU1QrQnMHzpmmtMa05kUoAs5P4AAKBvBVd4kKUcyHP8Z9YU52T4ZzYKSV7wotO60Bybab_wE1IKB\"},\"type\":\"response.metadata\"}\n\nevent: response.created\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637759,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637759,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n",
+     "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"call_id\":\"call_d51cf724f5a344e5a66cf9eba553ef41\",\"name\":\"add\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+     "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":3,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"{\\\"\",\"obfuscation\":\"S0CDelQxaTOy1S\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":4,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"a\",\"obfuscation\":\"EBNV74BqWhTonoK\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":5,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"\\\":\",\"obfuscation\":\"WgdSX26qP1zTHN\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":6,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"3\",\"obfuscation\":\"RJpg4sSFnLucTP4\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":7,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\",\\\"\",\"obfuscation\":\"rfDn6HzSvu5T5v\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":8,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"b\",\"obfuscation\":\"nBMZHemMmLzU9zc\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":9,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"\\\":\",\"obfuscation\":\"7W6l5QoQaAcOQE\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":10,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"3\",\"obfuscation\":\"ppjUCOhN3aOmbCR\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":11,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"delta\":\"}\",\"obfuscation\":\"gUHLmivIoSROgmH\"}\n\nevent: response.function_call_arguments.done\ndata: {\"type\":\"response.function_call_arguments.done\",\"sequence_number\":12,\"item_id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"output_index\":0,\"arguments\":\"{\\\"a\\\":3,\\\"b\\\":3}\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":13,\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"call_id\":\"call_d51cf724f5a344e5a66cf9eba553ef41\",\"name\":\"add\",\"arguments\":\"{\\\"a\\\":3,\\\"b\\\":3}\",\"status\":\"completed\"}}\n\nevent: response.metadata\ndata: {\"response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"sequence_number\":14,\"type\":\"response.metadata\"}\n\nevent: response.completed\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":1794637760,\"created_at\":1794637759,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[{\"type\":\"function_call\",\"id\":\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\",\"call_id\":\"call_d51cf724f5a344e5a66cf9eba553ef41\",\"name\":\"add\",\"arguments\":\"{\\\"a\\\":3,\\\"b\\\":3}\",\"status\":\"completed\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\",\"prompt_cache_diagnostics\":{\"type\":\"unavailable\"},\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbc82b887d0a542e2e15d74a47e\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"default\",\"status\":\"completed\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":223,\"input_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0},\"output_tokens\":21,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":244,\"attribution\":{\"items\":{\"at_0aa4481d7d23403b016af7ffbc82e487d0978fa9a614244572\":{\"input_tokens\":144,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\":{\"input_tokens\":23,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffbf0ac087d093fddec38d10e0a8\":{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":21},\"msg_0aa4481d7d23403b016af7ffbc82e487d09ceeafd3f0adfe41\":{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]}}}}},\"safety_buffering\":false,\"sequence_number\":15,\"type\":\"response.completed\"}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "1267",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47304",
+     "user-agent": "ai-sdk-openai/4.0.108 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "gpt-sol-latest",
+     "input": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "input_text",
+         "text": "先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。"
+        }
+       ]
+      },
+      {
+       "type": "function_call",
+       "call_id": "call_5228510b2283495f9b3031ed2b155c47",
+       "name": "add",
+       "arguments": "{\"a\":1,\"b\":2}"
+      },
+      {
+       "type": "function_call_output",
+       "call_id": "call_5228510b2283495f9b3031ed2b155c47",
+       "output": "3"
+      },
+      {
+       "type": "function_call",
+       "call_id": "call_d51cf724f5a344e5a66cf9eba553ef41",
+       "name": "add",
+       "arguments": "{\"a\":3,\"b\":3}"
+      },
+      {
+       "type": "function_call_output",
+       "call_id": "call_d51cf724f5a344e5a66cf9eba553ef41",
+       "output": "6"
+      }
+     ],
+     "max_output_tokens": 400,
+     "tools": [
+      {
+       "type": "function",
+       "name": "add",
+       "description": "两个数相加，返回和",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "number"
+         },
+         "b": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ]
+       },
+       "strict": false
+      },
+      {
+       "type": "function",
+       "name": "weather",
+       "description": "查询一个城市今天的天气",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city"
+        ]
+       },
+       "strict": false
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/tools-multi/v1:gpt-sol-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:29:21 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140629208664354708268d9d6rS0ZRxD2"
+    },
+    "chunks": [
+     "event: response.metadata\ndata: {\"headers\":{\"x-codex-turn-state\":\"gAAAAABq9__A54HycY4oVCSdMiXq6CZ0ANr_r43nyvn1e_aKmkh9rvO3NBbTt05EFXDs5hoC_2cOM2ngdBhWFCgRGDzZWqfl9UCIPfOXA7A58x88RpDdIHc9tpG16ImBdsdLW6vJl1lqBU9UJjgD85zC3ciu-aJIt4Tt-4ByfSTGkbv3HM23dxgm6yrY3D_11ZlgI3ZUe7Cyr-bGvtS0AAn_K1WUfwonFviwez4WSoM-8WkWglixk__F3A_3cnheucppoXuIuZ_YSuWHj912nIkZAL_1ScMMadQUrxUDCgIefxWkmbxoSI6N6j-YqvcxKX7U-9nME7HdBprsYJd6-gVxBVir4lG3sMUVx2VT4rVPe2VNwGqgCVeEM6zEMLR_QJ_wnhPoTp189iaxQbichjQ35B0juvtiRALuLC68BbpsTr7a28nNxwnxu6nq8FbhDW5kxOuY2ZESgPIklWvZZJpE1DvKaBHZe8jFbLbLbl2TxLmqCSVHtLGGWz5n_2T7RhjdkCOKGQ1kjVfMwnhHndjfpIufOO3fy0Kwz7k2ECw2Wmi4RepJwyoD4xhNOTwLShOQGyTi-SfP79OOoYg7lZIweyzyIkYz0Z2Rzl38HnSobLa6vqCbgRI_qS5YH3IxumOw24lncvPV258SdyG0z0Pu19g-fgBs2veEEFwraxbF8lZ7ydTswy5dLTQa17nIo7QBamm8Wp4eKlvjzkfU3kF_sUTK_Z9-A1m-nTBTBOJYEs2qhes-oMZFRbC9sUpwHXWWDAXF8n31\"},\"type\":\"response.metadata\"}\n\nevent: response.created\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637761,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffc1054487d09eb8e297d8d60444\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":null,\"created_at\":1794637761,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffc1054487d09eb8e297d8d60444\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"auto\",\"status\":\"in_progress\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null},\"safety_buffering\":false,\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n",
+     "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\"}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":3,\"item_id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[],\"logprobs\":[]}}\n\n",
+     "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"item_id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"output_index\":0,\"content_index\":0,\"delta\":\"6\",\"logprobs\":[],\"safety_buffering\":false,\"obfuscation\":\"W8bnrnqVcYKtdrr\"}\n\nevent: response.metadata\ndata: {\"response_id\":\"resp_0aa4481d7d23403b016af7ffc1054487d09eb8e297d8d60444\",\"sequence_number\":5,\"type\":\"response.metadata\"}\n\nevent: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"sequence_number\":6,\"item_id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"output_index\":0,\"content_index\":0,\"text\":\"6\",\"logprobs\":[]}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":7,\"item_id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"6\",\"annotations\":[],\"logprobs\":[]}}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":8,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"6\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}}\n\n",
+     "event: response.completed\ndata: {\"response\":{\"access_programs\":{\"cyber\":\"standard\"},\"background\":false,\"completed_at\":1794637762,\"created_at\":1794637761,\"error\":null,\"frequency_penalty\":0.0,\"id\":\"resp_0aa4481d7d23403b016af7ffc1054487d09eb8e297d8d60444\",\"image\":{\"context_compression\":\"enabled\"},\"incomplete_details\":null,\"input_transformations\":[],\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-6.1-sol\",\"moderation\":null,\"object\":\"response\",\"output\":[{\"type\":\"message\",\"id\":\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"6\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\",\"prompt_cache_diagnostics\":{\"type\":\"unavailable\"},\"prompt_cache_options\":{\"ttl\":\"30m\",\"mode\":\"implicit\",\"comparison_response_id\":\"resp_0aa4481d7d23403b016af7ffbf090c87d0b187808fa85d8c40\"},\"prompt_cache_retention\":\"24h\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"medium\",\"summary\":null,\"mode\":\"standard\"},\"service_tier\":\"default\",\"status\":\"completed\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"name\":\"add\",\"description\":\"两个数相加，返回和\",\"parameters\":{\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false},{\"type\":\"function\",\"name\":\"weather\",\"description\":\"查询一个城市今天的天气\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":false}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":255,\"input_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0},\"output_tokens\":5,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":260,\"attribution\":{\"items\":{\"at_0aa4481d7d23403b016af7ffbc82e487d0978fa9a614244572\":{\"input_tokens\":144,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffbe932087d0b7f6ccc362d3c7eb\":{\"input_tokens\":23,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffbf0ac087d093fddec38d10e0a8\":{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"fc_0aa4481d7d23403b016af7ffc0963887d09b199c4bed63d364\":{\"input_tokens\":23,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0},\"fc_0aa4481d7d23403b016af7ffc106cc87d0ae92ea9ec02fda43\":{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"msg_0aa4481d7d23403b016af7ffbc82e487d09ceeafd3f0adfe41\":{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":45,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"msg_0aa4481d7d23403b016af7ffc2ba9487d0b7c917f080fcf275\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":5,\"content\":[{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":5}]}}}}},\"safety_buffering\":false,\"sequence_number\":9,\"type\":\"response.completed\"}\n\n"
+    ]
+   }
+  }
+ ]
+}

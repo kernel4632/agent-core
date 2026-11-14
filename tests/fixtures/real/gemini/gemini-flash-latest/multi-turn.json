@@ -1,0 +1,124 @@
+{
+ "scenario": "gemini/gemini-flash-latest/multi-turn",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "131",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "记住数字 42，只回复“好”"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:10:55 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140710058004166048268d9d6NEXzcv32"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"好\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"fAn4atSGK_7Qz7IP_8vF6QU\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":12,\"thoughtsTokenCount\":117,\"totalTokenCount\":130}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EukECuYEAWkUfRPjen+7wIBToIevZa4JgjS7RaiNQkewL4HIXNKoMLvAr5YSCJGFX8bMl5y7JObZrActvFMXFI1JLz2k7EK31pf5go4B/x5c9ISzhDUmEDJ7hjXpELIRhMoIHKpGKrWx0MTiRKOz9vi5aaA9Xkyp2ER9PE4Xc1jW7kDBc+iUFGxBGLKNBXIUXTuB01v/bR7FuJzPZlFTkNjOljNJgKnBajZmrgBI9bSE00vvh8shDSYt7Hh8jBxu2hwovjwnJT3lBAmJYRtPuT1bN1QdL0YeFVazxX47mMCYwp2OH7Ev1RiPqAyFFML4T5aqZDc3z5+4FPDQ2ISOuTGjXqQuDRzggSNXsW9Nl5LWF5Ecx06SJrgqY+F1JwKrobpoJRdRg7x7uyoXJvrEf6J23eNHAppHuBFe/53tAYoTzbj5cu1x0Et0qdYasmC+1ymI/nx+DX0nvS5g5BsHzWtB1qtb8/nEc4lMFt+MNxPIP+sFtooO3PaivWYjYluagSVq3v5w/Tvha4bvqRYuta3x3ONzT72ACqIE/zT5rbu0EOTQSoprJbv5Ew2hSOBFPMPMdJKfScjh4qkzYsZ7TAUIdVNX4Lt7yZy3aQiP8BDqlq+MefvCFo64R97bi0mfEcwH3JlzPsDQY0LCIw61qnYY1sDuyOQnUTs4sPsOJOvy/3UYwzHjU9GcY69KBumjbALFVmwmwG54Iuo5mOHBPfiEegyHHru6CBgzXGTF7zLrJehqbvkr4vhen+15xlSKTlaPYn4YVNEO+Dm9+daeZ0BON5ukYkeBTq1P1eHBqWB0+2/Rv4ziU0zFwNY=\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"fAn4atSGK_7Qz7IP_8vF6QU\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":12,\"thoughtsTokenCount\":117,\"totalTokenCount\":130}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "1115",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "记住数字 42，只回复“好”"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "好",
+         "thoughtSignature": "EukECuYEAWkUfRPjen+7wIBToIevZa4JgjS7RaiNQkewL4HIXNKoMLvAr5YSCJGFX8bMl5y7JObZrActvFMXFI1JLz2k7EK31pf5go4B/x5c9ISzhDUmEDJ7hjXpELIRhMoIHKpGKrWx0MTiRKOz9vi5aaA9Xkyp2ER9PE4Xc1jW7kDBc+iUFGxBGLKNBXIUXTuB01v/bR7FuJzPZlFTkNjOljNJgKnBajZmrgBI9bSE00vvh8shDSYt7Hh8jBxu2hwovjwnJT3lBAmJYRtPuT1bN1QdL0YeFVazxX47mMCYwp2OH7Ev1RiPqAyFFML4T5aqZDc3z5+4FPDQ2ISOuTGjXqQuDRzggSNXsW9Nl5LWF5Ecx06SJrgqY+F1JwKrobpoJRdRg7x7uyoXJvrEf6J23eNHAppHuBFe/53tAYoTzbj5cu1x0Et0qdYasmC+1ymI/nx+DX0nvS5g5BsHzWtB1qtb8/nEc4lMFt+MNxPIP+sFtooO3PaivWYjYluagSVq3v5w/Tvha4bvqRYuta3x3ONzT72ACqIE/zT5rbu0EOTQSoprJbv5Ew2hSOBFPMPMdJKfScjh4qkzYsZ7TAUIdVNX4Lt7yZy3aQiP8BDqlq+MefvCFo64R97bi0mfEcwH3JlzPsDQY0LCIw61qnYY1sDuyOQnUTs4sPsOJOvy/3UYwzHjU9GcY69KBumjbALFVmwmwG54Iuo5mOHBPfiEegyHHru6CBgzXGTF7zLrJehqbvkr4vhen+15xlSKTlaPYn4YVNEO+Dm9+daeZ0BON5ukYkeBTq1P1eHBqWB0+2/Rv4ziU0zFwNY="
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "我刚才让你记住的数字是多少？只给数字"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:11:43 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140710556537552988268d9d6k3o9Gk3v"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"42\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"rQn4atExiOnPsg-XutKYBg\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":26,\"thoughtsTokenCount\":117,\"totalTokenCount\":145}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"Eu0ECuoEAWkUfRNb7rhxRIzWeBgHHWp8K5xROSNH3hpFi9rJZltnsYYNJfGdWt8Lmjv3YpQbClySL8rRT87qwAFZqrrb8mFG8Y0EhgHUXuo48zqd6qnsg/Htbsu6mGZEFgzKsmCsU/uldmMtBU2kocxIGfDIR15EZSpcf8k9viy84bkCSsihPRyxSj9hEB+l4I/enDTFSGFBkZoCdyVmZd3FwaVO5/rFGmJIj53zTYG2r/RvSGiTTz2A47QK13ez5NTTegMXjuBy3/i4DO/fyQt7pGqqWViLyQMHe7qBIXVzv34rJiSw63+EtWAQozb68os24/WgZAKW7AQa2SSX8wd7Ux/w+7R5E7VxxUG7HkddEMurlvSU/t7MVCKprC13cWF+mUCRqNviSZXKaQZjuzMambMIzuD73oBU4ZkKGQPhvtPABA1VqP+xYDfg3Yfi0WOyFaQKK8R40d49Iq5TfXeVP4uSQNpg0QLTJbXiOElpm0pJiZ3hpYIUIu/8GZ/nudBHDUnw+6vi4O/sjiGsi6VBPQIQ5SXqVTd2Yc+LwyYQeoXQqUOKFLj3J870Q26jAVRl3V1N0RTQNsDQ/sfmrwxwYwwqQs+tPkre2YJtsXuCQdq2q+2kwBGLZ0lLrLm7c0bE4yXw5uydyPJhVEyiJprbOVHxlHp4EYcWToFc4y1yahPGp4PM+eO1ltwo5CbIXDQcZCYHUKsirnyuXw6CI3sg74hmy2O6+bJMBson0wvZ0l5oxOIiALx6SEZSnbX/8r8fpwTfzbsEOicTylrHrIztQQgsxbHDLvZw0uD+92oUCohdvamjxSQ0FgjmFn5b\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"rQn4atExiOnPsg-XutKYBg\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":143,\"thoughtsTokenCount\":117,\"totalTokenCount\":262}}\n\n"
+    ]
+   }
+  }
+ ]
+}

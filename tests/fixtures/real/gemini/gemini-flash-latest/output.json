@@ -1,0 +1,143 @@
+{
+ "scenario": "gemini/gemini-flash-latest/output",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "347",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400,
+      "responseMimeType": "application/json",
+      "responseJsonSchema": {
+       "type": "object",
+       "required": [
+        "city",
+        "country"
+       ],
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "country": {
+         "type": "string"
+        }
+       },
+       "additionalProperties": false
+      }
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "中国的首都是哪个城市？按格式回答"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:02:03 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "20261114070142129267518268d9d6FRGBiyAv"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"I'm thinking through how to approach this.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"aQf4arG_JNWsqtsPkffXiAs\",\"usageMetadata\":{\"promptTokenCount\":10,\"thoughtsTokenCount\":93,\"totalTokenCount\":103}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"中国的首都是：北京。\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"aQf4arG_JNWsqtsPkffXiAs\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":10,\"thoughtsTokenCount\":383,\"totalTokenCount\":399}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"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\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"aQf4arG_JNWsqtsPkffXiAs\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":10,\"thoughtsTokenCount\":383,\"totalTokenCount\":399}}\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "347",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400,
+      "responseMimeType": "application/json",
+      "responseJsonSchema": {
+       "type": "object",
+       "required": [
+        "city",
+        "country"
+       ],
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "country": {
+         "type": "string"
+        }
+       },
+       "additionalProperties": false
+      }
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "中国的首都是哪个城市？按格式回答"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:02:19 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140702072016796578268d9d6PuA0Eceo"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Initial assumption: The prompt implies a conventional question-and-answer format, but the specific format is missing. Need to infer or apply a reasonable standard Q\\u0026A structure. Considering whether a simple \\\"中国的首都是：[City]\\\" format is sufficient given the missing explicit instruction.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"dwf4aq63HY7oz7IPida7yQU\",\"usageMetadata\":{\"promptTokenCount\":10,\"thoughtsTokenCount\":170,\"totalTokenCount\":180}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"中国的首都是：北京。\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"dwf4aq63HY7oz7IPida7yQU\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":10,\"thoughtsTokenCount\":382,\"totalTokenCount\":398}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"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\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"dwf4aq63HY7oz7IPida7yQU\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":10,\"thoughtsTokenCount\":382,\"totalTokenCount\":398}}\n\n"
+    ]
+   }
+  }
+ ]
+}

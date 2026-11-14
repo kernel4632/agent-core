@@ -1,0 +1,230 @@
+{
+ "scenario": "chat/glm-flash-latest/tools-parallel",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "823",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "同时查询北京和上海今天的天气：在同一次回复里并行调用 weather 两次，拿到结果后用一句话汇报。"
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "add",
+        "description": "两个数相加，返回和",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "a": {
+           "type": "number"
+          },
+          "b": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "a",
+          "b"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "weather",
+        "description": "查询一个城市今天的天气",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ]
+        }
+       }
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/tools-parallel/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:22 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631194183096928268d9d6tWQbpeEd"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":235,\"completion_tokens\":0,\"total_tokens\":235,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.204545259475708}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" user wants me to query the weather for both Beijing and Shanghai\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":12,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5454546213150024}}\n\n",
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" in parallel, in the same reply. Since\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\n",
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" there are no dependencies between the two calls, I should\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":11,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.5000000596046448}}\n\n",
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" make both calls in the same function_calls\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\" block.\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":\"call_2ef8f1a1446b4036916784ac\",\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"weather\",\"arguments\":\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\n",
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"{\\\"city\\\": \"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"\\\"北京\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":8,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.36363640427589417}}\n\n",
+     "data: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":0,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":\"call_7d390a30a7a74bb8b827aee3\",\"index\":1,\"type\":\"function\",\"function\":{\"name\":\"weather\",\"arguments\":\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":6,\"total_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2727273106575012}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":1,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"{\\\"city\\\": \\\"上海\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":null,\"reasoning_content\":null,\"tool_calls\":[{\"id\":null,\"index\":1,\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"matched_stop\":154829}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"object\":\"chat.completion.chunk\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637882360\",\"object\":\"chat.completion.chunk\",\"created\":1794637882,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":235,\"completion_tokens\":63,\"total_tokens\":298,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":6.0681819804012775}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "1314",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "同时查询北京和上海今天的天气：在同一次回复里并行调用 weather 两次，拿到结果后用一句话汇报。"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_2ef8f1a1446b4036916784ac",
+         "type": "function",
+         "function": {
+          "name": "weather",
+          "arguments": "{\"city\":\"北京\"}"
+         }
+        },
+        {
+         "id": "call_7d390a30a7a74bb8b827aee3",
+         "type": "function",
+         "function": {
+          "name": "weather",
+          "arguments": "{\"city\":\"上海\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_2ef8f1a1446b4036916784ac",
+       "content": "北京：晴，20 度"
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_7d390a30a7a74bb8b827aee3",
+       "content": "上海：晴，20 度"
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "add",
+        "description": "两个数相加，返回和",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "a": {
+           "type": "number"
+          },
+          "b": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "a",
+          "b"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "weather",
+        "description": "查询一个城市今天的天气",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ]
+        }
+       }
+      }
+     ],
+     "tool_choice": "auto",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/tools-parallel/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:23 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631228308512068268d9d6RdflVrLw"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637883808\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":275,\"completion_tokens\":0,\"total_tokens\":275,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":3.749999761581421}}\n\n",
+     "data: {\"id\":\"id-1794637883808\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":\"北京和上海今天都是晴天，气温\",\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":9,\"total_tokens\":9,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.40909096598625183}}\n\ndata: {\"id\":\"id-1794637883808\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":null,\"content\":\" 20 度。\",\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":6,\"total_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.2727273106575012}}\n\n",
+     "data: {\"id\":\"id-1794637883808\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"matched_stop\":154827}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637883808\",\"object\":\"chat.completion.chunk\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0}}\n\ndata: {\"id\":\"id-1794637883808\",\"object\":\"chat.completion.chunk\",\"created\":1794637883,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":275,\"completion_tokens\":15,\"total_tokens\":290,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":4.431818038225174}}\n\ndata: [DONE]\n\n"
+    ]
+   }
+  }
+ ]
+}

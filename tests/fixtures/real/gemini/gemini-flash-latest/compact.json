@@ -1,0 +1,95 @@
+{
+ "scenario": "gemini/gemini-flash-latest/compact",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "connection": "keep-alive",
+     "content-length": "946",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47302",
+     "user-agent": "ai-sdk-google/4.0.111 ai-sdk-provider-utils/5.0.74 bun/1.4.4",
+     "x-goog-api-key": "<redacted>"
+    },
+    "body": {
+     "generationConfig": {
+      "maxOutputTokens": 400
+     },
+     "contents": [
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "我叫小林，在做一个记账 App，用 Bun 写后端。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "好的，小林。记账 App 的后端用 Bun。"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "数据库决定用 SQLite，金额一律存成分（整数）。"
+        }
+       ]
+      },
+      {
+       "role": "model",
+       "parts": [
+        {
+         "text": "明白：SQLite，金额存整数分。"
+        }
+       ]
+      },
+      {
+       "role": "user",
+       "parts": [
+        {
+         "text": "请把以上对话压缩成一段总结，供你自己后续继续工作时使用。\n保留：已经确认的事实与数据、已完成的步骤及其结论、还没做完的事、用户最初的目标。\n丢弃：寒暄、重复的中间过程、已经被后续结果推翻的内容。\n只输出总结本身，不要说\"好的\"，不要继续对话。"
+        }
+       ]
+      }
+     ],
+     "systemInstruction": {
+      "parts": [
+       {
+        "text": "你在压缩一段你自己参与过的工作记录。只输出总结内容本身。"
+       }
+      ]
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 07:02:52 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140702349033169138268d9d6WWgEiyzs"
+    },
+    "chunks": [
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Initial observation: The user is specifying the tech stack (Bun, SQLite) and data format (integer cents for monetary values) for a personal expense tracking app's backend. This suggests the primary focus is on data storage and potentially financial calculations. The dialogue is simple; understanding these basics is crucial.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"kQf4asGcMqGvqtsPler1uQg\",\"usageMetadata\":{\"promptTokenCount\":149,\"thoughtsTokenCount\":174,\"totalTokenCount\":323}}\n\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"用户小林正在开发一款\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"kQf4asGcMqGvqtsPler1uQg\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":149,\"thoughtsTokenCount\":380,\"totalTokenCount\":535}}\n\n",
+     "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"记账 App。已确认的技术架构与规范\"}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"kQf4asGcMqGvqtsPler1uQg\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":149,\"thoughtsTokenCount\":380,\"totalTokenCount\":545}}\n\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EsgOCsUOAWkUfRMB8EKvOXJ0NtyfhQA0Y7MSrjmCXv+JFNBn6fwepOk3RoaH3IDhNpWqyUNH/ciAExbHU/iaz+NpjyZrIbgSrO/qu864uALPA8tEpkUG4Ldw/nOjNIBZ2yfIguRcoP84Kl3MQNL5fi/Df23VaWySODpuItsFrlcG+oI9N9pyDRC19W2KY/hEUsVyq1QoOqDz2RB+2521F1lMJxt5VGhjz2qZlULsCU/1l0NfWwUQxA2pHR2tklXMfonVc3wS9Ff3WBTAQtNQJdEUCmuY2RuPHygsBXWosGXvAs55tTDip70yW5v4sqZiPRhoVM2wGTDHCPzWmagNS3JlJgzZUE7CifIXLLRzr30eyxKW6i6OgM7FvKaMMjD0rWU9Be3+Kb1rPXiYVxeKmNJg392+az7CDal/eD7db8HuNkTWj7k09pTUaZyASGoWB6OqifxmTMM40crk+OoMeA3NATpCOXY0tuuJHEOtFrm0Li11vkuTn3Zr1w/TjiEswVFJH21n7yGWW1slLTljrDZDUaHHgOse6te8PjU+d8I96lI8oTk1r4m/owgmu6KlwaM88XzTSD67DHBIYP5LMyRovMyZBL/EsNFwt4iQJXNvgoYBpyWXSAB/ghDxlqpjZdPoTsKgz6rWdKe2qRvdsExFYKMh+AJjTbQ/c/L3kr5TNWejGD/0KPp+BOwKPebp9/grBykDXX8DJcL4yZ5vN8CgbQqI5q6PvjpKCMgFmIIWOdYfjZ2UMzrWyeIiLnU72mAAKnkGVliLcmVQqjRza+YZNWlNy7yMuyu0nnrERo6SrMJSlyYXOnqObB1vP+EYHY7mzEj9IzfVDvh6EiXq0aaqtFUu48rjIZx7xbeSeAxwMCvwIysCdePcvySOY4ac+rXc4eCrWUCWz+jE/AtOMcSlTy71ywzkX5OuGKu3eSm+rYpnyVLu1ldTJxAo7pbQ9yHhFANoUS4yyyylszonYH3xtnAmyGKKiyLdYDHSQj2QgiOKJVHgwAKoYEahs/jSGdT5bFEKHHjomjO8psC50+4MW1TQ3tNjvIbZImptH3BqJiWNDsH2x+1wlh/k+LQKcgouUK+nuEDctc8X/PPd9NwL/ZJdzZ2SHcZDvyeJlLhsDamDEhJtDfYYhw/YBP05aBd/MtS6Kik0IWFEZq2DFoWMaLvyhS+e5pVXGwyMN/2bcVMCsBvY3FhEynYf3MceBJGQLmXkF8ocvv9kpjbvc3kjIMu0C7yXYTCTXvTkxKvvphU4y2JIeBOL82XR+tcKTrUntik2kb2v4FgOOsKKgKkQKkKPV7k8LM/kLMGhYnraulg5mITMzdnoJoM2ILDoZvCdhx+tbqzjOTQ8FoElIcGN7tZq0APzc+46uUZlWKz/qEOCnBwwNZDpVISV5WuMThDqy/xqnCpSLbEIcBNn2OLwzFQ7kjZHcRRHufLa3vrWRl9luYjxkrIl4lVM82+46Do3W/r9jgAyu/ERqzO67E0K/zwt3AW9TOXla6ut9n5b5pWoMGnDNfTJtU5a7XO+WDkMO/vRx3+wUz7eY2kNwRhi1m20AGPuTX1MbtVYpWEFq73BQ0CoKPCfgHuGejd9e+PtBNd9dWokuZhAbL709eVemcxYrUkAK8MOOmsVkAxYaTjAO66WOgyW/d7NUS6ckEWN7kT8HG/2jy3Va1vD2X/WY7rj/ZrlZ9eLH7k3rtmmrWICasAP+7Qo/6XPvRbmtY+x0QCmI5Z3eZMPpvW467PrQWmhDDBIkx4U8ZDoFUf8lQ+Os2G3Cqw5rRhW27aqzkQPWU7Fo/nI1I36Mzj5/s6xDrceLiX9FJ0gpTS8vX68m5bgNgkJhaIGWIN5qtDhCDtEdAaHvEkIsMV4RJzX3pDWFgKr6VytXUomjZTkA9ZhvOhjekwkS62YLrr/0eJhxDjj8KwIY2b6RaMeZLPRtus5b1+r9U+Hz/X4oe4p6LOULgPrvgy0EkS6uBhpmVqeSWJH64VtAh6ESRfhvnmyfjZDVtglGWskqp3XUYAVBe9rbNRMp9uy57GijSUMfEBDP7gWXkMZ1ZVsWvL4gedjBryHbUDCKDO3YLY8PdR+ptghdQLWYxc1DxUip7lHz0SH604HtakxyBdHLJLDgr44Xttv7yQqJw1/WbyQunKb+7w+UWY65qyNF9fYpgsaNUYLX3lPl9B97E8Xr4yiQ8tN5NbFfmIWe5FtQhVNWzPT5DbcSYQme/3x+C7l/fawDdIPFAryBvYSK9UAyiu6p2mNuXVMe1xsPrj2m+dO0khHRPgVldr2w631kynQy/XSB1dpgbINVHQHGCHDwjgGQWNKiRSt5mTmxMpeys/+zS0jf5blhrBPdkOnyXdVJJfjqxmxLyeNOC3rSBlm+5eC4C8iBWiwvnd6bLYBDDRQw3aSFOiTrBvfKjCZEZr+AT8rQqUToCMSjQrxs9EYs1f1bSh2fHDLuloGWauD5W/EfkErSLO6eMxD2ytO3GAZ+Q==\"}],\"role\":\"model\"},\"finishReason\":\"MAX_TOKENS\"}],\"modelVersion\":\"gemini-3.8-flash\",\"responseId\":\"kQf4asGcMqGvqtsPler1uQg\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":149,\"thoughtsTokenCount\":380,\"totalTokenCount\":545}}\n\n"
+    ]
+   }
+  }
+ ]
+}

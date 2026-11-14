@@ -1,0 +1,56 @@
+{
+ "scenario": "chat/glm-flash-latest/abort",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "292",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "从 1 数到 40，用逗号分隔"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/abort/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 200,
+    "headers": {
+     "cache-control": "no-cache",
+     "content-type": "text/event-stream",
+     "date": "Sat, 14 Nov 2026 06:31:44 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631437117539458268d9d6tZ2SwQ5p"
+    },
+    "chunks": [
+     "data: {\"id\":\"id-1794637904050\",\"created\":1794637904,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":null,\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":0,\"total_tokens\":24,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.3272727131843567}}\n\n",
+     "data: {\"id\":\"id-1794637904050\",\"created\":1794637904,\"model\":\"@cf/zai-org/glm-5.3-flash\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The\"},\"logprobs\":null,\"finish_reason\":null,\"matched_stop\":null}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":0},\"neurons\":0.04545455053448677}}\n\n"
+    ]
+   }
+  }
+ ]
+}

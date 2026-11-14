@@ -1,0 +1,54 @@
+{
+ "scenario": "chat/glm-flash-latest/error-auth",
+ "exchanges": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "headers": {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate, br, zstd",
+     "authorization": "<redacted>",
+     "connection": "keep-alive",
+     "content-length": "266",
+     "content-type": "application/json",
+     "host": "127.0.0.1:47303",
+     "user-agent": "ai-sdk-openai-compatible/3.0.84 ai-sdk-provider-utils/5.0.74 bun/1.4.4"
+    },
+    "body": {
+     "model": "glm-flash-latest",
+     "max_tokens": 400,
+     "messages": [
+      {
+       "role": "user",
+       "content": "hi"
+      }
+     ],
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     },
+     "prompt_cache_key": "agent:http://127.0.0.1:47303/chat/glm-flash-latest/error-auth/v1:glm-flash-latest:5333506911701590657"
+    }
+   },
+   "response": {
+    "status": 401,
+    "headers": {
+     "content-type": "application/json; charset=utf-8",
+     "date": "Sat, 14 Nov 2026 06:31:43 GMT",
+     "permissions-policy": "geolocation=(), microphone=(), camera=()",
+     "referrer-policy": "strict-origin-when-cross-origin",
+     "server": "nginx",
+     "strict-transport-security": "max-age=31536000; includeSubDomains",
+     "x-content-type-options": "nosniff",
+     "x-frame-options": "SAMEORIGIN",
+     "x-new-api-version": "v1.0.0-rc.12",
+     "x-oneapi-request-id": "202611140631432702717738268d9d6P9lb3Hnj"
+    },
+    "chunks": [
+     "{\"error\":{\"code\":\"\",\"message\":\"Invalid token (request id: 202611140631432702717738268d9d6P9lb3Hnj)\",\"type\":\"new_api_error\"}}"
+    ]
+   }
+  }
+ ]
+}
