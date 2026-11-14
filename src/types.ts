@@ -88,7 +88,7 @@ export interface Config {
 
 // 总结：history 里的一条普通消息，只追加；build 时把最新一条折进 system。
 export interface CompactMessage { id: string; role: 'compact'; content: string }
-// 宿主的失败记录：存进 history 供渲染，但永远不发给模型。
+// 失败记录：loop 记下的模型请求错误（request 里是 kind / statusCode / model / attempt 等），或宿主自己写的；存进 history 供渲染，永远不发给模型。
 export interface ErrorMessage { id: string; role: 'error'; content: string; request?: unknown }
 // history 的一条：AI SDK 标准消息带 id，或上面两种自定义 role。
 export type Message = (ModelMessage & { id: string }) | CompactMessage | ErrorMessage

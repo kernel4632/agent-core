@@ -30,7 +30,7 @@ calls 记下每次请求的 prompt 和 tools，方便断言。stream 与非流�
 */
 export function script(steps: (Step | ((index: number) => Step | Promise<Step>))[], modelId = 'mock-model') {
     let index = 0
-    const next = async () => { const raw = steps[Math.min(index, steps.length - 1)]!; const step = typeof raw === 'function' ? await raw(index) : raw; index += 1; return step }
+    const next = async () => { const at = index++; const raw = steps[Math.min(at, steps.length - 1)]!; return typeof raw === 'function' ? await raw(at) : raw } // 先记步数：抛错的一步也算用掉
     const calls: any[] = []
     const model = new MockLanguageModelV4({
         modelId,

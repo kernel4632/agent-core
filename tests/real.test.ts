@@ -4,9 +4,7 @@
 - 默认回放：读 tests/fixtures/real 里录好的真实往返，不连网、不花钱，和普通单测一样快；
 - RECORD=1（并提供 LINGLOFT_API_KEY / LINGLOFT_BASE_URL）：转发到真实中转站重新录制；REAL_MODELS=逗号分隔的模型名 只录其中几个；
 - 录制时每个场景的请求尽量少、输出上限尽量小（用户对额度敏感），不做循环压测。
-
-每个模型用一个固定端口的中转：prompt_cache_key 里含 baseURL，端口固定，录制和回放发出的请求体才能逐字一致（relay.drift 为空）。
-模型和协议的搭配见 MODELS；CROSS 是同一个模型换别的协议也能通的组合，各录一次最简单的流式文字。
+每个模型一个固定端口（prompt_cache_key 含 baseURL，端口固定请求体才逐字一致）；CROSS 是换协议也能通的组合，各录一次流式文字。
 */
 
 import { describe, expect, test, afterAll } from 'bun:test'
@@ -39,29 +37,22 @@ const CROSS: Target[] = ([
     ['gpt-sol-latest', 'chat', '/v1'], ['gpt-sol-latest', 'anthropic', '/v1'], ['gpt-sol-latest', 'gemini', '/v1beta'],
 ] as const).map(([model, protocol, base]) => ({ model, protocol, base, port: 47310 + NAMES.indexOf(model) })).filter(one => !ONLY || ONLY.includes(one.model))
 
-// 一个端口一个中转，按需启动；全部结束后关掉。
-const relays = new Map<number, Relay>()
+const relays = new Map<number, Relay>()                                   // 一个端口一个中转，按需启动，结束后关掉
 const relayOf = (port: number) => relays.get(port) ?? relays.set(port, start({ mode: RECORD ? 'record' : 'replay', port })).get(port)!
 afterAll(() => { for (const relay of relays.values()) relay.stop() })
 
 // 场景公共参数：Agent.LLM.ask 用 request()，Agent.create 用 config()；重试最多 1 次、单次 5 分钟（录制时防止无限重试烧额度）。
-const request = (m: Target, scenario: string, extra: Partial<AskRequest> = {}): AskRequest => ({
-    model: m.model, protocol: m.protocol, baseURL: relayOf(m.port).url(m.protocol, m.model, scenario, m.base), apiKey: KEY,
-    maxTokens: 400, messages: [], retry: { maxTries: 1, timeout: 300_000, baseDelay: 10 }, ...extra,
-})
-const config = (m: Target, scenario: string, extra: Partial<Config> = {}): Config => ({
-    model: m.model, protocol: m.protocol, baseURL: relayOf(m.port).url(m.protocol, m.model, scenario, m.base), apiKey: KEY,
-    maxTokens: 400, retryMaxTries: 1, requestTimeout: 300_000, retryBaseDelay: 10, noToolRounds: 1, ...extra,
-})
+const base = (m: Target, scenario: string) => ({ model: m.model, protocol: m.protocol, baseURL: relayOf(m.port).url(m.protocol, m.model, scenario, m.base), apiKey: KEY, maxTokens: 400 })
+const request = (m: Target, scenario: string, extra: Partial<AskRequest> = {}): AskRequest => ({ ...base(m, scenario), messages: [], retry: { maxTries: 1, timeout: 300_000, baseDelay: 10 }, ...extra })
+const config = (m: Target, scenario: string, extra: Partial<Config> = {}): Config => ({ ...base(m, scenario), retryMaxTries: 1, requestTimeout: 300_000, retryBaseDelay: 10, noToolRounds: 1, ...extra })
 const user = (content: string) => [{ role: 'user' as const, content }]
 // 收集流式片段，返回按类型拼好的全文，用来和返回值逐字核对。
-const collect = () => {
-    const chunks: Chunk[] = []
-    const joined = (type: 'text' | 'reasoning') => chunks.map(one => one.type === type && !one.compact ? one.text : '').join('')
-    return { chunks, onChunk: (chunk: Chunk) => void chunks.push(chunk), joined }
-}
-const usageOK = (usage: { inputTokens: number; outputTokens: number }) => { expect(usage.inputTokens).toBeGreaterThan(0); expect(usage.outputTokens).toBeGreaterThan(0) }
+const collect = (chunks: Chunk[] = []) => ({ chunks, onChunk: (chunk: Chunk) => void chunks.push(chunk), joined: (type: 'text' | 'reasoning') => chunks.map(one => one.type === type && !one.compact ? one.text : '').join('') })
+const usageOK = (usage: { inputTokens: number; outputTokens: number }) => expect([usage.inputTokens > 0, usage.outputTokens > 0]).toEqual([true, true])
 const kindOf = (promise: Promise<unknown>) => promise.then(() => 'resolved', (error: any) => error?.kind ?? String(error))
+// 写进 history 的形状：每个块的类型 + providerOptions 里的键（签名、itemId 等回传要用的信息），用来比流式和非流式。
+const shapeOf = (messages: any[]) => messages.flatMap(one => (one.content as any[]).map(part => [part.type, ...Object.entries(part.providerOptions ?? {}).map(([name, value]) => `${name}:${Object.keys(value as object).sort()}`)].join(' ')))
+const shapes = new Map<string, string[]>()                                 // 模型:stream / 模型:generate → 形状
 const parts = (history: any[], type: string) => history.flatMap(one => Array.isArray(one.content) ? one.content.filter((part: any) => part.type === type) : [])
 
 // 工具：add 做加法，weather 返回一句固定天气（工具文件和线上一样跑在子进程里）。
@@ -87,6 +78,7 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
         expect(reply.text.length).toBeGreaterThan(0)
         usageOK(reply.usage)
         expect(Object.keys(reply).sort()).toEqual(['messages', 'reasoning', 'text', 'toolCalls', 'usage'])
+        shapes.set(`${m.model}:generate`, shapeOf(reply.messages))
     }, WAIT)
 
     test('multi-turn：同一个 Agent 连续两次 send，上一轮回复（含签名 / itemId）原样带回', async () => {
@@ -98,6 +90,7 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
     test('reasoning：思考块流式推送，拼起来等于返回的 reasoning', async () => {
         const { onChunk, joined } = collect()
         const reply = await Agent.LLM.ask(request(m, 'reasoning', { maxTokens: 2000, provider: m.think ? { providerOptions: m.think } : {}, messages: user('一个正整数除以 3 余 2、除以 5 余 3、除以 7 余 2，最小是几？只给数字') }), onChunk)
+        shapes.set(`${m.model}:stream`, shapeOf(reply.messages))
         expect(reply.text).toContain('23')
         if ((m.thinking ?? 'text') === 'text') expect(reply.reasoning.length).toBeGreaterThan(0)
         expect(joined('reasoning')).toBe(reply.reasoning)
@@ -192,6 +185,14 @@ for (const m of CROSS) describe(`交叉：${m.model} 走 ${m.protocol}`, () => {
         expect(joined('text')).toBe(reply.text)
         for (const value of Object.values(reply.usage)) expect(typeof value).toBe('number')  // glm 走 anthropic 时中转站把用量全报成 0
     }, WAIT)
+})
+
+// 两次回复都带思考块时（claude 的流式 reasoning 与非流式 text-generate）形状必须一致：流式不能多出 custom 元数据块，签名不能丢。
+test('history 形状：流式与非流式一致，没有 custom 块', () => {
+    for (const shape of shapes.values()) expect(shape.some(one => one.startsWith('custom'))).toBe(false)
+    const both = MODELS.filter(m => [':stream', ':generate'].every(end => shapes.get(m.model + end)?.some(one => one.startsWith('reasoning'))))
+    if (MODELS.some(m => m.protocol === 'anthropic')) expect(both.map(m => m.protocol)).toContain('anthropic')
+    for (const m of both) expect(shapes.get(`${m.model}:stream`)).toEqual(shapes.get(`${m.model}:generate`)!)
 })
 
 test.skipIf(RECORD)('回放：发出去的请求体和录制时逐字一致', () => {

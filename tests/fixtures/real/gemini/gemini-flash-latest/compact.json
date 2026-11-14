@@ -16,9 +16,7 @@
      "x-goog-api-key": "<redacted>"
     },
     "body": {
-     "generationConfig": {
-      "maxOutputTokens": 400
-     },
+     "generationConfig": {},
      "contents": [
       {
        "role": "user",

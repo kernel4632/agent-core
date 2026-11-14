@@ -58,7 +58,6 @@
        ]
       }
      ],
-     "max_output_tokens": 400,
      "stream": true,
      "prompt_cache_key": "agent:http://127.0.0.1:47304/responses/gpt-sol-latest/compact/v1:gpt-sol-latest:8985599400104902409"
     }

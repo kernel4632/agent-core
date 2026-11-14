@@ -17,7 +17,6 @@
     },
     "body": {
      "model": "glm-flash-latest",
-     "max_tokens": 400,
      "messages": [
       {
        "role": "system",

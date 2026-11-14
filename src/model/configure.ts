@@ -17,7 +17,8 @@ configure：把"统一请求数据"翻译成 AI SDK generateText / streamText �
     anthropic：服务端不自动缓存，必须在内容块上标 cache_control（system 一个、最后一条消息一个），与宿主已有的 providerOptions 合并；
     gemini：隐式缓存由服务端决定，请求里没有可发的字段；
 - 结构化输出：output 有值就挂上 AI SDK 的 output 参数，没值就不挂（不需要单独开关）；
-- responses：assistant 文字块不发 item_reference，发全文（请求自包含，见下面的注释）；
+- responses：assistant 文字块不发 item_reference，发全文（请求自包含，见下面的注释）；reasoning 为 'send' 时
+  关 store、请求 reasoning.encrypted_content，思考也发全文；
 - maxRetries 固定为 0：重试在这个项目里只有 utils/retry 一个实现，交给 AI SDK 会一次请求变三次、错误被包成 AI_RetryError。
 
 configure 只做翻译，不发请求、不重试、不处理文字工具（那些在 ask 里）。
@@ -87,8 +88,15 @@ export function configure(request: AskRequest, system: string | undefined, messa
         : { ...message, content: (message.content as Record<string, any>[]).map(part => part.type === 'text' && part.providerOptions?.openai?.itemId ? { ...part, providerOptions: { ...part.providerOptions, openai: { ...part.providerOptions.openai, itemId: undefined } } } : part) } as ModelMessage)
     const sentSystem = anthropicCache && system ? { role: 'system' as const, content: system, providerOptions: EPHEMERAL } : system
 
+    // responses + reasoning 'send'：思考要发全文才能原样带回。按 AI SDK 的做法关掉 store、请求 reasoning.encrypted_content，
+    // 加密的思考随回复进 history，下次作为完整的 reasoning 条目发出，而不是 item_reference。宿主在 providerOptions.openai 里显式写的优先。
+    const host = generation.providerOptions as Record<string, Record<string, any>> | undefined
+    const providerOptions = protocol === 'responses' && request.reasoning === 'send'
+        ? { ...host, openai: { store: false, ...host?.openai, include: [...new Set([...(host?.openai?.include ?? []), 'reasoning.encrypted_content'])] } }
+        : host
     return {
-        ...generation,                                                    // 宿主的生成参数整包展开，不逐个列字段。
+        ...generation,
+        ...(providerOptions ? { providerOptions } : {}),                                                    // 宿主的生成参数整包展开，不逐个列字段。
         model: languageModel,
         system: sentSystem,
         messages: sentMessages,

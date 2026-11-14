@@ -135,16 +135,13 @@ describe('模型错误', () => {
     })
 
     test('上下文超长：强制压缩一次再重发', async () => {
-        let first = true
-        const { model, calls } = script([
-            () => { if (first) { first = false; throw error(400, 'maximum context length exceeded') } return { text: '总结内容' } },
-            { text: '压缩后答复' },
-        ])
+        const { model, calls } = script([() => { throw error(400, 'maximum context length exceeded') }, { text: '总结内容' }, { text: '压缩后答复' }])
         const agent = Agent.create({ model, stream: false })
         const answer = await agent.send('hi')
         expect(answer.text).toBe('压缩后答复')
         expect(agent.history.some(message => message.role === 'compact')).toBe(true)
         expect(JSON.stringify(calls.at(-1).prompt)).toContain('总结内容')    // 总结折进了 system
+        expect(agent.history.map(one => one.role)).toEqual(['user', 'error', 'compact', 'assistant']) // 超长也记一条错误
     })
 })
 
@@ -343,5 +340,51 @@ describe('回调与诊断', () => {
         await agent.send('41+1', { onChunk: chunk => { if (chunk.type === 'text') text += chunk.text } })
         expect(text).toBe('我来算答案 <b>42</b>')
         expect(results(agent.history)[0].output.value).toBe(42)
+    })
+})
+
+describe('问模型出错写进 history', () => {
+    const fail = (statusCode: number, message: string) => () => { throw new APICallError({ message, url: 'http://x.test', requestBodyValues: {}, statusCode, isRetryable: true }) }
+    const errors = (history: Message[]) => history.filter(message => message.role === 'error') as any[]
+
+    test('每次重试前记一条，和上一条相同的不重复；成功后照常回答', async () => {
+        const { model } = script([fail(503, '服务繁忙'), fail(503, '服务繁忙'), fail(429, '太快了'), { text: '好了' }])
+        const agent = Agent.create({ model, stream: false, retryBaseDelay: 1 })
+        expect((await agent.send('hi')).text).toBe('好了')
+        const list = errors(agent.history)
+        expect(list.map(one => one.content)).toEqual(['模型请求出错（服务端出错，HTTP 503）：服务繁忙', '模型请求出错（被限流，HTTP 429）：太快了'])
+        expect(list[0].request).toEqual({ kind: 'server', statusCode: 503, model: 'mock-model', protocol: 'chat', attempt: 1 })
+        expect(list[1].request.attempt).toBe(3)
+        expect(agent.history.map(one => one.role)).toEqual(['user', 'error', 'error', 'assistant'])
+    })
+
+    test('最终失败也记；和重试前那条相同就不再追加', async () => {
+        const { model } = script([fail(401, 'key 不对')])
+        const agent = Agent.create({ model, stream: false, retryBaseDelay: 1, retryMaxTries: 1 })
+        await expect(agent.send('hi')).rejects.toMatchObject({ kind: 'auth' })
+        expect(errors(agent.history).map(one => one.request.attempt ?? 'final')).toEqual([1])
+        const once = Agent.create({ model: script([fail(400, '参数错')]).model, stream: false, retryMaxTries: 0 })
+        await expect(once.send('hi')).rejects.toMatchObject({ kind: 'request' })
+        expect(errors(once.history).map(one => one.request)).toEqual([{ kind: 'request', statusCode: 400, model: 'mock-model', protocol: 'chat', final: true }])
+    })
+
+    test('用户 stop() 不记', async () => {
+        const { model } = script([() => Bun.sleep(100).then(fail(503, '停止期间才失败'))])  // 失败落在 stop() 之后：按取消处理
+        const agent = Agent.create({ model, stream: false })
+        const pending = agent.send('hi').catch(error => error)
+        await Bun.sleep(20)
+        await agent.stop()
+        expect((await pending).kind).toBe('aborted')
+        expect(errors(agent.history)).toEqual([])
+    })
+
+    test('压缩请求出错按同一规则记，request 带 compact: true；压缩不沿用主配置的 maxTokens', async () => {
+        const broken = Agent.create({ model: script([fail(500, '挂了')]).model, stream: false, retryMaxTries: 0, history: [{ id: 'a', role: 'user', content: 'hi' }, { id: 'b', role: 'assistant', content: '你好' }] as any })
+        await expect(broken.compact()).rejects.toMatchObject({ kind: 'server' })
+        expect(errors(broken.history)[0].request).toMatchObject({ kind: 'server', compact: true, final: true })
+        const { model, calls } = script([{ text: '总结' }])
+        const agent = Agent.create({ model, stream: false, maxTokens: 50, history: [{ id: 'a', role: 'user', content: 'hi' }] as any })
+        await agent.compact()
+        expect(calls[0].maxOutputTokens).toBeUndefined()
     })
 })

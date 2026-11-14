@@ -17,7 +17,7 @@ ask：对 AI SDK 的薄封装，"统一请求数据 → 统一结果"，协议�
    等它闭合后用 parse 判断：是调用就不推，不是就整段补推；模型编造的 <tool_result> 及其后面都不推；
 4. textTools 为 true 时用 parse 从文字里解析出调用；AI SDK 标记为不合法的原生调用（参数解析失败、不符合 schema、工具不存在）
    保留成 invalid（原因），和文字工具写坏的调用同一种形状，由 loop 拒绝执行、把原因回给模型；
-5. 用量补齐五个字段（缺的补 0）；错误一律经 classify 贴上 kind 再抛。
+5. 用量补齐五个字段（缺的补 0）；返回的 messages 去掉 custom 元数据块（发请求用不上）；错误一律经 classify 贴上 kind 再抛。
 
 ask 不读写 history、不估算 token、不执行工具；它对 loop 一无所知，所以宿主也能直接拿来用。
 导入：同目录 configure、text-tools/describe、text-tools/parse，以及 utils/retry、utils/errors。
@@ -153,7 +153,10 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
         }
         if (stream) emit({ type: 'finish', usage })
         // 只留 assistant 消息：tool 消息由 loop 用真实执行结果生成。
-        const assistantOnly = replyMessages.filter(message => message.role === 'assistant')
+        // 去掉 AI SDK 的 custom 块：它是 provider 自定义的透传位，实录里流式才有的 anthropic.message_start（原始用量、消息 id）就是它，
+        // 发请求时用不上，却让流式和非流式的 history 形状不一样、还抬高 token 估算。思考块（含签名）、正文、调用及其 providerOptions 原样保留。
+        const assistantOnly = replyMessages.filter(message => message.role === 'assistant').map(message => Array.isArray(message.content)
+            ? { ...message, content: (message.content as { type: string }[]).filter(part => part.type !== 'custom') } as ModelMessage : message)
         return { text, reasoning: result.reasoning ?? '', toolCalls, usage, messages: assistantOnly, ...(result.output !== undefined ? { output: result.output } : {}) }
     } catch (error) {
         classify(error)                                                           // 退避等待期被取消等路径也保证带 kind。

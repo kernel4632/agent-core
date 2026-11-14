@@ -9,7 +9,7 @@ history 的读写规则：只增不减，宿主手里的那个数组就是它，
 
 history 的形状（issue #30 Q1）：AI SDK 标准消息 + id，外加两种自定义 role：
 - 'compact'：压缩总结，build 把最新一条折进 system；
-- 'error'：宿主的失败记录，只存不发。
+- 'error'：失败记录（loop 记下的模型请求错误，或宿主自己写的），只存不发；和上一条内容相同的错误不重复追加。
 
 谁能调用 append：只有 loop（项目里唯一写 history 的地方）和 agent.send（把用户输入放进去后立刻交给 loop）。
 本文件没有模块级可变状态：id 用 nanoid 现生成。
@@ -32,6 +32,7 @@ append：把一条草稿追加到 history 末尾，原地 push，返回追加进
 - 草稿没给 id 就补一个；给了就保留（宿主 UI 用它定位、更新消息）；
 - 入口校验：role 必须合法，content 不能是空串 / 空数组，每个内容块都要过 check。
   history 只增不删，一条坏消息写进去之后每次请求都会被 AI SDK 拒收，等于永久毒化这段对话，所以宁可在这里抛错；
+- role:'error' 且和上一条消息是同一条错误（content 相同）时不追加，返回上一条；
 - 不复制数组、不换引用：宿主持有的 agent.history 和这里改的是同一个对象。
 */
 export function append(history: Message[], draft: Draft): Message {
@@ -47,6 +48,9 @@ export function append(history: Message[], draft: Draft): Message {
         const problem = check(part)
         if (problem) throw new TypeError(problem)
     }
+    // 同一个错误连着出现（无限重试时每次都一样）只记一条：和上一条消息是同一条错误就返回它，不再追加。
+    const last = history.at(-1)
+    if (draft.role === 'error' && last?.role === 'error' && last.content === content) return last
     const id = draft.id ?? nanoid()                                      // 宿主给了 id 就保留，UI 靠它定位消息。
     if (typeof id !== 'string' || !id.trim()) throw new TypeError('history message id must be a non-empty string')
     const message = { ...draft, id } as Message                          // 浅拷一份：之后调用方改草稿不会改到 history。

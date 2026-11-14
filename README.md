@@ -56,6 +56,9 @@ flowchart TD
 
 **④ history 只增不删，只有 loop 写它。** 模型消息、工具结果按发生顺序追加；压缩也只追加一条 `role: 'compact'` 的总结。
 每个出口都补一条模型能读的结果（工具失败、调用无效、被取消都会写一条结果），绝不留下"有调用、没结果"的残缺记录。
+问模型出错（每次重试前、最终失败、上下文超长，压缩请求也一样）追加一条 `role: 'error'`：`content` 是给人看的错误描述，
+`request` 存 `{ kind, statusCode, model, protocol, attempt | final, compact? }`；和上一条是同一个错误（内容相同）就不重复记，用户 `stop()` 不记。
+模型回复写进 history 前去掉 AI SDK 的 `custom` 元数据块（发请求用不上），思考块、签名和各块的 `providerOptions` 原样保留。
 
 **⑤ 停不停由模型和工具决定，没有"最大轮数"。** 模型不调工具时，先临时挂一句提醒再问（不进 history），
 连续 `noToolRounds` 轮（默认 3）都不调才结束；工具返回 `stop: true` 立即结束。
@@ -189,14 +192,14 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 | `cache` | 开启 | 提示词缓存：`true` / `false` / `{ key, retention, body }` |
 | `textTools` | `false` | 用文字协议模拟工具调用（给不支持原生工具的模型） |
 | `media` | 全部 `false` | `{ image, audio, video, file }` 逐项开关。没开的类型（用户消息和工具结果里的都算）发送时换成一句占位文字，history 原样保留，换成支持的模型后原件照常发出 |
-| `reasoning` | `'strip'` | 历史里的思考块发不发回模型：`'strip'` 发送前摘掉（与旧版默认一致），`'send'` 原样发回（供应商要求回传时用）。history 里始终保留 |
+| `reasoning` | `'strip'` | 历史里的思考块发不发回模型：`'strip'` 发送前摘掉（与旧版默认一致），`'send'` 原样发回（供应商要求回传时用）。history 里始终保留。`responses` 协议下 `'send'` 会设 `store: false` 并请求 `reasoning.encrypted_content`，思考发全文而不是 `item_reference`（`providerOptions.openai` 里显式写的优先） |
 | `provider` | — | 原样透传给 AI SDK 的生成参数 |
 | `maxTokens` | — | 单次最大输出 token |
 | `maxToolOutput` | 不截断 | 单个工具结果最多保留多少字符（保留头 70%、尾 30%） |
 | `includeUsage` | `true` | `chat` 协议流式时请求 usage（token 校准靠它）；不认 `stream_options` 的中转站设 `false` |
 | `maxContextTokens` | `128000` | 上下文预算；`Infinity` 关闭自动压缩 |
 | `compactThreshold` | `0.8` | 估算达到预算的这个比例就压缩 |
-| `compact` | — | 压缩请求单独用的配置（比如更便宜的模型） |
+| `compact` | — | 压缩请求单独用的配置（比如更便宜的模型）。压缩不沿用主配置的 `maxTokens`（用模型自己的上限，总结长度靠提示词约束），要限制就写 `compact.maxTokens` |
 | `context` | `{ head: 0, beforeSummary: 10, budget: 0.3 }` | 压缩后的保留规则，见下文 |
 | `output` | — | 结构化输出格式（AI SDK `Output`） |
 | `noToolRounds` | `3` | 连续几轮不调工具就结束 |
@@ -215,7 +218,8 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 `reason` 为 `'finished'`（模型正常收尾 / 没有工具）、`'no-tool'`（连续不调工具）或 `'tool-stop'`（工具要求停止）。
 
 同一实例一次只跑一件事：新的 `send` / `compact` 会先停掉上一次并等它收尾。模型错误会抛出，带 `error.kind`
-（`aborted` / `auth` / `limit` / `timeout` / `server` / `network` / `request` / `overflow` / `unknown`）。
+（`aborted` / `auth` / `limit` / `timeout` / `server` / `network` / `request` / `overflow` / `unknown`），
+同时（连同每次重试前的错误）以 `role: 'error'` 记进 history，见上文 ④。重试默认不限次数。
 
 回调按次传入，全部可选，抛错或返回被拒绝的 Promise 都不影响循环；`onToolCall` 和 `onStep` 会被等待（返回 Promise 时等它完成再继续）：
 
@@ -228,7 +232,7 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 | `onToolOutput({ toolCallId, stream, data })` | 工具子进程的 stdout / stderr |
 | `onStep({ step, reply, results })` | 每轮结束（适合落盘 history） |
 | `onCompact({ reason, summary, before, after, budget, compactThreshold, ratio, ratioSource, chars, media, usage })` | 压缩完成；`reason` 为 `'auto'`（估算到阈值）/ `'overflow'`（模型报超长）/ `'manual'`；其余是压缩前的估算诊断 |
-| `onRetry({ attempt, maxTries, error, delay })` | 模型请求重试前 |
+| `onRetry({ attempt, maxTries, error, delay })` | 模型请求重试前（这次的错误已先记进 history） |
 | `onWarning({ path?, message })` | 坏工具文件、工具重名、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
 
 文字工具模式（`textTools`）下流式照常：调用块之外的正文边收边推，只有可能是调用块的那一段先扣住，确认不是调用再推出。
@@ -262,7 +266,7 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 
 | 字段 | 说明 |
 |------|------|
-| `history` | 消息数组（AI SDK 标准消息 + `id`，外加 `compact` 总结和宿主写的 `error` 记录）。宿主可直接读写；`error` 永远不发给模型 |
+| `history` | 消息数组（AI SDK 标准消息 + `id`，外加 `compact` 总结和 `error` 记录——模型请求出错时 loop 写的，或宿主自己写的）。宿主可直接读写；`error` 永远不发给模型 |
 | `tools` / `MCP.list` | 工具路径 / MCP 连接配置，增删或整份替换下一轮生效 |
 | `config` | 活配置，下一轮生效 |
 | `contextRatio` | 冷启动的"每字符 token"估算比例；学到真实值之前用它 |

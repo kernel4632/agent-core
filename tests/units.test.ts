@@ -15,6 +15,7 @@ import { decide } from '../src/loop/decide.ts'
 import { classify, tell } from '../src/utils/errors.ts'
 import { retry } from '../src/utils/retry.ts'
 import { configure } from '../src/model/configure.ts'
+import { ask } from '../src/model/ask.ts'
 
 // 造一个 State：只填 build 用得到的字段。
 const stateOf = (history: Message[], config: Record<string, unknown> = {}): State => ({
@@ -260,6 +261,28 @@ describe('utils', () => {
         expect(configure(request, '系统', messages, true).toolChoice).toBe('required')
         const sent = configure(request, '系统', messages, false).messages as any[]
         expect(sent[0].content[0].providerOptions.anthropic).toEqual({ citations: true, cacheControl: { type: 'ephemeral' } })
+    })
+
+    test('responses + reasoning send：关 store、请求加密思考，思考和正文发全文而不是 item_reference（本地模拟）', async () => {
+        const recorded = JSON.parse(await Bun.file(new URL('./fixtures/real/responses/gpt-sol-latest/text-generate.json', import.meta.url)).text())
+        const answer = JSON.parse(recorded.exchanges[0].response.chunks.join(''))      // 真实回复，前面插一条带加密内容的思考条目
+        answer.output.unshift({ type: 'reasoning', id: 'rs_2', encrypted_content: 'ENC2', summary: [] })
+        const bodies: any[] = []
+        const server = Bun.serve({ port: 0, async fetch(request) { bodies.push(await request.json()); return new Response(JSON.stringify(answer), { headers: { 'content-type': 'application/json' } }) } })
+        const messages: any[] = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: [
+            { type: 'reasoning', text: '想过了', providerOptions: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'ENC' } } },
+            { type: 'text', text: '你好', providerOptions: { openai: { itemId: 'msg_1' } } }] }, { role: 'user', content: '再说一次' }]
+        const base = { model: 'gpt-5', baseURL: `http://127.0.0.1:${server.port}/v1`, apiKey: 'k', protocol: 'responses' as const, stream: false, messages, retry: { maxTries: 0 } }
+        try {
+            const reply = await ask({ ...base, reasoning: 'send', provider: { providerOptions: { openai: { include: ['file_search_call.results'] } } } })
+            expect((reply.messages[0]!.content as any[])[0].providerOptions.openai).toMatchObject({ itemId: 'rs_2', reasoningEncryptedContent: 'ENC2' }) // 加密思考进 history
+            await ask(base)
+        } finally { server.stop(true) }
+        const [send, strip] = bodies
+        expect([send.store, send.include]).toEqual([false, ['file_search_call.results', 'reasoning.encrypted_content']])
+        expect(send.input[1]).toMatchObject({ type: 'reasoning', id: 'rs_1', encrypted_content: 'ENC', summary: [{ type: 'summary_text', text: '想过了' }] })
+        expect(JSON.stringify(send.input)).not.toContain('item_reference')
+        expect([strip.store, strip.include, JSON.stringify(strip.input).includes('item_reference')]).toEqual([undefined, undefined, false]) // 默认 strip：不改 store
     })
 
     test('decide：tool-stop 优先；无工具即 finished；第 N-1 轮提醒、第 N 轮 no-tool', () => {

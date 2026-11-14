@@ -7,6 +7,7 @@
 
 为什么"上下文超长"也在这里：它是一种分类（kind = 'overflow'），重试见到它不重试，
 loop 见到它就强制压缩一次再重发——两边用同一份判据，判据只写一处。
+问模型出错时写进 history 的那条记录（explain）也在这里：它只是把分类结果写成给人看的话，loop 的主请求和压缩请求都要用。
 宿主回调出错的处理（tell）也放在这里：它回答的是"宿主代码出错了怎么办"，loop / model / tools / retry 都要用，
 只能放在最底层的 utils 里，规则只写一处。
 本文件不导入任何东西，处在依赖图最底层；不持有任何模块级可变状态（正则是常量）。
@@ -62,6 +63,26 @@ export function classify(error: unknown, timeout?: AbortSignal | null): ErrorKin
     // 能写就把 kind 贴回错误对象：宿主 catch 到的就是带 kind 的原始错误。冻结对象、原始值写不进去，只返回结果。
     if (error && typeof error === 'object' && Object.isExtensible(error)) (error as Record<string, unknown>).kind = kind
     return kind
+}
+
+// kind 的中文说法：写进 history 的错误记录给人看。
+const LABEL: Record<ErrorKind, string> = { aborted: '已取消', auth: '鉴权失败', limit: '被限流', timeout: '超时', server: '服务端出错', network: '网络出错', request: '请求被拒', overflow: '上下文超长', unknown: '未知错误' }
+
+/*
+explain：把一次问模型的错误写成 history 草稿（role:'error'），loop 在每次重试前和最终失败时交给 history.append。
+- content 给人看：分类、状态码、服务端原话（取不到就用错误的 message）；不写第几次——同一个错误重试多少次内容都一样，append 才能去重；
+- request 存结构化信息：kind、statusCode，加上调用方给的 model / protocol / attempt / compact 等；
+- 用户取消（kind 'aborted'）返回 null：那是操作，不是故障，不记。
+本函数只拼数据，不碰 history（写 history 的只有 loop）。
+*/
+export function explain(error: unknown, info: Record<string, unknown> = {}): { role: 'error'; content: string; request: Record<string, unknown> } | null {
+    const kind = classify(error)
+    if (kind === 'aborted') return null
+    const target = (error ?? {}) as Record<string, any>
+    const status = target.statusCode ?? target.status
+    const said = target.data?.error?.message ?? target.data?.message ?? target.message ?? String(error) // 服务端原话最具体。
+    const content = `模型请求出错（${LABEL[kind]}${status ? `，HTTP ${status}` : ''}）：${String(said).slice(0, 1000)}`
+    return { role: 'error', content, request: { kind, ...(status ? { statusCode: status } : {}), ...info } }
 }
 
 /*

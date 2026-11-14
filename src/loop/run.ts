@@ -11,6 +11,8 @@ run 的一轮（循环直到 decide 说结束，不设最大轮数）：
 3. onInject 问宿主要不要临时附一句话；连同上一轮 decide 给的提醒，只挂在这一次请求上，不写进 history；
 4. model/ask 问模型（流式片段转给 onChunk）；拿到真实 usage 后用 utils/tokens.calibrate 校准 state.ratios；
    模型报 kind 'overflow'（上下文超长）时强制 compact('overflow') 一次再重发，最多 3 次；
+   每次出错（每次重试前的、最终抛出的、超长的）都追加一条 role:'error'（utils/errors.explain 写内容，和上一条相同就不重复）；
+   用户 stop() / 取消不记。重试仍是无限的，ask 和 retry 不碰 history，记录全在这里；
 5. 把回复（assistant 消息）追加进 history；
 6. 对每个工具调用发 onToolCall（等宿主回调跑完）；无效调用（参数解析失败 / 工具不存在）不问权限、不执行，直接写"调用无效"结果，
    让模型看到原因自己改；其余逐个问 onPermission（没有回调 = 无人值守，直接放行；严格 true 才放行，返回非布尔值警告一次），
@@ -37,7 +39,7 @@ import { connect } from '../tools/mcp.ts'
 import { run as execute } from '../tools/run.ts'
 import { append, unanswered } from '../history.ts'
 import { calibrate } from '../utils/tokens.ts'
-import { cancelled, classify, tell } from '../utils/errors.ts'
+import { cancelled, classify, explain, tell } from '../utils/errors.ts'
 import { options } from '../utils/retry.ts'
 
 // 上下文超长时最多"压缩后重发"几次（照抄 Roo Code 的 MAX_CONTEXT_WINDOW_RETRIES）。
@@ -93,7 +95,12 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             const prompt = [reminder, injected].filter(Boolean).join('\n\n')
             reminder = ''
 
-            // --- 4. 问模型；模型说"窗口放不下"时强制压缩再重发，最多 OVERFLOW_RETRIES 次 ---
+            // --- 4. 问模型；模型说"窗口放不下"时强制压缩再重发，最多 OVERFLOW_RETRIES 次；每个错误都记进 history ---
+            const name = typeof config.model === 'string' ? config.model : (config.model as { modelId?: string }).modelId
+            const record = (error: unknown, attempt?: number) => {
+                const draft = signal.aborted ? null : explain(error, { model: name, protocol: config.protocol ?? 'chat', ...(attempt ? { attempt } : { final: true }) })
+                if (draft) append(state.history, draft)
+            }
             let reply: Reply
             for (let attempt = 0; ; attempt += 1) {
                 const messages: ModelMessage[] = prompt ? [...built.messages, { role: 'user', content: prompt }] : built.messages // 临时提醒不进 history。
@@ -102,7 +109,8 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                     cache: config.cache, provider: config.provider, maxTokens: config.maxTokens, stream: config.stream, includeUsage: config.includeUsage,
                     output: config.output, textTools: config.textTools, reasoning: config.reasoning,
                     system: built.system, messages, tools: Object.keys(schemas).length ? schemas : undefined,
-                    retry: options(config), signal, onRetry: callbacks.onRetry,
+                    retry: options(config), signal,
+                    onRetry: info => { record(info.error, info.attempt); return callbacks.onRetry?.(info) }, // 先记下这次的错误，再通知宿主。
                 }
                 try {
                     reply = await ask(request, callbacks.onChunk)
@@ -110,6 +118,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                     break
                 } catch (error) {
                     if (signal.aborted) throw cancelled()
+                    record(error)                                               // 最终失败，或超长（接着压缩重发）。
                     if (attempt >= OVERFLOW_RETRIES || classify(error) !== 'overflow') throw error
                     add(usage, (await compact(state, callbacks, 'overflow')).usage)
                     built = build(state, schemas, callbacks.onWarning)

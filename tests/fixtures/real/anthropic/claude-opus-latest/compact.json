@@ -18,7 +18,7 @@
     },
     "body": {
      "model": "claude-opus-latest",
-     "max_tokens": 400,
+     "max_tokens": 128000,
      "system": [
       {
        "type": "text",
