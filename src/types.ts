@@ -210,13 +210,15 @@ export interface MCPToggle {
     found: boolean         // MCP.list 里有没有这个名字；没有就什么也没改
     enabled: boolean       // 改完之后的 enabled
     closed?: boolean       // 仅 MCP.close：是否真的断开了一条已连上的连接（连接中 / 失败的记录则为 false）
+    connected?: boolean    // 仅 MCP.open：连接结果出来后是否已连上
+    error?: string         // 仅 MCP.open：没连上的原因（连接失败、超时、等待期间被关掉）
 }
 
 // agent.MCP：MCP 连接的宿主入口。list 是活配置（每轮现读，可原地增删，也可整份换成新数组）；
 // open / close 是需要"立即"语义的两个动作，按 name 找 list 里的元素。
 export interface MCP {
     list: MCPServer[]
-    open: (name: string) => MCPToggle                 // enabled 置 true，下一轮在后台连接
+    open: (name: string) => Promise<MCPToggle>        // enabled 置 true 并开连，等这一条的连接结果（只有调用方等，请求不等）
     close: (name: string) => Promise<MCPToggle>       // enabled 置 false，并立即断开
 }
 
@@ -234,7 +236,7 @@ export interface Callbacks {
     onStep?: (step: { step: number; reply: Reply; results: ToolResult[] }) => unknown   // 会被等待：这一轮已写进 history，宿主可在这里安全持久化
     onCompact?: (info: CompactInfo) => unknown
     onRetry?: (info: RetryInfo) => unknown
-    onWarning?: (warning: { path?: string; message: string }) => unknown   // 坏工具文件被跳过、MCP 连不上、history 里有发不出去的消息等
+    onWarning?: (warning: { path?: string; message: string }) => unknown   // 坏工具文件被跳过、history 里有发不出去的消息等
 }
 
 // 压缩完成的通知：为什么压、总结正文、压缩前后的估算，以及估算是怎么来的（排查"为什么压"用）。
@@ -271,12 +273,13 @@ export interface Internal {
 }
 
 // 一条 MCP 连接的记录：连接在后台进行，轮次从不等它，只读它此刻的状态。
-// failed 的记录一直留着，直到宿主切换这条连接（enabled / MCP.close / MCP.open / 改配置）才会重连——不自动重试。
+// failed 的记录一直留着，不发警告、不自动重试；用户 MCP.open（或改配置 / 切 enabled）才会重连。
 export interface MCPClient {
     key: string                                       // url + headers + transport，变了就重建
     status: 'connecting' | 'ready' | 'failed'
     tools: Record<string, Tool>                       // ready 之后才有内容
-    error?: string                                    // 失败原因：还没通过 onWarning 报给宿主时有值，报过就清掉
+    error?: string                                    // failed 时的原因（MCP.open 返回给用户看）
+    pending: Promise<void>                            // 这次连接的后台任务（永不拒绝）；只有 MCP.open 会等它
     close: () => Promise<void>                        // 断开；连接中调用时，连上后立即关掉
 }
 

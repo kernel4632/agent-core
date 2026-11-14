@@ -9,7 +9,7 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
     const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
     agent.MCP.list.push({ name: 'github', url })                          // 加一条 MCP 连接：下一轮开头在后台开连（不等）
     await agent.MCP.close('github')                                       // 临时关闭一条 MCP：立即断开，enabled 置 false，下一轮没有它的工具
-    agent.MCP.open('github')                                              // 重新打开：enabled 置 true，立刻在后台重连，连上后下一次请求就有它的工具
+    const { connected, error } = await agent.MCP.open('github')            // 打开 / 重试：等这一条的连接结果，失败原因直接返回（请求从不等它）
     await agent.compact()                                                 // 宿主点"压缩"：强制压缩一次
     const reply = await Agent.LLM.ask({ model, baseURL, apiKey, messages })  // 不建实例也能直接问模型
 
@@ -78,21 +78,28 @@ export class Agent {
                 return { name, found: index >= 0, enabled: false, closed }
             },
             /*
-            open：重新打开 close 关掉的连接——把 enabled 改回 true 并立刻在后台开连（不等）
-            （连上之后的下一次请求就带上它的工具；连不上在下一轮走 onWarning）。连接失败后"关一下再开"就是重试。返回 { name, found, enabled }。
+            open：打开（或重试）一条连接——把 enabled 改回 true 并立刻开连，等这一条的连接结果出来再返回
+            { name, found, enabled, connected, error? }。只有调用方在等：请求和 send 从不等连接，连上之后的下一次请求就带上它的工具。
+            已连上的立刻返回 connected: true；正在连的等它出结果；上次失败的丢掉旧记录重新连（这就是重试）。
             */
-            open(name: string): MCPToggle {
+            async open(name: string): Promise<MCPToggle> {
                 const list = agent.MCP.list
                 const index = list.findIndex(server => server.name === name)
-                if (index >= 0) list[index] = { ...list[index]!, enabled: true }
-                connect(list, agent.#internal.MCPClients)                 // 立刻在后台开连，不等；连上后下一次请求就带上它的工具。
-                return { name, found: index >= 0, enabled: index >= 0 }
+                if (index < 0) return { name, found: false, enabled: false, connected: false }
+                list[index] = { ...list[index]!, enabled: true }
+                const clients = agent.#internal.MCPClients
+                if (clients.get(name)?.status === 'failed') clients.delete(name)   // 失败的记录不自动重试；用户亲自打开就是重试。
+                connect(list, clients)                                    // 该开连的立刻在后台开连（不等）。
+                const client = clients.get(name)
+                await client?.pending                                     // 只等这一条；永不拒绝。
+                if (client?.status === 'ready' && clients.get(name) === client) return { name, found: true, enabled: true, connected: true }
+                return { name, found: true, enabled: true, connected: false, error: client?.error ?? '等待期间这条连接被关闭或替换' }
             },
         }
         this.contextRatio = contextRatio
         this.ratios = ratios
         this.#internal = { procs: new Set(), toolCache: new Map(), MCPClients: new Map(), controller: null, running: null, warned: new Set() }
-        connect(MCP, this.#internal.MCPClients)                         // MCP 尽早开连：第一次 send 之前就可能已经连上。失败留到下一轮报。
+        connect(MCP, this.#internal.MCPClients)                         // MCP 尽早开连：第一次 send 之前就可能已经连上。失败只记在记录上。
     }
 
     /*

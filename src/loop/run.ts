@@ -75,7 +75,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
 
             // --- 1. 现读工具：路径元数据（mtime 缓存）+ MCP；合成发给模型的描述表 ---
             const metas = await load(state.tools, internal, callbacks.onWarning)
-            const MCPTools = connect(state.MCP, internal.MCPClients, callbacks.onWarning) // 同步：只拿此刻已连上的，从不等连接；新元素在这里开连。
+            const MCPTools = connect(state.MCP, internal.MCPClients)    // 同步：只拿此刻已连上的，从不等连接；新元素在这里开连。
             const schemas: Record<string, { description: string; parameters: JSONSchema7 }> = {}
             for (const meta of metas) schemas[meta.name] = { description: meta.description, parameters: meta.parameters }
             for (const [name, tool] of Object.entries(MCPTools)) schemas[name] = { description: typeof tool.description === 'string' ? tool.description : '', parameters: await asSchema(tool.inputSchema as any).jsonSchema as JSONSchema7 }

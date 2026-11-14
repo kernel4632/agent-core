@@ -89,7 +89,7 @@ describe('MCP', () => {
         } finally { fake.stop(true) }
     })
 
-    test('单条 MCP 临时关闭：enabled false 不连接；MCP.close 立即断开、下一轮工具消失；MCP.open 立刻开连；整份替换 MCP.list 也生效', async () => {
+    test('单条 MCP 临时关闭：enabled false 不连接；MCP.close 立即断开、下一轮工具消失；await MCP.open 等到连接结果；整份替换 MCP.list 也生效', async () => {
         const fake = server()
         try {
             const { model, calls } = script([{ text: '好' }])
@@ -97,8 +97,9 @@ describe('MCP', () => {
             const agent = Agent.create({ model, stream: false, noToolRounds: 1, MCP: mcp })
             await agent.send('1')
             expect(toolNames(calls[0])).toEqual([])
-            expect(agent.MCP.open('fake')).toEqual({ name: 'fake', found: true, enabled: true })
-            await Bun.sleep(300)
+            expect(await agent.MCP.open('fake')).toEqual({ name: 'fake', found: true, enabled: true, connected: true }) // 等到连上才返回
+            expect(await agent.MCP.open('fake')).toEqual({ name: 'fake', found: true, enabled: true, connected: true }) // 已连上：立刻返回
+            expect(await agent.MCP.open('nope')).toEqual({ name: 'nope', found: false, enabled: false, connected: false })
             await agent.send('2')
             expect(toolNames(calls[1])).toEqual(['fake_echo'])
             expect(await agent.MCP.close('fake')).toEqual({ name: 'fake', found: true, enabled: false, closed: true })
@@ -115,7 +116,7 @@ describe('MCP', () => {
             expect(toolNames(calls[4])).toEqual(['fake_echo'])
             expect((await close('fake')).closed).toBe(true)
             expect(agent.MCP.list[0]!.enabled).toBe(false)
-            expect(open('fake').enabled).toBe(true)
+            expect((await open('fake')).connected).toBe(true)
         } finally { fake.stop(true) }
     })
 
@@ -162,22 +163,28 @@ describe('工具子进程细节', () => {
 })
 
 describe('MCP 连接不阻塞', () => {
-    test('连不上的服务器：这一轮照常进行，onWarning 报一次，之后不自动重连；切一下开关才重试', async () => {
-        const dead = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 500 }) })
+    test('连不上的服务器：对话照常、不发任何警告、不自动重连；用户 MCP.open 才重试，并直接拿到失败原因', async () => {
+        let hits = 0
+        const dead = Bun.serve({ port: 0, fetch: () => { hits += 1; return new Response(null, { status: 500 }) } })
         const { model } = script([{ text: '好' }])
         const agent = Agent.create({ model, stream: false, MCP: [{ name: 'dead', url: `http://localhost:${dead.port}/mcp` }] })
         const warnings: string[] = []
         const onWarning = (warning: { message: string }) => { warnings.push(warning.message) }
         try {
-            await Bun.sleep(300)                                             // create 后在后台失败：那时没有 send，原因先记下
-            await agent.send('1', { onWarning })                             // 下一次请求开始时报出来
+            await Bun.sleep(300)                                             // create 时在后台开连并失败：只记在记录上
+            await agent.send('1', { onWarning })
             await agent.send('2', { onWarning })
-            expect(warnings.filter(message => message.includes('dead'))).toHaveLength(1)
-            expect(await agent.MCP.close('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
-            agent.MCP.open('dead')
-            await Bun.sleep(300)
+            expect(warnings).toEqual([])                                     // 连接失败不占用 send 的 onWarning
+            const before = hits
+            expect(hits).toBeGreaterThan(0)
+            const opened = await agent.MCP.open('dead')                      // 用户亲自打开：重试并等结果
+            expect(opened).toMatchObject({ name: 'dead', found: true, enabled: true, connected: false })
+            expect(opened.error).toBeString()
+            expect(hits).toBeGreaterThan(before)                             // 确实重新连了一次
+            const again = hits
             await agent.send('3', { onWarning })
-            expect(warnings.filter(message => message.includes('dead'))).toHaveLength(2)
+            expect(hits).toBe(again)                                         // 失败之后不自动重连
+            expect(await agent.MCP.close('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
         } finally { dead.stop(true) }
     })
 

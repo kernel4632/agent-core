@@ -154,18 +154,20 @@ agent.MCP.list = [                       // 也可以 Agent.create({ MCP: [...] 
 **连接完全异步，从不阻塞**：请求、`send`、`stop()` 都不会等任何 MCP 连接。连接尽早开始（`Agent.create` 时、`MCP.open` 时、
 每轮开头发现 `list` 里有新元素时），在后台连上的那一刻起，下一次构建请求就带上它的工具——一次 `send` 中途连上的，下一轮请求就能用。
 还没连上的这一轮就是没有它的工具。连接按配置缓存，配置变了自动重建，从数组里删掉的连接会被关闭。
-连不上（含握手超过 15 秒）不影响别的工具，原因先记下，由**下一次请求开始时**通过那次 `send` 的 `onWarning` 报一次
-（连接可能在没有 `send` 在跑时失败，那一刻没有回调可用；而失败影响的正是下一次请求，在那时报最对得上），
-**也不自动重连**——要重试就切一下这条连接的开关（`MCP.close` / `MCP.open`、`enabled`、或改配置）。
+连不上（含握手超过 15 秒）就是没有它的工具，对话照常进行：**不发任何警告**（不占用 `send` 的 `onWarning`），**也不自动重连**。
+要用它的是用户：`await agent.MCP.open(name)` 会重新连接并等这一条的结果，成功与否和失败原因直接作为返回值给你看；
+想重试就再 `open` 一次。只有 `open` 的调用方在等，请求和 `send` 照样不等。
 
 **临时关闭某一条：** 元素上的 `enabled` 每轮现读——`false` 断开连接、下一轮起它的工具消失；改回 `true`（或删掉这个字段）下一轮开头重新开连。
 也可以用方法，效果相同：
 
 ```ts
 await agent.MCP.close('github')   // → { name: 'github', found: true, enabled: false, closed: true }，立即断开
-agent.MCP.open('github')          // → { name: 'github', found: true, enabled: true }，立刻在后台重连（不等）
+await agent.MCP.open('github')    // → { name: 'github', found: true, enabled: true, connected: true }
+                                  //   连不上 → { ..., connected: false, error: '原因' }；没有这个名字 → { found: false, enabled: false, connected: false }
 ```
 
+`MCP.open` 把同名元素原地换成 `enabled: true` 的新对象并立刻开连：已连上的立刻返回，正在连的等它出结果，上次失败的重新连。
 `MCP.close` 把 `MCP.list` 里同名元素原地换成 `enabled: false` 的新对象并立即断开连接（`closed` 表示是否真的断开了一条已连上的连接，连接中 / 连接失败的记录只是被移出，
 `found: false` 表示没有这个名字、什么也没改）；正在执行的该服务器工具调用会以错误结果结束。
 
@@ -175,7 +177,7 @@ agent.MCP.open('github')          // → { name: 'github', found: true, enabled:
 
 ### `Agent.create(options)`
 
-配置平铺在顶层，另带 `id`、`history`、`tools`、`MCP`（MCP 连接数组，成为 `agent.MCP.list`）、`contextRatio`、`ratios`。同步返回实例，不做 I/O。
+配置平铺在顶层，另带 `id`、`history`、`tools`、`MCP`（MCP 连接数组，成为 `agent.MCP.list`）、`contextRatio`、`ratios`。同步返回实例；唯一的 I/O 是让 `MCP` 里启用的连接在后台开始（不等）。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -227,7 +229,7 @@ agent.MCP.open('github')          // → { name: 'github', found: true, enabled:
 | `onStep({ step, reply, results })` | 每轮结束（适合落盘 history） |
 | `onCompact({ reason, summary, before, after, budget, compactThreshold, ratio, ratioSource, chars, media, usage })` | 压缩完成；`reason` 为 `'auto'`（估算到阈值）/ `'overflow'`（模型报超长）/ `'manual'`；其余是压缩前的估算诊断 |
 | `onRetry({ attempt, maxTries, error, delay })` | 模型请求重试前 |
-| `onWarning({ path?, message })` | 坏工具文件、工具重名、MCP 连不上、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
+| `onWarning({ path?, message })` | 坏工具文件、工具重名、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
 
 文字工具模式（`textTools`）下流式照常：调用块之外的正文边收边推，只有可能是调用块的那一段先扣住，确认不是调用再推出。
 
