@@ -286,7 +286,7 @@ describe('utils', () => {
     })
 
     test('decide：tool-stop 优先；无工具即 finished；第 N-1 轮提醒、第 N 轮 no-tool', () => {
-        const reply = { text: '', reasoning: '', toolCalls: [], usage: {} as any, messages: [] }
+        const reply = { text: '', reasoning: '', toolCalls: [], usage: {} as any, request: { model: 'm', start: 0, duration: 0 }, messages: [] }
         const result = { toolCallId: 'x', toolName: 't', input: {}, output: {}, stop: true }
         expect(decide({ reply, results: [result], idle: 0, hasTools: true }, { model: 'm' })).toEqual({ action: 'end', reason: 'tool-stop' })
         expect(decide({ reply, results: [], idle: 1, hasTools: false }, { model: 'm' })).toEqual({ action: 'end', reason: 'finished' })

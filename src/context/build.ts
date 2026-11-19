@@ -13,7 +13,7 @@ build：每一轮从当前状态现拼一次上下文，不缓存任何东西；
    再按"步"（一次模型回复连同它的工具结果）从后往前补回装得下的最近几步——见下面"为什么留最近几步"；
 3. system = config.system + 最新总结（折进 system，不作为单独消息——实测单独的 user 总结成功率从 6/6 掉到 1/6）；
 4. 顺序：开场 head 轮 → 总结之前最近 beforeSummary 轮（或进行中那一轮的最近几步）→ 总结之后的全部原文；
-5. 只发模型认得的消息：去掉 id、role:'error'、旧的 compact；system / 不认识的 role / 没有 content 的消息跳过并 onWarning 提醒一次；
+5. 只发模型认得的消息：去掉 id、请求记录 request、role:'error'、旧的 compact；system / 不认识的 role / 没有 content 的消息跳过并 onWarning 提醒一次；
    工具结果按 toolCallId 紧跟在发起它的 assistant 后面（宿主乱序拼接、按 id 恢复的历史也能发），没配对的调用 / 结果去掉；
    思考块按 config.reasoning 处理：'strip'（默认）摘掉，'send' 原样发回；
 6. 内容块（用户消息和工具结果里的都算）统一成 AI SDK v7 的形状：旧 image / audio / video / file-data / file-url 转成 file，
@@ -149,7 +149,7 @@ export function build(state: State, tools: ToolSchemas, onWarning?: Callbacks['o
         if (role === 'compact' || role === 'error' || role === 'tool') continue    // 总结已折进 system；失败记录永远不发；工具结果跟着调用发。
         if (role !== 'user' && role !== 'assistant') { warn(`role:${message.id}`, `history 里的消息 ${message.id} 的 role 是 ${JSON.stringify(role)}，已跳过：只有 user / assistant / tool 会发给模型${role === 'system' ? '（系统提示请写在 config.system）' : ''}`); continue }
         if (message.content == null) { warn(`empty:${message.id}`, `history 里的消息 ${message.id} 没有 content，已跳过`); continue }
-        const { id: _id, ...rest } = message as Message & { id: string }           // 去掉 id，其余字段原样（providerOptions 等）。
+        const { id: _id, request: _request, ...rest } = message as Message & { id: string; request?: unknown } // 去掉 id 和请求记录，其余字段原样（providerOptions 等）。
         if (!Array.isArray(rest.content)) { messages.push(rest as ModelMessage); continue }
         const content = (rest.content as Record<string, any>[]).flatMap(part => {
             if (part.type === 'reasoning' && config.reasoning !== 'send') return []  // 思考默认不回传：多数接口不收、还占预算；要求回传的供应商设 'send'。

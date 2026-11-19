@@ -8,7 +8,7 @@
 export { Agent } from './src/agent.ts'
 export type {
     Config, CreateOptions, Input, Answer, Reason, Usage, Callbacks, Chunk, Stopped, MCP, MCPToggle,
-    Message, CompactMessage, ErrorMessage, Draft, Role,
+    Message, AssistantMessage, CompactMessage, ErrorMessage, RequestRecord, Draft, Role,
     ToolDefinition, ToolMeta, ToolCall, ToolResult, MCPServer,
     AskRequest, Reply, RetryOptions, RetryFilter, ErrorKind,
     Protocol, ModelInput, MediaSwitch, ReasoningMode, ContextKeep, CacheOption,

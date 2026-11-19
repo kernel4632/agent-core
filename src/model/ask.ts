@@ -17,7 +17,8 @@ ask：对 AI SDK 的薄封装，"统一请求数据 → 统一结果"，协议�
    等它闭合后用 parse 判断：是调用就不推，不是就整段补推；模型编造的 <tool_result> 及其后面都不推；
 4. textTools 为 true 时用 parse 从文字里解析出调用；AI SDK 标记为不合法的原生调用（参数解析失败、不符合 schema、工具不存在）
    保留成 invalid（原因），和文字工具写坏的调用同一种形状，由 loop 拒绝执行、把原因回给模型；
-5. 用量补齐五个字段（缺的补 0）；返回的 messages 去掉 custom 元数据块（发请求用不上）；错误一律经 classify 贴上 kind 再抛。
+5. 用量补齐五个字段（缺的补 0）；另给一份请求记录 request（模型名、开始时间、首字 / 完整耗时、只含真报了的用量），
+   计时只算成功的那次尝试；返回的 messages 去掉 custom 元数据块（发请求用不上）；错误一律经 classify 贴上 kind 再抛。
 
 ask 不读写 history、不估算 token、不执行工具；它对 loop 一无所知，所以宿主也能直接拿来用。
 导入：同目录 configure、text-tools/describe、text-tools/parse，以及 utils/retry、utils/errors。
@@ -25,7 +26,7 @@ ask 不读写 history、不估算 token、不执行工具；它对 loop 一无�
 
 import { generateText, streamText, tool, jsonSchema } from 'ai'
 import type { ModelMessage } from 'ai'
-import type { AskRequest, Chunk, Reply, ToolCall, Usage } from '../types.ts'
+import type { AskRequest, Chunk, Reply, RequestRecord, ToolCall, Usage } from '../types.ts'
 import { configure } from './configure.ts'
 import { describe, render } from './text-tools/describe.ts'
 import { parse } from './text-tools/parse.ts'
@@ -39,7 +40,9 @@ ask：按文件头的五步问一次模型，返回 Reply。
   onChunk 是宿主代码，同步抛错或异步拒绝都被吞掉（utils/errors.tell），不打断请求；
   文字工具模式下 text 片段拼起来和最终 text 只差空白整理（parse 会收拾删掉调用后留下的空行）；
 - 返回值里的 text / reasoning 是正文 / 思考全文（没有思考就是空串），流式时宿主可以拿它们核对推送过的片段；
-- 返回值里的 messages 是要追加进 history 的 AI SDK 消息（assistant，带 tool-call 块；不带 id），
+- 返回值里的 request 是这次请求的记录（RequestRecord）：ask 不写 history，由 loop 挂到它写的 assistant / compact 消息上；
+  first 只在流式时有（非流式拿不到首字时间）；
+- 返回值里的 messages 是要追加进 history 的 AI SDK 消息（assistant，带 tool-call 块；不带 id、不带 request），
   textTools 模式下也是标准的 tool-call 块，这样 history 永远只有一种格式；
 - request.signal 取消时抛 kind 'aborted' 的错误；单次超时、重试次数、总时长都来自 request.retry。
 */
@@ -66,10 +69,11 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
         const result = await retry(async ({ signal }) => {
             // --- 1. 翻译参数（每次尝试现拼：重试之间什么都不缓存）---
             const call = { ...configure(request, system, messages, Boolean(tools)), ...(tools ? { tools } : {}), abortSignal: signal } as any
+            const start = Date.now()                                              // 计时只算成功的这一次尝试：失败的尝试各自记成 error。
             if (!stream) {
                 const done = await generateText(call)
                 const reasoning = done.reasoningText ?? (done.reasoning ?? []).map((part: any) => part.text ?? '').join('')
-                return { text: done.text, reasoning, toolCalls: done.toolCalls, usage: done.usage, messages: done.responseMessages, output: call.output && !done.toolCalls.length ? done.output : undefined }
+                return { text: done.text, reasoning, toolCalls: done.toolCalls, usage: done.usage, messages: done.responseMessages, output: call.output && !done.toolCalls.length ? done.output : undefined, start, duration: Date.now() - start }
             }
             const running = streamText(call)
             // 文字工具模式的流式：all 是到目前为止的全部正文，sent 是已经推送或确认跳过的字符数。
@@ -106,7 +110,9 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
             let failure: unknown = null
             const parts: string[] = []                                            // 推送过的正文片段
             const thoughts: string[] = []                                         // 推送过的思考片段
+            let first: number | undefined                                         // 首字：第一个正文 / 思考 / 工具调用片段到达的耗时
             for await (const event of running.fullStream as AsyncIterable<any>) {
+                if (first === undefined && /^(text-delta|reasoning-delta|tool-input-start|tool-call)$/.test(event.type)) first = Date.now() - start
                 if (event.type === 'text-delta') { parts.push(event.text); if (spec) { all += event.text; flush(false) } else emit({ type: 'text', text: event.text }) }
                 else if (event.type === 'reasoning-delta') { thoughts.push(event.text); emit({ type: 'reasoning', text: event.text }) }
                 else if (event.type === 'tool-call' && !spec) emit({ type: 'tool-call', call: { toolCallId: event.toolCallId, toolName: event.toolName, input: event.input, ...(event.invalid ? { invalid: event.error?.message || '参数无法解析，或这个工具不存在' } : {}) } })
@@ -117,7 +123,7 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
             if (await running.finishReason === 'error') throw new Error('模型请求失败：供应商返回了错误但没有给出原因')
             const toolCalls = await running.toolCalls
             // 正文 / 思考全文就是推送过的片段拼起来（AI SDK 的 text / reasoningText 也是这样拼的），宿主拿它逐字核对。
-            return { text: parts.join(''), reasoning: thoughts.join(''), toolCalls, usage: await running.usage, messages: await running.responseMessages, output: call.output && !toolCalls.length ? await running.output : undefined }
+            return { text: parts.join(''), reasoning: thoughts.join(''), toolCalls, usage: await running.usage, messages: await running.responseMessages, output: call.output && !toolCalls.length ? await running.output : undefined, start, first, duration: Date.now() - start }
         }, { ...request.retry, signal: request.signal, onRetry: request.onRetry })
 
         // --- 4. 文字工具：从回复文字里读回调用，改写成和原生调用完全一样的形状（history 只有一种格式）---
@@ -151,13 +157,21 @@ export async function ask(request: AskRequest, onChunk?: (chunk: Chunk) => unkno
             cacheReadTokens: raw.inputTokenDetails?.cacheReadTokens ?? raw.cachedInputTokens ?? 0,
             cacheWriteTokens: raw.inputTokenDetails?.cacheWriteTokens ?? 0,
         }
+        // 请求记录：给 loop 挂到 assistant / compact 消息上。用量只放供应商真报了的字段，一个都没报就不放 usage（"没报"不等于"用了 0"）。
+        const reported = { input: raw.inputTokens, output: raw.outputTokens, cacheRead: raw.inputTokenDetails?.cacheReadTokens ?? raw.cachedInputTokens, cacheWrite: raw.inputTokenDetails?.cacheWriteTokens }
+        const known = Object.fromEntries(Object.entries(reported).filter(([, value]) => typeof value === 'number'))
+        const record: RequestRecord = {
+            model: typeof request.model === 'string' ? request.model : (request.model as { modelId?: string }).modelId ?? '',
+            start: result.start, ...(result.first !== undefined ? { first: result.first } : {}), duration: result.duration,
+            ...(Object.keys(known).length ? { usage: known } : {}),
+        }
         if (stream) emit({ type: 'finish', usage })
         // 只留 assistant 消息：tool 消息由 loop 用真实执行结果生成。
         // 去掉 AI SDK 的 custom 块：它是 provider 自定义的透传位，实录里流式才有的 anthropic.message_start（原始用量、消息 id）就是它，
         // 发请求时用不上，却让流式和非流式的 history 形状不一样、还抬高 token 估算。思考块（含签名）、正文、调用及其 providerOptions 原样保留。
         const assistantOnly = replyMessages.filter(message => message.role === 'assistant').map(message => Array.isArray(message.content)
             ? { ...message, content: (message.content as { type: string }[]).filter(part => part.type !== 'custom') } as ModelMessage : message)
-        return { text, reasoning: result.reasoning ?? '', toolCalls, usage, messages: assistantOnly, ...(result.output !== undefined ? { output: result.output } : {}) }
+        return { text, reasoning: result.reasoning ?? '', toolCalls, usage, request: record, messages: assistantOnly, ...(result.output !== undefined ? { output: result.output } : {}) }
     } catch (error) {
         classify(error)                                                           // 退避等待期被取消等路径也保证带 kind。
         throw error

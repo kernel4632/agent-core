@@ -13,7 +13,7 @@ run 的一轮（循环直到 decide 说结束，不设最大轮数）：
    模型报 kind 'overflow'（上下文超长）时强制 compact('overflow') 一次再重发，最多 3 次；
    每次出错（每次重试前的、最终抛出的、超长的）都追加一条 role:'error'（utils/errors.explain 写内容，和上一条相同就不重复）；
    用户 stop() / 取消不记。重试仍是无限的，ask 和 retry 不碰 history，记录全在这里；
-5. 把回复（assistant 消息）追加进 history；
+5. 把回复（assistant 消息）追加进 history，并挂上 ask 给的请求记录 request（模型、开始时间、首字 / 完整耗时、用量）；
 6. 对每个工具调用发 onToolCall（等宿主回调跑完）；无效调用（参数解析失败 / 工具不存在）不问权限、不执行，直接写"调用无效"结果，
    让模型看到原因自己改；其余逐个问 onPermission（没有回调 = 无人值守，直接放行；严格 true 才放行，返回非布尔值警告一次），
    被拒绝的直接写拒绝结果；放行的交给 tools/run 全部并行执行；
@@ -29,7 +29,7 @@ history；utils/tokens、utils/errors。全部是向下或同目录，从不导�
 
 import { asSchema } from 'ai'
 import type { JSONSchema7, ModelMessage } from 'ai'
-import type { Answer, AskRequest, Callbacks, Reply, State, ToolResult, Usage } from '../types.ts'
+import type { Answer, AskRequest, Callbacks, Draft, Reply, State, ToolResult, Usage } from '../types.ts'
 import { decide } from './decide.ts'
 import { compact } from './compact.ts'
 import { build } from '../context/build.ts'
@@ -127,8 +127,9 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             step += 1
             add(usage, reply.usage)
 
-            // --- 5. 回复写进 history ---
-            for (const message of reply.messages) append(state.history, message)
+            // --- 5. 回复写进 history：请求记录挂在最后一条 assistant 上（一次请求 = 一条 assistant，纯调工具也是）---
+            const last = reply.messages.findLastIndex(message => message.role === 'assistant')
+            reply.messages.forEach((message, index) => append(state.history, index === last ? { ...message, request: reply.request } as Draft : message))
 
             // --- 6. 权限：逐个问宿主（并行问），等待期间 stop() 一到就不再等（宿主钩子可能永远不返回）---
             // verdict：true 放行；false 拒绝；'invalid' 调用本身无效（不问权限、不执行）。

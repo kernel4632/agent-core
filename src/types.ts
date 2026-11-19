@@ -6,14 +6,14 @@
 
 分组：
 1. 配置（Config 及其子项）——宿主随时可改，下一轮生效；
-2. 历史消息（Message）——AI SDK 标准消息 + id，外加 compact / error 两种自定义 role；
+2. 历史消息（Message）——AI SDK 标准消息 + id（assistant 和 compact 另带请求记录 RequestRecord），外加 compact / error 两种自定义 role；
 3. 工具（ToolDefinition 工具文件契约、ToolMeta 元数据、MCPServer 连接配置、调用与结果）；
 4. 问模型（AskRequest / Reply / Chunk）——Agent.LLM.ask 的公开契约；
 5. 回调与返回值（Callbacks / Answer）；
 6. 运行时状态（State / Internal）——loop 通过参数拿到它，从不导入 agent。
 */
 
-import type { LanguageModel, ModelMessage, UserContent, Tool, JSONSchema7 } from 'ai'
+import type { AssistantModelMessage, LanguageModel, ModelMessage, UserContent, Tool, JSONSchema7 } from 'ai'
 import type { Subprocess } from 'bun'
 
 // ---------- 1. 配置 ----------
@@ -86,12 +86,25 @@ export interface Config {
 
 // ---------- 2. 历史消息 ----------
 
-// 总结：history 里的一条普通消息，只追加；build 时把最新一条折进 system。
-export interface CompactMessage { id: string; role: 'compact'; content: string }
+// 请求记录：产出这条消息的那次模型请求（一次请求 = 一条 assistant / compact 消息，纯调工具也算）。
+// 只有模型、没有供应商；start 是请求发出的毫秒时间戳，first / duration 是相对它的耗时（毫秒）；
+// first 只在流式时有；usage 只放供应商真报了的字段（缓存读写都算在 input 里），一个都没报就没有 usage。
+// 和失败记录的 request 同名对称：成功的请求挂在回复上，失败的挂在 error 上。build 发给模型前去掉。
+export interface RequestRecord {
+    model: string
+    start: number
+    first?: number
+    duration: number
+    usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+}
+// 总结：history 里的一条普通消息，只追加；build 时把最新一条折进 system。request 是写这份总结的那次压缩请求。
+export interface CompactMessage { id: string; role: 'compact'; content: string; request?: RequestRecord }
 // 失败记录：loop 记下的模型请求错误（request 里是 kind / statusCode / model / attempt 等），或宿主自己写的；存进 history 供渲染，永远不发给模型。
 export interface ErrorMessage { id: string; role: 'error'; content: string; request?: unknown }
-// history 的一条：AI SDK 标准消息带 id，或上面两种自定义 role。
-export type Message = (ModelMessage & { id: string }) | CompactMessage | ErrorMessage
+// 模型回复：AI SDK 的 assistant 消息带 id，loop 写入时挂上 request（宿主自己写的可以没有）。
+export type AssistantMessage = AssistantModelMessage & { id: string; request?: RequestRecord }
+// history 的一条：AI SDK 标准消息带 id（assistant 另带 request），或上面两种自定义 role。
+export type Message = (Exclude<ModelMessage, AssistantModelMessage> & { id: string }) | AssistantMessage | CompactMessage | ErrorMessage
 export type Role = Message['role']
 // 追加前的草稿：id 可省，append 时补上。
 export type Draft = Message extends infer M ? (M extends Message ? Omit<M, 'id'> & { id?: string } : never) : never
@@ -185,7 +198,8 @@ export interface Usage { inputTokens: number; outputTokens: number; totalTokens:
 
 // ask 的统一结果：流式与非流式完全一致。messages 是要追加进 history 的 AI SDK 消息（不带 id）。
 // reasoning 是这次回复的思考全文（没有就是空串），宿主可以拿它和流式推送过的 reasoning 片段核对。
-export interface Reply { text: string; reasoning: string; toolCalls: ToolCall[]; usage: Usage; output?: unknown; messages: ModelMessage[] }
+// usage 补齐成数字方便累加；request 是这次请求的记录（用量只含真报了的），loop 把它挂到写进 history 的消息上。
+export interface Reply { text: string; reasoning: string; toolCalls: ToolCall[]; usage: Usage; request: RequestRecord; output?: unknown; messages: ModelMessage[] }
 
 // 错误分类：抛出的模型错误都带 kind，宿主按它分支。
 export type ErrorKind = 'aborted' | 'auth' | 'limit' | 'timeout' | 'server' | 'network' | 'request' | 'overflow' | 'unknown'

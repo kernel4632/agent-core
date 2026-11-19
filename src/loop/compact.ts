@@ -21,7 +21,7 @@ compact：整个项目唯一的压缩逻辑（取代旧实现的三个同名 com
    实时转给 onChunk（宿主能看到压缩时模型在想什么、总结正文是什么，又不会和正式回答混在一起）；
    是否流式跟随 config.compact.stream ?? config.stream（默认流式），非流式时只有 compact-start；
    出错和主请求同一条规则：每次重试前、最终失败都追加一条 role:'error'（request 里带 compact: true），相同的不重复，取消不记；
-4. 空总结直接抛错：写进去一条空总结会让之后的上下文丢掉全部前情；否则以 role:'compact' 追加进 history；
+4. 空总结直接抛错：写进去一条空总结会让之后的上下文丢掉全部前情；否则以 role:'compact' 追加进 history，挂上这次压缩请求的记录 request；
 5. 发 onCompact（reason、总结正文、压缩前后估算及其诊断、用量），返回总结文字和这一笔请求的用量（run 要把它计进合计）。
 
 reason：'manual' 来自宿主的 agent.compact()；'auto' 来自 run 的阈值判断（估算到了 compactThreshold）；
@@ -72,7 +72,7 @@ export async function compact(state: State, callbacks: Callbacks = {}, reason: C
     }, chunk => tell(callbacks.onChunk, { ...chunk, compact: true })).catch(error => { record(error); throw error })
     const summary = typeof reply.text === 'string' ? reply.text.trim() : ''
     if (!summary) throw new Error('压缩失败：模型返回空总结')
-    append(state.history, { role: 'compact', content: summary })
+    append(state.history, { role: 'compact', content: summary, request: reply.request }) // 压缩请求的记录挂在总结上。
     const { budget, threshold: compactThreshold, ratio, ratioSource, chars, media } = before
     void tell(callbacks.onCompact, { reason, summary, before: before.tokens, after: build(state, {}).tokens, budget, compactThreshold, ratio, ratioSource, chars, media, usage: reply.usage })
     return { summary, usage: reply.usage }

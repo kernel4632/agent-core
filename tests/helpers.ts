@@ -11,10 +11,11 @@ import { join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 
-// 一次脚本化回复：思考、文字，或若干工具调用（可以同时有）。usage 是假的输入 token 数，用来测校准。
-export type Step = { reasoning?: string; text?: string; calls?: { name: string; input?: unknown; id?: string }[]; inputTokens?: number }
+// 一次脚本化回复：思考、文字，或若干工具调用（可以同时有）。inputTokens 是假的输入 token 数，用来测校准；noUsage 模拟供应商不报用量。
+export type Step = { reasoning?: string; text?: string; calls?: { name: string; input?: unknown; id?: string }[]; inputTokens?: number; noUsage?: boolean }
 
-// 用量的 V4 形状：只填测试关心的字段。
+// 用量的 V4 形状：只填测试关心的字段；noUsage 时全部是 undefined（不报用量的中转站）。
+const NONE = { inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: undefined, text: undefined, reasoning: undefined } }
 const usageOf = (input = 100) => ({ inputTokens: { total: input, noCache: input, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } })
 
 // 把一步脚本变成模型的内容块。
@@ -37,7 +38,7 @@ export function script(steps: (Step | ((index: number) => Step | Promise<Step>))
         doGenerate: async (options: any) => {
             calls.push(options)
             const step = await next()
-            return { content: contentOf(step), finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: usageOf(step.inputTokens), warnings: [] } as any
+            return { content: contentOf(step), finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: step.noUsage ? NONE : usageOf(step.inputTokens), warnings: [] } as any
         },
         doStream: async (options: any) => {
             calls.push(options)
@@ -46,7 +47,7 @@ export function script(steps: (Step | ((index: number) => Step | Promise<Step>))
             if (step.reasoning) chunks.push({ type: 'reasoning-start', id: 'r' }, ...[...step.reasoning].map(char => ({ type: 'reasoning-delta', id: 'r', delta: char })), { type: 'reasoning-end', id: 'r' })
             if (step.text) chunks.push({ type: 'text-start', id: 't' }, ...[...step.text].map(char => ({ type: 'text-delta', id: 't', delta: char })), { type: 'text-end', id: 't' })
             for (const part of contentOf(step).filter(one => one.type === 'tool-call')) chunks.push(part)
-            chunks.push({ type: 'finish', finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: usageOf(step.inputTokens) })
+            chunks.push({ type: 'finish', finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: step.noUsage ? NONE : usageOf(step.inputTokens) })
             return { stream: simulateReadableStream({ chunks }) } as any
         },
     })

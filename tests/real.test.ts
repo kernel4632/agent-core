@@ -70,13 +70,16 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
         expect(chunks.at(-1)?.type).toBe('finish')
         usageOK(reply.usage)
         expect(reply.messages.map(one => one.role)).toEqual(['assistant'])
+        // 请求记录：真实往返里首字在完整耗时之内，真报了的输入 / 输出用量原样带上。
+        expect(reply.request).toMatchObject({ model: m.model, usage: { input: reply.usage.inputTokens, output: reply.usage.outputTokens } })
+        expect(reply.request.first!).toBeLessThanOrEqual(reply.request.duration)
     }, WAIT)
 
     test('text-generate：非流式文字，返回形状和流式相同', async () => {
         const reply = await Agent.LLM.ask(request(m, 'text-generate', { stream: false, messages: user('只回复两个字：你好') }))
         expect(reply.text.length).toBeGreaterThan(0)
         usageOK(reply.usage)
-        expect(Object.keys(reply).sort()).toEqual(['messages', 'reasoning', 'text', 'toolCalls', 'usage'])
+        expect(Object.keys(reply).sort()).toEqual(['messages', 'reasoning', 'request', 'text', 'toolCalls', 'usage'])
         shapes.set(`${m.model}:generate`, shapeOf(reply.messages))
     }, WAIT)
 
@@ -116,10 +119,16 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
 
     test('tools-multi：多步原生工具调用，后一步用前一步的结果', async () => {
         const agent = Agent.create({ ...config(m, 'tools-multi'), tools: [dir] })
-        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。')
+        // 第 6 轮强停：正常 3 轮就收尾，防止模型反复调工具烧额度。
+        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onStep: ({ step }) => { if (step >= 6) agent.stop() } })
         expect(parts(agent.history, 'tool-result').length).toBeGreaterThanOrEqual(2)
         expect([answer.text.includes('6'), answer.steps >= 3]).toEqual([true, true])
         usageOK(answer.usage)
+        // 每次请求一条 assistant（纯调工具也是），都带请求记录；用量和 send 的合计对得上。
+        const records = agent.history.filter(one => one.role === 'assistant').map(one => (one as any).request)
+        expect(records.length).toBe(answer.steps)
+        for (const one of records) expect([one.model, one.start > 0, one.first >= 0, one.duration >= one.first, one.usage.input > 0]).toEqual([m.model, true, true, true, true])
+        expect(records.reduce((sum, one) => sum + one.usage.input, 0)).toBe(answer.usage.inputTokens)
     }, WAIT)
 
     test('text-tools：文字工具模式，history 里仍是标准 tool-call 块', async () => {
@@ -156,6 +165,8 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
         // 压缩不带输出上限：总结不再被截断。gemini 的录制还是去掉上限前的旧回复（中转站 gemini 渠道 2026-11-14 不可用，待重录）。
         for (const fact of m.protocol === 'gemini' ? ['记账'] : ['记账', 'Bun', 'SQLite']) expect(summary).toContain(fact)
         expect([agent.history.length, agent.history.at(-1)!.role]).toEqual([5, 'compact'])
+        const record = (agent.history.at(-1) as any).request                            // 压缩请求的记录挂在总结上
+        expect([record.model, record.start > 0, record.duration > 0, record.usage.input > 0, record.usage.output > 0]).toEqual([m.model, true, true, true, true])
     }, WAIT)
 
     test('cache：同一段长 system 连问两次，缓存用量字段对得上', async () => {

@@ -59,6 +59,19 @@ flowchart TD
 问模型出错（每次重试前、最终失败、上下文超长，压缩请求也一样）追加一条 `role: 'error'`：`content` 是给人看的错误描述（分类、状态码、服务端原话；厂商格式解析不了就取原始响应体里的 message），
 `request` 存 `{ kind, statusCode, model, protocol, attempt | final, compact? }`；和上一条是同一个错误（内容相同）就不重复记，用户 `stop()` 不记。
 模型回复写进 history 前去掉 AI SDK 的 `custom` 元数据块（发请求用不上），思考块、签名和各块的 `providerOptions` 原样保留。
+一次模型请求产出一条 `assistant`（纯调工具也是），上面挂着这次请求的记录；压缩请求的记录挂在它写的 `compact` 上，形状相同：
+
+```ts
+request: {
+    model: string,       // 模型名（核心只有模型，没有供应商）
+    start: number,       // 请求发出的毫秒时间戳
+    first?: number,      // 首字耗时（毫秒）：start 到第一个正文 / 思考 / 工具调用片段；只有流式有
+    duration: number,    // 完整耗时（毫秒）
+    usage?: { input?, output?, cacheRead?, cacheWrite? } // 只放供应商真报了的；一个都没报就没有 usage，不补 0
+}
+```
+
+计时只算成功的那次尝试（失败的尝试各记一条 `error`）。这些字段只存在 history 里，发给模型时和 `id` 一起去掉。
 
 **⑤ 停不停由模型和工具决定，没有"最大轮数"。** 模型不调工具时，先临时挂一句提醒再问（不进 history），
 连续 `noToolRounds` 轮（默认 3）都不调才结束；工具返回 `stop: true` 立即结束。
@@ -259,14 +272,14 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 ### `Agent.LLM.ask(request, onChunk?)`
 
 不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, includeUsage, cache, provider, maxTokens, output, retry, signal, onRetry }`，
-返回 `{ text, reasoning, toolCalls, usage, output?, messages }`，流式与非流式形状一致。
+返回 `{ text, reasoning, toolCalls, usage, request, output?, messages }`，流式与非流式形状一致。`usage` 五个字段缺的补 0 方便累加；`request` 是上文 ④ 的请求记录（loop 把它挂到写进 history 的消息上）。
 `reasoning` 是这次回复的思考全文（没有思考就是空串），`text` 是正文全文：流式时宿主可以拿它们核对 `onChunk` 推送过的片段有没有漏。`tools` 只要 `{ description, parameters }`，不会执行。
 
 ### 公开字段
 
 | 字段 | 说明 |
 |------|------|
-| `history` | 消息数组（AI SDK 标准消息 + `id`，外加 `compact` 总结和 `error` 记录——模型请求出错时 loop 写的，或宿主自己写的）。宿主可直接读写；`error` 永远不发给模型 |
+| `history` | 消息数组（AI SDK 标准消息 + `id`，`assistant` / `compact` 另带请求记录 `request`，外加 `compact` 总结和 `error` 记录——模型请求出错时 loop 写的，或宿主自己写的）。宿主可直接读写；`error` 永远不发给模型，`request` 发送时去掉 |
 | `tools` / `MCP.list` | 工具路径 / MCP 连接配置，增删或整份替换下一轮生效 |
 | `config` | 活配置，下一轮生效 |
 | `contextRatio` | 冷启动的"每字符 token"估算比例；学到真实值之前用它 |

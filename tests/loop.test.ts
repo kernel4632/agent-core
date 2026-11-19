@@ -388,3 +388,52 @@ describe('问模型出错写进 history', () => {
         expect(calls[0].maxOutputTokens).toBeUndefined()
     })
 })
+
+describe('请求记录挂在消息上', () => {
+    test('流式：每次请求一条 assistant（纯调工具也是），带 model / start / first / duration / usage；发给模型时不带', async () => {
+        const dir = tools({ 'a.ts': tool('a', 'return 1') })
+        const { model, calls } = script([{ calls: [{ name: 'a' }] }, { text: '好了' }])
+        const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })
+        const before = Date.now()
+        await agent.send('hi')
+        const replies = agent.history.filter(message => message.role === 'assistant')
+        expect(replies.length).toBe(2)                                        // 两次请求 = 两条 assistant
+        for (const reply of replies) {
+            const request = (reply as any).request
+            expect(request).toMatchObject({ model: 'mock-model', usage: { input: 100, output: 5, cacheRead: 0, cacheWrite: 0 } })
+            expect(request.start).toBeGreaterThanOrEqual(before)
+            expect(request.first).toBeGreaterThanOrEqual(0)
+            expect(request.duration).toBeGreaterThanOrEqual(request.first)
+            expect(Object.keys(request.usage).sort()).toEqual(['cacheRead', 'cacheWrite', 'input', 'output'])
+        }
+        const sent = JSON.stringify(calls[1].prompt)                          // 第二次请求带着第一条 assistant
+        expect(sent).toContain('tool-call')
+        expect(sent).not.toContain('"request"')
+        expect(sent).not.toContain(String((replies[0] as any).request.start))
+    })
+
+    test('非流式没有 first；供应商不报用量时没有 usage（不填 0），合计照样是数字', async () => {
+        const { model } = script([{ text: '好', noUsage: true }])
+        const agent = Agent.create({ model, stream: false })
+        const answer = await agent.send('hi')
+        const request = (agent.history.at(-1) as any).request
+        expect(request.model).toBe('mock-model')
+        expect(request.duration).toBeGreaterThanOrEqual(0)
+        expect('first' in request).toBe(false)
+        expect('usage' in request).toBe(false)
+        expect(answer.usage.inputTokens).toBe(0)
+    })
+
+    test('压缩请求的记录挂在 compact 消息上，之后的请求里不带', async () => {
+        const { model, calls } = script([{ text: '总结', inputTokens: 30 }, { text: '继续' }], 'mini')
+        const agent = Agent.create({ model, history: [{ id: 'u', role: 'user', content: 'hi' }] })
+        await agent.compact()
+        const summary = agent.history.at(-1) as any
+        expect(summary.role).toBe('compact')
+        expect(summary.request).toMatchObject({ model: 'mini', usage: { input: 30, output: 5 } })
+        expect(typeof summary.request.start).toBe('number')
+        await agent.send('接着来')
+        expect(JSON.stringify(calls[1].prompt)).not.toContain('"request"')
+        expect(JSON.stringify(calls[1].prompt)).toContain('总结')               // 总结照样折进了上下文
+    })
+})
