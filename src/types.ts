@@ -227,7 +227,7 @@ export type Decision = { action: 'continue' } | { action: 'remind'; reminder: st
 // 每次 send 传入的回调，全部可选。只分两类：onEvent 是"告诉宿主发生了什么"（全部通知走这一个入口），
 // onPermission / onInject 是"问宿主要一个答案"。渲染 / 钩子由宿主按 path 分发到插件。
 export interface Callbacks {
-    onEvent?: (event: Event) => unknown                                                  // 返回 Promise 时，只有 tool-call / step 会被等待
+    onEvent?: (event: Event) => unknown                                                  // 返回 Promise 时，只有 tool-run / step 会被等待
     onPermission?: (call: ToolCall & { path?: string }) => boolean | Promise<boolean>   // 必须严格返回布尔值，非 true 一律拒绝
     onInject?: (info: { tokens: number; budget: number; compactThreshold: number; ratio: number; ratioSource: RatioSource }) => string | undefined | Promise<string | undefined>
 }
@@ -237,7 +237,10 @@ export interface RequestError { kind: ErrorKind; message: string; statusCode?: n
 
 /*
 事件：核心发生的每一件事恰好一条，按 type 区分；全是纯数据，宿主可以原样经 SSE 转给前端。
-一次模型请求（每次尝试）：request-start →（text / reasoning 流式片段）→ request-end 或 request-error，必有一个收尾；
+一次模型请求（每次尝试）：request-start →（text / reasoning / tool-input-start / tool-input 流式片段、tool-call）→ request-end 或 request-error，必有一个收尾；
+失败的尝试里已经冒出来的片段和调用作废（不会写进 history），宿主按 request-error 丢掉即可。
+一次工具调用：tool-input-start → tool-input…（模型边写参数边推，供应商不分段时没有）→ tool-call（调用写完）
+→ tool-run（放行、马上执行，会被等待；拒绝 / 无效的调用没有）→ tool-output… → tool-result。
 request-error 带 retry 表示等 delay 毫秒后重试（接着是新的 request-start），不带就是这次请求放弃了
 （最终失败、或上下文超长转去压缩）。用户 stop() 不发 request-error（那是操作，不是故障）。
 压缩：compact-start → 压缩模型自己的请求事件（都带 compact: true）→ compact-end（带诊断）；压缩失败时没有 compact-end。
@@ -248,7 +251,10 @@ export type Event =
     | { type: 'reasoning'; text: string; compact?: true }                                         // 思考片段（只在流式时有）
     | { type: 'request-end'; usage: Usage; request: RequestRecord; compact?: true }               // 请求成功收尾：补齐的用量 + 请求记录
     | { type: 'request-error'; attempt: number; error: RequestError; retry?: { delay: number; maxTries?: number }; compact?: true } // 这次尝试失败；maxTries 省略 = 不限
-    | { type: 'tool-call'; call: ToolCall & { path?: string } }                                   // 会被等待：工具开跑（问权限）前宿主先把调用显示出来
+    | { type: 'tool-input-start'; toolCallId: string; toolName: string }                          // 模型开始写一个工具调用（只在流式原生工具时有）
+    | { type: 'tool-input'; toolCallId: string; delta: string }                                   // 调用参数的原始文字片段（JSON 还没写完）
+    | { type: 'tool-call'; call: ToolCall }                                                       // 调用写完：完整参数；invalid 有值 = 调用本身无效（不会执行）
+    | { type: 'tool-run'; toolCallId: string; toolName: string; path?: string }                   // 会被等待：权限已放行，工具马上开始执行
     | { type: 'tool-output'; toolCallId: string; stream: 'stdout' | 'stderr'; data: string }      // 工具子进程的实时输出
     | { type: 'tool-result'; result: ToolResult }                                                 // 工具结果（已写进 history）
     | { type: 'step'; step: number; reply: Reply; results: ToolResult[] }                         // 会被等待：这一轮已写进 history，宿主可在这里安全持久化

@@ -46,7 +46,11 @@ export function script(steps: (Step | ((index: number) => Step | Promise<Step>))
             const chunks: any[] = [{ type: 'stream-start', warnings: [] }]
             if (step.reasoning) chunks.push({ type: 'reasoning-start', id: 'r' }, ...[...step.reasoning].map(char => ({ type: 'reasoning-delta', id: 'r', delta: char })), { type: 'reasoning-end', id: 'r' })
             if (step.text) chunks.push({ type: 'text-start', id: 't' }, ...[...step.text].map(char => ({ type: 'text-delta', id: 't', delta: char })), { type: 'text-end', id: 't' })
-            for (const part of contentOf(step).filter(one => one.type === 'tool-call')) chunks.push(part)
+            // 调用参数像真实供应商一样分段写出：tool-input-start → 两段 delta → tool-input-end → tool-call
+            for (const part of contentOf(step).filter(one => one.type === 'tool-call') as any[]) {
+                const half = Math.ceil(part.input.length / 2)
+                chunks.push({ type: 'tool-input-start', id: part.toolCallId, toolName: part.toolName }, { type: 'tool-input-delta', id: part.toolCallId, delta: part.input.slice(0, half) }, { type: 'tool-input-delta', id: part.toolCallId, delta: part.input.slice(half) }, { type: 'tool-input-end', id: part.toolCallId }, part)
+            }
             chunks.push({ type: 'finish', finishReason: { unified: step.calls?.length ? 'tool-calls' : 'stop', raw: undefined }, usage: step.noUsage ? NONE : usageOf(step.inputTokens) })
             return { stream: simulateReadableStream({ chunks }) } as any
         },

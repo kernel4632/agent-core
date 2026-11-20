@@ -12,14 +12,15 @@ ask：对 AI SDK 的薄封装，"统一请求数据 → 统一结果"，协议�
 2. textTools 为 true：describe 把工具说明写进 system、render 把历史工具消息改写成文字，不发原生 tools；
    否则把 tools 描述表转成 AI SDK 的工具定义（只有 schema，没有 execute——执行在 loop 里做）；
 3. 用 retry 包住真正的请求：每次尝试真正发出时发 request-start，成功发 request-end，失败发 request-error（重试的带 retry）；
-   stream 时走 streamText，把 AI SDK 事件简化成 text / reasoning 事件交给 onEvent；否则走 generateText。两条路径产出完全相同的 Reply；
+   stream 时走 streamText，把 AI SDK 事件简化成 text / reasoning / tool-input-start / tool-input / tool-call 事件交给 onEvent，
+   有什么推什么；否则走 generateText。两条路径产出完全相同的 Reply；
    textTools 模式下正文照样流式推送，只扣住"可能是调用"的那一段（<tool_call>、注册过的工具名标签、``` 代码块），
    等它闭合后用 parse 判断：是调用就不推，不是就整段补推；模型编造的 <tool_result> 及其后面都不推；
 4. textTools 为 true 时用 parse 从文字里解析出调用；AI SDK 标记为不合法的原生调用（参数解析失败、不符合 schema、工具不存在）
    保留成 invalid（原因），和文字工具写坏的调用同一种形状，由 loop 拒绝执行、把原因回给模型；
 5. 用量补齐五个字段（缺的补 0）；另给一份请求记录 request（模型名、开始时间、首字 / 完整耗时、只含真报了的用量），
    计时只算成功的那次尝试；返回的 messages 去掉 custom 元数据块（发请求用不上）；错误一律经 classify 贴上 kind 再抛。
-工具调用不在这里发事件：它们在 Reply.toolCalls 里，由 loop 在开跑前发一次 tool-call（带 path），同一件事只有一条事件。
+每个调用恰好一条 tool-call：流式原生工具在模型写完它的那一刻发；非流式和文字工具模式拿到完整回复（解析完）后、request-end 之前补发。
 
 ask 不读写 history、不估算 token、不执行工具；它对 loop 一无所知，所以宿主也能直接拿来用。
 导入：同目录 configure、text-tools/describe、text-tools/parse，以及 utils/retry、utils/errors。
@@ -37,7 +38,8 @@ import { classify, explain, tell } from '../utils/errors.ts'
 /*
 ask：按文件头的五步问一次模型，返回 Reply。
 
-- onEvent 收到每次尝试的 request-start 和收尾（request-end / request-error）；text / reasoning 片段只在 stream 为 true 时有；
+- onEvent 收到每次尝试的 request-start 和收尾（request-end / request-error），以及每个调用一条 tool-call；
+  text / reasoning 片段只在 stream 为 true 时有，tool-input-start / tool-input 只在流式原生工具时有；
   onEvent 是宿主代码，同步抛错或异步拒绝都被吞掉（utils/errors.tell），不等它、不打断请求；
   文字工具模式下 text 片段拼起来和最终 text 只差空白整理（parse 会收拾删掉调用后留下的空行）；
 - 返回值里的 text / reasoning 是正文 / 思考全文（没有思考就是空串），流式时宿主可以拿它们核对推送过的片段；
@@ -122,6 +124,9 @@ export async function ask(request: AskRequest, onEvent?: (event: Event) => unkno
                 if (first === undefined && /^(text-delta|reasoning-delta|tool-input-start|tool-call)$/.test(event.type)) first = Date.now() - start
                 if (event.type === 'text-delta') { parts.push(event.text); if (spec) { all += event.text; flush(false) } else emit({ type: 'text', text: event.text }) }
                 else if (event.type === 'reasoning-delta') { thoughts.push(event.text); emit({ type: 'reasoning', text: event.text }) }
+                else if (event.type === 'tool-input-start' && !spec) emit({ type: 'tool-input-start', toolCallId: event.id, toolName: event.toolName })
+                else if (event.type === 'tool-input-delta' && !spec) emit({ type: 'tool-input', toolCallId: event.id, delta: event.delta })
+                else if (event.type === 'tool-call' && !spec) emit({ type: 'tool-call', call: { toolCallId: event.toolCallId, toolName: event.toolName, input: event.input, ...(event.invalid ? { invalid: event.error?.message || '参数无法解析，或这个工具不存在' } : {}) } })
                 else if (event.type === 'error') failure = event.error            // 供应商自己报的错是一个事件，不接住会被当成正常回答。
             }
             if (failure) throw failure                                            // 带着 statusCode 等字段先抛，别被换成丢了字段的二次错误。
@@ -152,6 +157,8 @@ export async function ask(request: AskRequest, onEvent?: (event: Event) => unkno
                 replyMessages = [...replyMessages.filter(message => message !== assistant), { role: 'assistant', content } as ModelMessage]
             }
         }
+
+        if (spec || !stream) for (const call of toolCalls) emit({ type: 'tool-call', call }) // 流式原生调用已经边写边推过了，这里只补其余情况。
 
         // --- 5. 用量补齐五个字段：各家给的不一定齐全，缺的按 0，不让 undefined 把宿主的合计变成 NaN ---
         const raw = (result.usage ?? {}) as Record<string, any>

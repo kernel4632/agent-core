@@ -17,7 +17,7 @@ describe('stop()', () => {
         const agent: Agent = Agent.create({ model, tools: [dir], stream: false })
         let stopped = 0
         let confirmed: Promise<unknown> = Promise.resolve()
-        const running = agent.send('hi', { onEvent: event => { if (event.type === 'tool-call') setTimeout(() => { stopped = Date.now(); confirmed = agent.stop() }, 300) } })
+        const running = agent.send('hi', { onEvent: event => { if (event.type === 'tool-run') setTimeout(() => { stopped = Date.now(); confirmed = agent.stop() }, 300) } })
         const failure = await running.catch(e => e)
         expect(failure.kind).toBe('aborted')
         expect(Date.now() - stopped).toBeLessThan(1000)                   // 不等工具反应
@@ -33,7 +33,7 @@ describe('stop()', () => {
         const b = script([{ calls: [{ name: 'nap' }] }, { text: 'B' }])
         const agentA: Agent = Agent.create({ model: a.model, tools: [dir], stream: false, noToolRounds: 1 })
         const agentB: Agent = Agent.create({ model: b.model, tools: [dir], stream: false, noToolRounds: 1 })
-        const runA = agentA.send('hi', { onEvent: event => { if (event.type === 'tool-call') setTimeout(() => void agentA.stop(), 200) } }).catch(e => e)
+        const runA = agentA.send('hi', { onEvent: event => { if (event.type === 'tool-run') setTimeout(() => void agentA.stop(), 200) } }).catch(e => e)
         const answerB = await agentB.send('hi')
         expect((await runA).kind).toBe('aborted')
         expect(answerB.text).toBe('B')

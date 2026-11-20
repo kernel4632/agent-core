@@ -239,7 +239,7 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 
 | 回调 | 时机 |
 |------|------|
-| `onEvent(event)` | 所有通知，按 `event.type` 区分，见下表；返回 Promise 时只有 `tool-call` 和 `step` 会被等待，其余不等（不给流式加节流阀） |
+| `onEvent(event)` | 所有通知，按 `event.type` 区分，见下表；返回 Promise 时只有 `tool-run` 和 `step` 会被等待，其余不等（不给流式加节流阀） |
 | `onPermission(call)` | 工具执行前；严格返回 `true` 才放行，其余（含非布尔值，会警告一次）都拒绝，模型收到"被拒绝"结果。`call.path` 是来源文件；无效调用不会来问 |
 | `onInject({ tokens, budget, compactThreshold, ratio, ratioSource })` | 每次请求前；返回的文字临时挂在这次请求上，不进 history。`ratioSource`：`'usage'` 学到的 / `'host'` 宿主给的 / `'default'` 默认值 |
 
@@ -251,7 +251,10 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 | `text` / `reasoning` | `text, compact?` | 正文 / 思考片段（只在流式时有） |
 | `request-end` | `usage, request, compact?` | 这次请求成功收尾：补齐的用量 + 请求记录（和写进 history 的 `request` 相同） |
 | `request-error` | `attempt, error: { kind, message, statusCode? }, retry?: { delay, maxTries? }, compact?` | 这次尝试失败（已先以 `role: 'error'` 记进 history，`message` 就是那条的正文）；带 `retry` = 等 `delay` 毫秒后重试（`maxTries` 省略 = 不限），不带 = 放弃（最终失败，或上下文超长转去压缩） |
-| `tool-call` | `call`（含 `path`） | **会被等待**：工具问权限 / 开跑前，宿主先把调用显示出来；无效调用（`call.invalid`）也发 |
+| `tool-input-start` | `toolCallId, toolName` | 模型开始写一个工具调用（流式原生工具；供应商不分段推参数时没有） |
+| `tool-input` | `toolCallId, delta` | 调用参数的原始文字片段，边写边推（JSON 可能还没写完） |
+| `tool-call` | `call` | 调用写完：完整参数。流式原生工具在写完那一刻发；非流式 / 文字工具在 `request-end` 之前补发。`call.invalid` 有值 = 调用本身无效（不会执行，也照样发） |
+| `tool-run` | `toolCallId, toolName, path?` | **会被等待**：权限已放行，工具马上开始执行（宿主先做好准备）；被拒绝 / 无效的调用没有 |
 | `tool-output` | `toolCallId, stream, data` | 工具子进程的 stdout / stderr |
 | `tool-result` | `result`（含 `path`） | 工具结果（已写进 history） |
 | `step` | `step, reply, results` | **会被等待**：这一轮已写进 history（适合落盘） |
@@ -260,7 +263,12 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 | `warning` | `path?, message` | 坏工具文件、工具重名、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
 
 **请求的生命周期：** 每个 `request-start` 后面必有一个 `request-end` 或 `request-error` 收尾（用户 `stop()` 除外：那是操作不是故障，`send` 以 `aborted` 拒绝），
-前端据此只在真的有请求时显示请求条。重试是"失败的 `request-error`（带 `retry`）→ 等待 → 新的 `request-start`（`attempt + 1`）"。
+前端据此只在真的有请求时显示请求条。重试是"失败的 `request-error`（带 `retry`）→ 等待 → 新的 `request-start`（`attempt + 1`）"；
+失败那次尝试里已经冒出来的片段和调用作废（不进 history），按 `request-error` 丢掉即可。
+
+**一次工具调用从生成到结果：** `tool-input-start` → `tool-input`…（模型边写参数边冒出来）→ `tool-call`（写完）→ `request-end`
+→（`onPermission` 放行）→ `tool-run`（马上执行）→ `tool-output`… → `tool-result` → 这一轮所有结果写完后 `step`。
+被拒绝的调用从 `tool-call` 直接到 `tool-result`（拒绝结果）；无效调用同样直接到 `tool-result`（"调用无效"）。
 
 文字工具模式（`textTools`）下流式照常：调用块之外的正文边收边推，只有可能是调用块的那一段先扣住，确认不是调用再推出。
 
@@ -289,7 +297,7 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, includeUsage, cache, provider, maxTokens, output, retry, signal }`，
 返回 `{ text, reasoning, toolCalls, usage, request, output?, messages }`，流式与非流式形状一致。`usage` 五个字段缺的补 0 方便累加；`request` 是上文 ④ 的请求记录（loop 把它挂到写进 history 的消息上）。
 `reasoning` 是这次回复的思考全文（没有思考就是空串），`text` 是正文全文：流式时宿主可以拿它们核对推送过的片段有没有漏。
-`onEvent` 收到这次请求的 `request-start` / `text` / `reasoning` / `request-end` / `request-error`（含重试）；工具调用不发事件，在返回值的 `toolCalls` 里。`tools` 只要 `{ description, parameters }`，不会执行。
+`onEvent` 收到这次请求的 `request-start` / `text` / `reasoning` / `tool-input-start` / `tool-input` / `tool-call` / `request-end` / `request-error`（含重试）；不执行工具，所以没有 `tool-run` 之后的事件。`tools` 只要 `{ description, parameters }`，不会执行。
 
 ### 公开字段
 

@@ -51,9 +51,9 @@
   **缩写全大写**：`MCP`、`LLM`、`MCPServer`、`MCPClients`。配置字段和回调（`onX`）是属性 / 事件，不受这条约束。
 - **一个 Agent 实例就是一段对话。** 核心里没有"会话 / session"概念，`id` 只给宿主区分实例用，核心不读它；多段对话就建多个实例。
 - **宿主回调一律经 `utils/errors.tell` 调用**：同步抛错和被拒绝的 Promise 都吞掉（Bun 遇到未处理的拒绝会退出进程）；
-  需要宿主先做完的事件（`tool-call`、`step`）就 `await tell(...)`，其余事件（流式片段、`tool-output` 等）用 `void tell(...)`。
+  需要宿主先做完的事件（`tool-run`、`step`）就 `await tell(...)`，其余事件（流式片段、`tool-output` 等）用 `void tell(...)`。
 - **宿主回调只有三个。** `onEvent` 是全部通知（按 `type` 区分的纯数据，宿主可原样经 SSE 转发），`onPermission` / `onInject` 是"问宿主要答案"。
-  新的通知只加一种 `Event`，不加新回调；同一件真实发生的事只发一条事件（例如工具调用只在 loop 开跑前发一次 `tool-call`，ask 不发）。
+  新的通知只加一种 `Event`，不加新回调；同一件真实发生的事只发一条事件，有什么推什么（例如调用写完由 ask 发 `tool-call`，放行后马上执行由 loop 发 `tool-run`，是两件事）。
 - **history 永远完整、发不出去的东西在 build 里处理。** 没开的媒体换占位文字、坏消息跳过并警告，不报错、不改 history
   （用户随时可能换模型，原件要留着）。
 - **外部能力不拖住对话。** MCP 完全异步：`connect` 是同步函数，只开连 / 关连并返回此刻 ready 的工具，请求、`send`、`stop()` 从不等连接；

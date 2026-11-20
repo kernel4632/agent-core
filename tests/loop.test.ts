@@ -100,18 +100,34 @@ describe('工具执行', () => {
         expect(results(agent.history)[0].output.type).toBe('error-text')
     })
 
-    test('流式：事件按真实顺序各发一次（请求开始 → 片段 → 请求结束 → 工具 → step），返回值与事件一致', async () => {
+    test('流式：工具调用边写边冒出来，各事件按真实顺序各发一次，返回值与事件一致', async () => {
         const dir = tools({ 'a.ts': tool('a', 'return 1') })
-        const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好的' }])
+        const { model } = script([{ calls: [{ name: 'a', id: 'c1', input: { x: 1 } }] }, { text: '好的' }])
         const types: string[] = []
+        const events: any[] = []
         let text = ''
-        const answer = await Agent.create({ model, tools: [dir], noToolRounds: 1 }).send('hi', { onEvent: event => { types.push(event.type); if (event.type === 'text') text += event.text } })
+        const answer = await Agent.create({ model, tools: [dir], noToolRounds: 1 }).send('hi', { onEvent: event => { types.push(event.type); events.push(event); if (event.type === 'text') text += event.text } })
         const first = types.slice(0, types.indexOf('step') + 1)
-        expect(first).toEqual(['request-start', 'request-end', 'tool-call', 'tool-result', 'step'])   // 调用只发一次，由 loop 在开跑前发
+        // 调用在请求进行中就冒出来（request-end 之前）；放行后 tool-run 是另一件事：马上执行
+        expect(first).toEqual(['request-start', 'tool-input-start', 'tool-input', 'tool-input', 'tool-call', 'request-end', 'tool-run', 'tool-result', 'step'])
+        expect(events.filter(event => event.type === 'tool-input').map(event => event.delta).join('')).toBe('{"x":1}')
+        expect(events.find(event => event.type === 'tool-call').call).toEqual({ toolCallId: 'c1', toolName: 'a', input: { x: 1 } })
+        expect(events.find(event => event.type === 'tool-run')).toMatchObject({ toolCallId: 'c1', toolName: 'a', path: expect.stringContaining('a.ts') })
         expect(types.filter(type => type === 'request-start')).toHaveLength(2)
         expect(types.filter(type => type === 'request-end')).toHaveLength(2)
         expect(types.at(-1)).toBe('step')
         expect(text).toBe(answer.text)
+    })
+
+    test('非流式：调用在 request-end 之前补发一次 tool-call；拒绝的调用没有 tool-run；无效调用照样冒出来', async () => {
+        const dir = tools({ 'a.ts': tool('a', 'return 1') })
+        const { model } = script([{ calls: [{ name: 'a', id: 'ok' }, { name: 'a', id: 'no' }, { name: 'ghost', id: 'bad' }] }, { text: '好' }])
+        const types: string[] = []
+        const events: any[] = []
+        await Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 }).send('hi', { onPermission: call => call.toolCallId === 'ok', onEvent: event => { events.push(event); types.push(event.type) } })
+        expect(types.slice(0, types.indexOf('step') + 1)).toEqual(['request-start', 'tool-call', 'tool-call', 'tool-call', 'request-end', 'tool-run', 'tool-result', 'tool-result', 'tool-result', 'step'])
+        expect(events.filter(event => event.type === 'tool-run').map(event => event.toolCallId)).toEqual(['ok'])
+        expect(events.find(event => event.type === 'tool-call' && event.call.toolCallId === 'bad').call.invalid).toBeString()
     })
 
     test('非流式也有 request-start / request-end：每次请求恰好一对，字段和 history 里的请求记录一致', async () => {
@@ -277,7 +293,7 @@ describe('Agent.LLM.ask', () => {
 })
 
 describe('回调与诊断', () => {
-    test('onEvent 抛错或返回被拒绝的 Promise 都不打断循环；tool-call / step 会被等待；返回 steps', async () => {
+    test('onEvent 抛错或返回被拒绝的 Promise 都不打断循环；tool-run / step 会被等待；返回 steps', async () => {
         const dir = tools({ 'a.ts': tool('a', 'return 1') })
         const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好' }])
         const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })          // 流式：片段事件是高频回调
@@ -285,13 +301,13 @@ describe('回调与诊断', () => {
         const answer = await agent.send('hi', {
             onEvent: async event => {
                 if (event.type === 'tool-result') order.push('result')
-                if (event.type === 'tool-call') { await Bun.sleep(50); order.push('call') }
+                if (event.type === 'tool-run') { await Bun.sleep(50); order.push('run') }
                 if (event.type === 'step') { await Bun.sleep(50); order.push(`step${event.step}`) }
                 throw new Error('宿主回调坏了')
             },
         })
         expect(answer).toMatchObject({ reason: 'no-tool', text: '好', steps: 2 })
-        expect(order).toEqual(['call', 'result', 'step1', 'step2'])
+        expect(order).toEqual(['run', 'result', 'step1', 'step2'])
     })
 
     test('无效调用（工具不存在）不问权限、不执行，写"调用无效"结果；onPermission 返回非布尔值按拒绝、只警告一次', async () => {
