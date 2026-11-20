@@ -99,8 +99,8 @@ export function cancelled(): Error {
 /*
 tell：调一个宿主回调，宿主代码出错（同步抛错或返回的 Promise 被拒绝）都吞掉，不打断循环 / 请求 / 工具。
 
-- 返回一个永不拒绝的 Promise：需要等宿主做完的地方（onStep：宿主在这里持久化这一轮；onToolCall：工具开跑前先让界面显示）就 await；
-- 高频的通知（onChunk、onToolOutput、onRetry、onWarning）不 await，写成 void tell(...)——等它就等于给模型输出加了节流阀；
+- 返回一个永不拒绝的 Promise：需要等宿主做完的事件（step：宿主在这里持久化这一轮；tool-call：工具开跑前先让界面显示）就 await；
+- 其余事件（流式片段、请求开始 / 结束、工具输出、警告等）不 await，写成 void tell(...)——等它就等于给模型输出加了节流阀；
 - 不 await 也安全：拒绝在这里被 catch 住，不会变成未处理拒绝（Bun 对未处理拒绝会直接退出宿主进程，旧实现 issue #26）。
 */
 export async function tell<T>(callback: ((value: T) => unknown) | undefined, value: T): Promise<void> {

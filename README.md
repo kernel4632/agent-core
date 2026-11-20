@@ -121,7 +121,7 @@ const agent = Agent.create({
 })
 
 const { reason, text, usage } = await agent.send('请向世界打个招呼', {
-    onChunk: chunk => { if (chunk.type === 'text') process.stdout.write(chunk.text) },
+    onEvent: event => { if (event.type === 'text') process.stdout.write(event.text) },
 })
 ```
 
@@ -144,15 +144,15 @@ export default {
 
 - **一个文件一个工具。** 目录展开时收 `.ts` / `.js` / `.mjs`（不含 `.d.ts`），按文件名排序。
 - **返回值：** 字符串或可 JSON 化的值都行；`{ stop: true, ... }` 让循环结束（reason 为 `tool-stop`）。
-  generator 的每次 yield 实时转给 `onToolOutput`，全部片段一起作为结果。默认不截断；设了 `maxToolOutput` 时，
+  generator 的每次 yield 实时作为 `tool-output` 事件转给宿主，全部片段一起作为结果。默认不截断；设了 `maxToolOutput` 时，
   超长的文字（含 `content` 里的文字块）保留开头 70%、结尾 30%，中间注明省略了多少字符并提示模型缩小范围重新获取。
   返回成形块（`{ type: 'text' | 'json' | 'content' | ... }`）但形状不对时，模型收到一条说明哪里不对的错误结果。
 - **出错就是结果：** `run` 抛错、超时、子进程崩溃，都会变成一条错误文字结果交给模型，循环继续。
   超时和崩溃的错误里带上工具已经输出的部分（头尾各保留一段）；被系统 SIGKILL（常见于内存不足）和被 `stop()` 取消分开说明。
 - **调用本身无效**（参数解析失败、工具不存在）：不问 `onPermission`、不执行，直接写一条"工具调用无效：原因"结果让模型自己改。
-- **坏文件不会拖垮循环：** 读不出来（语法错、导出不合法、加载超过 3 秒）的文件被跳过，通过 `onWarning` 提醒一次；
+- **坏文件不会拖垮循环：** 读不出来（语法错、导出不合法、加载超过 3 秒）的文件被跳过，发一条 `warning` 事件提醒一次；
   按修改时间记住，文件没改之前不会每轮重试。
-- 工具的 stdout / stderr 通过 `onToolOutput` 实时转给宿主，不会污染和子进程之间的协议。
+- 工具的 stdout / stderr 通过 `tool-output` 事件实时转给宿主，不会污染和子进程之间的协议。
 - 工具子进程和 Agent 权限相同（文件、网络、环境变量）。危险操作请在宿主的 `onPermission` 里拦。
 
 ---
@@ -170,7 +170,7 @@ agent.MCP.list = [                       // 也可以 Agent.create({ MCP: [...] 
 **连接完全异步，从不阻塞**：请求、`send`、`stop()` 都不会等任何 MCP 连接。连接尽早开始（`Agent.create` 时、`MCP.open` 时、
 每轮开头发现 `list` 里有新元素时），在后台连上的那一刻起，下一次构建请求就带上它的工具——一次 `send` 中途连上的，下一轮请求就能用。
 还没连上的这一轮就是没有它的工具。连接按配置缓存，配置变了自动重建，从数组里删掉的连接会被关闭。
-连不上（含握手超过 15 秒）就是没有它的工具，对话照常进行：**不发任何警告**（不占用 `send` 的 `onWarning`），**也不自动重连**。
+连不上（含握手超过 15 秒）就是没有它的工具，对话照常进行：**不发任何警告**（不占用 `send` 的 `warning` 事件），**也不自动重连**。
 要用它的是用户：`await agent.MCP.open(name)` 会重新连接并等这一条的结果，成功与否和失败原因直接作为返回值给你看；
 想重试就再 `open` 一次。只有 `open` 的调用方在等，请求和 `send` 照样不等。
 
@@ -234,26 +234,41 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 （`aborted` / `auth` / `limit` / `timeout` / `server` / `network` / `request` / `overflow` / `unknown`），
 同时（连同每次重试前的错误）以 `role: 'error'` 记进 history，见上文 ④。重试默认不限次数。
 
-回调按次传入，全部可选，抛错或返回被拒绝的 Promise 都不影响循环；`onToolCall` 和 `onStep` 会被等待（返回 Promise 时等它完成再继续）：
+回调按次传入，全部可选，只有三个：`onEvent` 告诉宿主发生了什么，`onPermission` / `onInject` 问宿主要一个答案。
+抛错或返回被拒绝的 Promise 都不影响循环。
 
 | 回调 | 时机 |
 |------|------|
-| `onChunk(chunk)` | 流式片段：`text` / `reasoning` / `tool-call` / `tool-result` / `finish`；压缩期间见下方 |
+| `onEvent(event)` | 所有通知，按 `event.type` 区分，见下表；返回 Promise 时只有 `tool-call` 和 `step` 会被等待，其余不等（不给流式加节流阀） |
 | `onPermission(call)` | 工具执行前；严格返回 `true` 才放行，其余（含非布尔值，会警告一次）都拒绝，模型收到"被拒绝"结果。`call.path` 是来源文件；无效调用不会来问 |
 | `onInject({ tokens, budget, compactThreshold, ratio, ratioSource })` | 每次请求前；返回的文字临时挂在这次请求上，不进 history。`ratioSource`：`'usage'` 学到的 / `'host'` 宿主给的 / `'default'` 默认值 |
-| `onToolCall(call)` / `onToolResult(result)` | 工具开始 / 结束；`path` 用来映射回宿主的插件 |
-| `onToolOutput({ toolCallId, stream, data })` | 工具子进程的 stdout / stderr |
-| `onStep({ step, reply, results })` | 每轮结束（适合落盘 history） |
-| `onCompact({ reason, summary, before, after, budget, compactThreshold, ratio, ratioSource, chars, media, usage })` | 压缩完成；`reason` 为 `'auto'`（估算到阈值）/ `'overflow'`（模型报超长）/ `'manual'`；其余是压缩前的估算诊断 |
-| `onRetry({ attempt, maxTries, error, delay })` | 模型请求重试前（这次的错误已先记进 history） |
-| `onWarning({ path?, message })` | 坏工具文件、工具重名、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
+
+事件都是纯数据，宿主可以原样经 SSE 转给前端；每件真实发生的事恰好一条事件：
+
+| `type` | 字段 | 含义 |
+|------|------|------|
+| `request-start` | `model, start, attempt, compact?` | 一次模型请求真正发出（每次尝试一条，重试会再来一条）；`model` / `start` 和请求记录同义 |
+| `text` / `reasoning` | `text, compact?` | 正文 / 思考片段（只在流式时有） |
+| `request-end` | `usage, request, compact?` | 这次请求成功收尾：补齐的用量 + 请求记录（和写进 history 的 `request` 相同） |
+| `request-error` | `attempt, error: { kind, message, statusCode? }, retry?: { delay, maxTries? }, compact?` | 这次尝试失败（已先以 `role: 'error'` 记进 history，`message` 就是那条的正文）；带 `retry` = 等 `delay` 毫秒后重试（`maxTries` 省略 = 不限），不带 = 放弃（最终失败，或上下文超长转去压缩） |
+| `tool-call` | `call`（含 `path`） | **会被等待**：工具问权限 / 开跑前，宿主先把调用显示出来；无效调用（`call.invalid`）也发 |
+| `tool-output` | `toolCallId, stream, data` | 工具子进程的 stdout / stderr |
+| `tool-result` | `result`（含 `path`） | 工具结果（已写进 history） |
+| `step` | `step, reply, results` | **会被等待**：这一轮已写进 history（适合落盘） |
+| `compact-start` | `reason` | 开始压缩：`'auto'`（估算到阈值）/ `'overflow'`（模型报超长）/ `'manual'` |
+| `compact-end` | `reason, summary, before, after, budget, compactThreshold, ratio, ratioSource, chars, media, usage` | 压缩完成，总结已写进 history；其余是压缩前的估算诊断 |
+| `warning` | `path?, message` | 坏工具文件、工具重名、history 里有发不出去的消息（system / 未知 role / 没有 content）等 |
+
+**请求的生命周期：** 每个 `request-start` 后面必有一个 `request-end` 或 `request-error` 收尾（用户 `stop()` 除外：那是操作不是故障，`send` 以 `aborted` 拒绝），
+前端据此只在真的有请求时显示请求条。重试是"失败的 `request-error`（带 `retry`）→ 等待 → 新的 `request-start`（`attempt + 1`）"。
 
 文字工具模式（`textTools`）下流式照常：调用块之外的正文边收边推，只有可能是调用块的那一段先扣住，确认不是调用再推出。
 
-**压缩也是流式的。** 压缩开始时先来一条 `{ type: 'compact-start', reason: 'auto' | 'overflow' | 'manual', compact: true }`，
-之后压缩模型的 `reasoning` / `text` / `finish` 片段都带 `compact: true`，宿主可以实时展示"正在压缩：模型在想什么、总结正文是什么"，
-又不会和正式回答混在一起。压缩结束后 `onCompact` 照常给出完整信息（含总结正文）。
-压缩请求的流式跟随 `compact.stream ?? stream`（默认流式）；设为非流式时只有 `compact-start`。
+**压缩也是流式的。** 压缩开始时先来一条 `compact-start`（一次压缩一条），之后压缩模型自己的请求事件
+（`request-start` / `reasoning` / `text` / `request-end` / `request-error`）都带 `compact: true`，宿主可以实时展示"正在压缩：模型在想什么、总结正文是什么"，
+又不会和正式回答混在一起。压缩成功后来一条 `compact-end`（含总结正文）；压缩失败则没有 `compact-end`，错误照常抛出。
+上下文超长时的顺序是：`request-error`（不带 `retry`）→ `compact-start` → 压缩请求 → `compact-end` → 新的 `request-start`。
+压缩请求的流式跟随 `compact.stream ?? stream`（默认流式）；非流式时没有 `text` / `reasoning` 片段，其余事件不变。
 
 ### `agent.stop()`
 
@@ -263,17 +278,18 @@ await agent.MCP.open('github')    // → { name: 'github', found: true, enabled:
 
 ### `agent.compact(callbacks?)`
 
-强制压缩一次，返回总结文字（片段同样通过 `onChunk` 流式推送）。
+强制压缩一次，返回总结文字（事件同样通过 `onEvent` 推送）。
 
 ### `agent.MCP.close(name)` / `agent.MCP.open(name)`
 
 临时关闭 / 重新打开一条 MCP 连接，见[接 MCP](#接-mcp)。
 
-### `Agent.LLM.ask(request, onChunk?)`
+### `Agent.LLM.ask(request, onEvent?)`
 
-不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, includeUsage, cache, provider, maxTokens, output, retry, signal, onRetry }`，
+不建实例直接问模型：传完整的 `{ model, baseURL, apiKey, protocol, system, messages, tools, textTools, reasoning, stream, includeUsage, cache, provider, maxTokens, output, retry, signal }`，
 返回 `{ text, reasoning, toolCalls, usage, request, output?, messages }`，流式与非流式形状一致。`usage` 五个字段缺的补 0 方便累加；`request` 是上文 ④ 的请求记录（loop 把它挂到写进 history 的消息上）。
-`reasoning` 是这次回复的思考全文（没有思考就是空串），`text` 是正文全文：流式时宿主可以拿它们核对 `onChunk` 推送过的片段有没有漏。`tools` 只要 `{ description, parameters }`，不会执行。
+`reasoning` 是这次回复的思考全文（没有思考就是空串），`text` 是正文全文：流式时宿主可以拿它们核对推送过的片段有没有漏。
+`onEvent` 收到这次请求的 `request-start` / `text` / `reasoning` / `request-end` / `request-error`（含重试）；工具调用不发事件，在返回值的 `toolCalls` 里。`tools` 只要 `{ description, parameters }`，不会执行。
 
 ### 公开字段
 
@@ -301,7 +317,7 @@ history 里原文一条不少；每次请求只从里面**现挑**发给模型�
 再按"步"（一次模型回复连同它的工具结果）从后往前补回预算装得下的最近几步——模型既看得到"正在做的事"，
 也看得到刚刚那一步的现场（刚读到的内容、刚报的错），不用从头再来；`budget: 0` 时只留那句话。
 裁剪按回合 / 步进行，工具结果按 `toolCallId` 跟在它的调用后面，落单的调用 / 结果丢掉；
-history 里发不出去的消息（`system`、未知 role、没有 content）跳过并 `onWarning` 一次，保证发出去的永远是合法上下文。估算超过 `compactThreshold` 就自动压缩一次（每轮最多一次）；
+history 里发不出去的消息（`system`、未知 role、没有 content）跳过并发一次 `warning` 事件，保证发出去的永远是合法上下文。估算超过 `compactThreshold` 就自动压缩一次（每轮最多一次）；
 二次压缩会把上一版总结并进提示词，越压不会越忘。token 估算比例在每次拿到真实 usage 后按模型名校准。
 
 ---
@@ -326,7 +342,7 @@ index.ts                包入口：导出 Agent 和类型
 src/
   agent.ts              唯一的状态持有者：create / send / stop / compact、Agent.LLM
   loop/run.ts           一次 send 的完整循环（loop 是 history 唯一的写入者）
-  loop/compact.ts       压缩：拼总结请求、问模型、写 role:compact、发 onCompact
+  loop/compact.ts       压缩：拼总结请求、问模型、写 role:compact、发 compact-end
   loop/decide.ts        每轮结束后的继续 / 提醒 / 结束判定
   context/build.ts      从 history 现挑这一次要发的上下文
   model/ask.ts          问一次模型（流式 / 非流式 / 文字工具），重试
@@ -363,7 +379,7 @@ bun run build     # 打包 dist/agent-core.js + dist/types，并在临时目录�
 
 ## 这个包不做什么
 
-- **不保存对话。** `history` 就是内存里的数组，存库、按用户隔离由宿主做（`onStep` 是落盘的好时机）。
+- **不保存对话。** `history` 就是内存里的数组，存库、按用户隔离由宿主做（`step` 事件是落盘的好时机）。
 - **不管插件和技能。** 插件 → 路径的映射、开关、渲染都在宿主；核心只看路径，结果里带 `path` 方便宿主分发。
 - **不算钱。** `usage` 是原始 token 数。
 - **不做用户、权限和沙箱。** 只有 `onPermission` 一个挂钩点。

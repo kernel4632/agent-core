@@ -61,7 +61,7 @@ function identify(model: ModelInput): string {
 
 /*
 current：这个模型现在该用的比例，以及它从哪来（usage / host / default）。学到的优先，其次宿主的冷启动值，最后默认值。
-冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。来源一起返回，宿主据此判断估算可不可信（onInject / onCompact）。
+冷启动值只在没学到之前生效；上游从不回 usage 时它一直有效。来源一起返回，宿主据此判断估算可不可信（onInject / compact-end 事件）。
 */
 export function current(ratios: Record<string, number>, model: ModelInput, seed?: number): { ratio: number; source: RatioSource } {
     const learned = ratios[identify(model)]

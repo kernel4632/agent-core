@@ -5,7 +5,7 @@ MCP 工具（用一个本地的假 MCP 服务器）。这些用例会真的起�
 
 import { describe, expect, test } from 'bun:test'
 import { Agent } from '../index.ts'
-import type { Message } from '../index.ts'
+import type { Event, Message } from '../index.ts'
 import { script, tools, tool, toolNames } from './helpers.ts'
 
 const results = (history: Message[]) => history.flatMap(message => message.role === 'tool' ? (message.content as any[]) : [])
@@ -17,7 +17,7 @@ describe('stop()', () => {
         const agent: Agent = Agent.create({ model, tools: [dir], stream: false })
         let stopped = 0
         let confirmed: Promise<unknown> = Promise.resolve()
-        const running = agent.send('hi', { onToolCall: () => { setTimeout(() => { stopped = Date.now(); confirmed = agent.stop() }, 300) } })
+        const running = agent.send('hi', { onEvent: event => { if (event.type === 'tool-call') setTimeout(() => { stopped = Date.now(); confirmed = agent.stop() }, 300) } })
         const failure = await running.catch(e => e)
         expect(failure.kind).toBe('aborted')
         expect(Date.now() - stopped).toBeLessThan(1000)                   // 不等工具反应
@@ -33,7 +33,7 @@ describe('stop()', () => {
         const b = script([{ calls: [{ name: 'nap' }] }, { text: 'B' }])
         const agentA: Agent = Agent.create({ model: a.model, tools: [dir], stream: false, noToolRounds: 1 })
         const agentB: Agent = Agent.create({ model: b.model, tools: [dir], stream: false, noToolRounds: 1 })
-        const runA = agentA.send('hi', { onToolCall: () => { setTimeout(() => void agentA.stop(), 200) } }).catch(e => e)
+        const runA = agentA.send('hi', { onEvent: event => { if (event.type === 'tool-call') setTimeout(() => void agentA.stop(), 200) } }).catch(e => e)
         const answerB = await agentB.send('hi')
         expect((await runA).kind).toBe('aborted')
         expect(answerB.text).toBe('B')
@@ -42,7 +42,7 @@ describe('stop()', () => {
 })
 
 describe('坏插件文件', () => {
-    test('语法错误、契约不符、顶层死循环的文件被跳过并通过 onWarning 警告，好工具照常可用', async () => {
+    test('语法错误、契约不符、顶层死循环的文件被跳过并发 warning 事件警告，好工具照常可用', async () => {
         const dir = tools({
             'good.ts': tool('good', 'return "好"'),
             'syntax.ts': 'export default { name: ',
@@ -52,7 +52,7 @@ describe('坏插件文件', () => {
         const { model, calls } = script([{ calls: [{ name: 'good' }] }, { text: '好' }])
         const warnings: string[] = []
         const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
-        await agent.send('hi', { onWarning: warning => warnings.push(warning.path ?? '') })
+        await agent.send('hi', { onEvent: event => { if (event.type === 'warning') warnings.push(event.path ?? '') } })
         expect(toolNames(calls[0])).toEqual(['good'])
         expect(warnings.map(path => path.split(/[\\/]/).pop()).sort()).toEqual(['norun.ts', 'spin.ts', 'syntax.ts']) // 同一个坏文件只警告一次
         expect(results(agent.history)[0].output.value).toBe('好')
@@ -148,7 +148,7 @@ describe('工具子进程细节', () => {
         const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
         const outputs: { toolCallId: string; data: string; at: number }[] = []
         const started = Date.now()
-        await agent.send('hi', { onToolOutput: output => { outputs.push({ ...output, at: Date.now() - started }) } })
+        await agent.send('hi', { onEvent: event => { if (event.type === 'tool-output') { const { type: _type, ...output } = event; outputs.push({ ...output, at: Date.now() - started }) } } })
         const [slow, steps, oom, env] = results(agent.history)
         expect(slow.output.value).toContain('工具执行超时')
         expect(slow.output.value).toContain('已完成一半')
@@ -169,12 +169,12 @@ describe('MCP 连接不阻塞', () => {
         const { model } = script([{ text: '好' }])
         const agent = Agent.create({ model, stream: false, MCP: [{ name: 'dead', url: `http://localhost:${dead.port}/mcp` }] })
         const warnings: string[] = []
-        const onWarning = (warning: { message: string }) => { warnings.push(warning.message) }
+        const onEvent = (event: Event) => { if (event.type === 'warning') warnings.push(event.message) }
         try {
             await Bun.sleep(300)                                             // create 时在后台开连并失败：只记在记录上
-            await agent.send('1', { onWarning })
-            await agent.send('2', { onWarning })
-            expect(warnings).toEqual([])                                     // 连接失败不占用 send 的 onWarning
+            await agent.send('1', { onEvent })
+            await agent.send('2', { onEvent })
+            expect(warnings).toEqual([])                                     // 连接失败不占用 send 的 warning 事件
             const before = hits
             expect(hits).toBeGreaterThan(0)
             const opened = await agent.MCP.open('dead')                      // 用户亲自打开：重试并等结果
@@ -182,7 +182,7 @@ describe('MCP 连接不阻塞', () => {
             expect(opened.error).toBeString()
             expect(hits).toBeGreaterThan(before)                             // 确实重新连了一次
             const again = hits
-            await agent.send('3', { onWarning })
+            await agent.send('3', { onEvent })
             expect(hits).toBe(again)                                         // 失败之后不自动重连
             expect(await agent.MCP.close('dead')).toMatchObject({ found: true, closed: false }) // 失败的记录只是被移出
         } finally { dead.stop(true) }

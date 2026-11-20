@@ -2,7 +2,7 @@
 build：每一轮从当前状态现拼一次上下文，不缓存任何东西；宿主对 history / config 的修改下一轮立即生效。
 
 调用示例（在 loop/run 里）：
-    const built = build(state, tools, callbacks.onWarning)
+    const built = build(state, tools, callbacks.onEvent)
     if (built.over) await compact(state, callbacks, 'auto')   // 是否超长只在 run 里判断这一处
 
 拼法（issue #30 第 8、9 条与 Q1、Q7）：
@@ -13,7 +13,7 @@ build：每一轮从当前状态现拼一次上下文，不缓存任何东西；
    再按"步"（一次模型回复连同它的工具结果）从后往前补回装得下的最近几步——见下面"为什么留最近几步"；
 3. system = config.system + 最新总结（折进 system，不作为单独消息——实测单独的 user 总结成功率从 6/6 掉到 1/6）；
 4. 顺序：开场 head 轮 → 总结之前最近 beforeSummary 轮（或进行中那一轮的最近几步）→ 总结之后的全部原文；
-5. 只发模型认得的消息：去掉 id、请求记录 request、role:'error'、旧的 compact；system / 不认识的 role / 没有 content 的消息跳过并 onWarning 提醒一次；
+5. 只发模型认得的消息：去掉 id、请求记录 request、role:'error'、旧的 compact；system / 不认识的 role / 没有 content 的消息跳过并发 warning 事件提醒一次；
    工具结果按 toolCallId 紧跟在发起它的 assistant 后面（宿主乱序拼接、按 id 恢复的历史也能发），没配对的调用 / 结果去掉；
    思考块按 config.reasoning 处理：'strip'（默认）摘掉，'send' 原样发回；
 6. 内容块（用户消息和工具结果里的都算）统一成 AI SDK v7 的形状：旧 image / audio / video / file-data / file-url 转成 file，
@@ -51,7 +51,7 @@ const LABEL = { image: '图片', audio: '音频', video: '视频', file: '文件
 // 这一轮发出去的工具描述（名字 → 描述 + 参数），只用于估算 token，build 不关心执行器。
 export type ToolSchemas = Record<string, { description: string; parameters: JSONSchema7 }>
 
-// build 的结果：可以直接交给 model/ask 的 system + messages，以及估算和是否超长（诊断字段给 onInject / onCompact）。
+// build 的结果：可以直接交给 model/ask 的 system + messages，以及估算和是否超长（诊断字段给 onInject / compact-end 事件）。
 export interface Built {
     system: string | undefined
     messages: ModelMessage[]
@@ -67,9 +67,9 @@ export interface Built {
 
 /*
 build：按文件头的七步拼出这一轮的上下文。所有配置都在这里现读并现补默认值，宿主改了下一轮生效；
-估算比例用 tokens.current（键只有模型名）；onWarning 用来提醒 history 里发不出去的消息，同一条只提醒一次。
+估算比例用 tokens.current（键只有模型名）；onEvent 用来发 warning，提醒 history 里发不出去的消息，同一条只提醒一次。
 */
-export function build(state: State, tools: ToolSchemas, onWarning?: Callbacks['onWarning']): Built {
+export function build(state: State, tools: ToolSchemas, onEvent?: Callbacks['onEvent']): Built {
     const { config, history } = state
     const keep = { ...DEFAULT_CONTEXT, ...config.context }                          // 宿主只写了其中一项也不丢另外两项。
     const budget = config.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS
@@ -77,7 +77,7 @@ export function build(state: State, tools: ToolSchemas, onWarning?: Callbacks['o
     const warn = (key: string, message: string) => {
         if (state.internal.warned.has(key)) return
         state.internal.warned.add(key)
-        void tell(onWarning, { message })
+        void tell(onEvent, { type: 'warning', message })
     }
 
     // --- 1~4：按最新总结切分并挑选 ---

@@ -17,26 +17,27 @@ compact：整个项目唯一的压缩逻辑（取代旧实现的三个同名 com
      压缩一律用模型自己的上限，长度靠 SUMMARY_PROMPT 约束；
    - 不带工具、不开文字工具、不要结构化输出：只要一段文字；provider 原样带上，只对工具有意义的 toolChoice
      由 model/configure 按"这一笔没带工具"的通用规则去掉，这里不特殊处理；
-3. model/ask 问模型：开始前发一条 onChunk({ type: 'compact-start' })，压缩模型的思考 / 正文 / finish 片段带上 compact: true
-   实时转给 onChunk（宿主能看到压缩时模型在想什么、总结正文是什么，又不会和正式回答混在一起）；
-   是否流式跟随 config.compact.stream ?? config.stream（默认流式），非流式时只有 compact-start；
-   出错和主请求同一条规则：每次重试前、最终失败都追加一条 role:'error'（request 里带 compact: true），相同的不重复，取消不记；
+3. model/ask 问模型：开始前发一条 compact-start（每次压缩一条，重试不重发），压缩请求自己的事件
+   （request-start / reasoning / text / request-end / request-error）都带上 compact: true 转给 onEvent
+   （宿主能看到压缩时模型在想什么、总结正文是什么，又不会和正式回答混在一起）；
+   是否流式跟随 config.compact.stream ?? config.stream（默认流式），非流式时没有 text / reasoning 片段；
+   出错和主请求同一条规则：每条 request-error 都先追加一条 role:'error'（request 里带 compact: true）再转给宿主，相同的不重复，取消不记；
 4. 空总结直接抛错：写进去一条空总结会让之后的上下文丢掉全部前情；否则以 role:'compact' 追加进 history，挂上这次压缩请求的记录 request；
-5. 发 onCompact（reason、总结正文、压缩前后估算及其诊断、用量），返回总结文字和这一笔请求的用量（run 要把它计进合计）。
+5. 发 compact-end（reason、总结正文、压缩前后估算及其诊断、用量），返回总结文字和这一笔请求的用量（run 要把它计进合计）。
 
 reason：'manual' 来自宿主的 agent.compact()；'auto' 来自 run 的阈值判断（估算到了 compactThreshold）；
 'overflow' 来自模型报上下文超长后的强制压缩（说明估算偏小，宿主排查时要分开看）。
 
 为什么放在 loop 而不是 context：压缩要问模型、要写 history，问模型是 model 的能力，写 history 只有 loop 能做；
 放在 context 就得拆成"拼请求 / 包装"两半由 loop 串起来（旧的 context/summarize），一件事被切成三处。
-导入：context/build、model/ask、history（append）、utils/errors（explain、tell）、utils/retry（options）。全部向下。
+导入：context/build、model/ask、history（append）、utils/errors（tell）、utils/retry（options）。全部向下。
 */
 
-import type { Callbacks, CompactReason, State, Usage } from '../types.ts'
+import type { Callbacks, CompactReason, Event, State, Usage } from '../types.ts'
 import { build } from '../context/build.ts'
 import { ask } from '../model/ask.ts'
 import { append } from '../history.ts'
-import { explain, tell } from '../utils/errors.ts'
+import { tell } from '../utils/errors.ts'
 import { options } from '../utils/retry.ts'
 
 // 让模型写总结的固定指令：要求保留目标、已完成的步骤、关键事实和下一步，便于压缩后接着干活。
@@ -52,15 +53,19 @@ reason 默认 'manual'。压缩失败（含空总结）直接抛出，history �
 */
 export async function compact(state: State, callbacks: Callbacks = {}, reason: CompactReason = 'manual'): Promise<{ summary: string; usage: Usage }> {
     const signal = state.internal.controller?.signal
-    const before = build(state, {}, callbacks.onWarning)
+    const before = build(state, {}, callbacks.onEvent)
     const merged = { ...state.config, ...state.config.compact }          // 压缩专用的模型 / 参数覆盖主配置。
     const system = ['你在压缩一段你自己参与过的工作记录。只输出总结内容本身。', before.system && `下面是这段工作的背景设定和此前的压缩记录，新总结必须保留其中仍然有效的事实：\n\n${before.system}`].filter(Boolean).join('\n\n')
     const name = typeof merged.model === 'string' ? merged.model : (merged.model as { modelId?: string }).modelId
-    const record = (error: unknown, attempt?: number) => {
-        const draft = signal?.aborted ? null : explain(error, { model: name, protocol: merged.protocol ?? 'chat', compact: true, ...(attempt ? { attempt } : { final: true }) })
-        if (draft) append(state.history, draft)
+    // 压缩请求的事件带上 compact: true 转给宿主；request-error 先记进 history（和 run 同一条规则）。
+    const relay = (event: Event) => {
+        if (event.type === 'request-error' && !signal?.aborted) {
+            const { message, ...error } = event.error
+            append(state.history, { role: 'error', content: message, request: { ...error, model: name, protocol: merged.protocol ?? 'chat', compact: true, ...(event.retry ? { attempt: event.attempt } : { final: true }) } })
+        }
+        return tell(callbacks.onEvent, { ...event, compact: true } as Event)
     }
-    void tell(callbacks.onChunk, { type: 'compact-start', reason, compact: true })
+    void tell(callbacks.onEvent, { type: 'compact-start', reason })
     const reply = await ask({
         model: merged.model, baseURL: merged.baseURL, apiKey: merged.apiKey, protocol: merged.protocol,
         cache: merged.cache, provider: merged.provider, stream: merged.stream, includeUsage: merged.includeUsage,
@@ -68,12 +73,11 @@ export async function compact(state: State, callbacks: Callbacks = {}, reason: C
         system,
         messages: [...before.messages, { role: 'user', content: SUMMARY_PROMPT }],
         retry: options(merged), signal,
-        onRetry: info => { record(info.error, info.attempt); return callbacks.onRetry?.(info) },
-    }, chunk => tell(callbacks.onChunk, { ...chunk, compact: true })).catch(error => { record(error); throw error })
+    }, relay)
     const summary = typeof reply.text === 'string' ? reply.text.trim() : ''
     if (!summary) throw new Error('压缩失败：模型返回空总结')
     append(state.history, { role: 'compact', content: summary, request: reply.request }) // 压缩请求的记录挂在总结上。
     const { budget, threshold: compactThreshold, ratio, ratioSource, chars, media } = before
-    void tell(callbacks.onCompact, { reason, summary, before: before.tokens, after: build(state, {}).tokens, budget, compactThreshold, ratio, ratioSource, chars, media, usage: reply.usage })
+    void tell(callbacks.onEvent, { type: 'compact-end', reason, summary, before: before.tokens, after: build(state, {}).tokens, budget, compactThreshold, ratio, ratioSource, chars, media, usage: reply.usage })
     return { summary, usage: reply.usage }
 }

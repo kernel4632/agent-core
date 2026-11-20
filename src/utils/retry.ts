@@ -44,7 +44,7 @@ retry：反复执行 fn 直到成功、命中不重试的错误、次数或总�
 
 - fn 每次收到新的 Attempt，必须用 attempt.signal 发请求，这样单次超时和 stop() 都能打断它；
 - 失败时先用 classify 贴好 kind，再按上面的规则决定要不要重试；
-- 决定重试时先调 onRetry（宿主显示"第几次重试、最多几次、等多久"），再等退避；
+- 决定重试时先调 onRetry（model/ask 把它变成带 retry 的 request-error 事件：第几次、最多几次、等多久），再等退避；
 - 最终失败时抛出最后一个错误（带 kind），不包装，宿主看到的就是原始错误。
 */
 export async function retry<T>(

@@ -37,7 +37,7 @@ const agent = Agent.create({
 
 // --- 发指令，等循环结束；回调按次传入 ---
 const answer = await agent.send('请向世界打个招呼', {
-    onToolResult: result => console.log('工具执行完了：', result.toolName, '→', JSON.stringify(result.output)),
+    onEvent: event => { if (event.type === 'tool-result') console.log('工具执行完了：', event.result.toolName, '→', JSON.stringify(event.result.output)) },
 })
 console.log(answer.text, answer.reason)
 

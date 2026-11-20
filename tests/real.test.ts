@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Output, jsonSchema } from 'ai'
 import { Agent } from '../index.ts'
-import type { AskRequest, Chunk, Config } from '../src/types.ts'
+import type { AskRequest, Config, Event } from '../src/types.ts'
 import { start, type Relay } from '../scripts/relay.ts'
 import { tools } from './helpers.ts'
 
@@ -45,8 +45,8 @@ const base = (m: Target, scenario: string) => ({ model: m.model, protocol: m.pro
 const request = (m: Target, scenario: string, extra: Partial<AskRequest> = {}): AskRequest => ({ ...base(m, scenario), messages: [], retry: { maxTries: 1, timeout: 400_000, baseDelay: 10 }, ...extra })
 const config = (m: Target, scenario: string, extra: Partial<Config> = {}): Config => ({ ...base(m, scenario), retryMaxTries: 1, requestTimeout: 400_000, retryBaseDelay: 10, noToolRounds: 1, ...extra })
 const user = (content: string) => [{ role: 'user' as const, content }]
-// 收集流式片段，返回按类型拼好的全文，用来和返回值逐字核对。
-const collect = (chunks: Chunk[] = []) => ({ chunks, onChunk: (chunk: Chunk) => void chunks.push(chunk), joined: (type: 'text' | 'reasoning') => chunks.map(one => one.type === type && !one.compact ? one.text : '').join('') })
+// 收集事件，返回按类型拼好的流式全文，用来和返回值逐字核对。
+const collect = (events: Event[] = []) => ({ events, onEvent: (event: Event) => void events.push(event), joined: (type: 'text' | 'reasoning') => events.map(one => (one.type === 'text' || one.type === 'reasoning') && one.type === type && !one.compact ? one.text : '').join('') })
 const usageOK = (usage: { inputTokens: number; outputTokens: number }) => expect([usage.inputTokens > 0, usage.outputTokens > 0]).toEqual([true, true])
 const kindOf = (promise: Promise<unknown>) => promise.then(() => 'resolved', (error: any) => error?.kind ?? String(error))
 // 写进 history 的形状：每个块的类型 + providerOptions 里的键（签名、itemId 等回传要用的信息），用来比流式和非流式。
@@ -63,11 +63,11 @@ const LONG = Array.from({ length: 120 }, (_, index) => `第 ${index + 1} 条守�
 
 for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
     test('text-stream：流式文字，片段与返回值逐字一致', async () => {
-        const { chunks, onChunk, joined } = collect()
-        const reply = await Agent.LLM.ask(request(m, 'text-stream', { messages: user('只回复两个字：你好') }), onChunk)
+        const { events, onEvent, joined } = collect()
+        const reply = await Agent.LLM.ask(request(m, 'text-stream', { messages: user('只回复两个字：你好') }), onEvent)
         expect(reply.text.length).toBeGreaterThan(0)
         expect(joined('text')).toBe(reply.text)
-        expect(chunks.at(-1)?.type).toBe('finish')
+        expect([events[0]?.type, events.at(-1)?.type]).toEqual(['request-start', 'request-end'])
         usageOK(reply.usage)
         expect(reply.messages.map(one => one.role)).toEqual(['assistant'])
         // 请求记录：真实往返里首字在完整耗时之内，真报了的输入 / 输出用量原样带上。
@@ -90,8 +90,8 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
     }, WAIT)
 
     test('reasoning：思考块流式推送，拼起来等于返回的 reasoning', async () => {
-        const { onChunk, joined } = collect()
-        const reply = await Agent.LLM.ask(request(m, 'reasoning', { maxTokens: 2000, provider: m.think ? { providerOptions: m.think } : {}, messages: user('一个正整数除以 3 余 2、除以 5 余 3、除以 7 余 2，最小是几？只给数字') }), onChunk)
+        const { onEvent, joined } = collect()
+        const reply = await Agent.LLM.ask(request(m, 'reasoning', { maxTokens: 2000, provider: m.think ? { providerOptions: m.think } : {}, messages: user('一个正整数除以 3 余 2、除以 5 余 3、除以 7 余 2，最小是几？只给数字') }), onEvent)
         shapes.set(`${m.model}:stream`, shapeOf(reply.messages))
         expect(reply.text).toContain('23')
         if ((m.thinking ?? 'text') === 'text') expect(reply.reasoning.length).toBeGreaterThan(0)
@@ -120,7 +120,7 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
     test('tools-multi：多步原生工具调用，后一步用前一步的结果', async () => {
         const agent = Agent.create({ ...config(m, 'tools-multi'), tools: [dir] })
         // 第 6 轮强停：正常 3 轮就收尾，防止模型反复调工具烧额度。
-        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onStep: ({ step }) => { if (step >= 6) agent.stop() } })
+        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onEvent: event => { if (event.type === 'step' && event.step >= 6) agent.stop() } })
         expect(parts(agent.history, 'tool-result').length).toBeGreaterThanOrEqual(2)
         expect([answer.text.includes('6'), answer.steps >= 3]).toEqual([true, true])
         usageOK(answer.usage)
@@ -132,10 +132,10 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
     }, WAIT)
 
     test('text-tools：文字工具模式，history 里仍是标准 tool-call 块', async () => {
-        const { onChunk, joined } = collect()
+        const { onEvent, joined } = collect()
         const agent = Agent.create({ ...config(m, 'text-tools', { textTools: true, noToolRounds: 2, maxTokens: m.toolTokens ?? 400 }), tools: [dir] })
         // claude 常要提醒一次才开始调用，故 noToolRounds 2；听话的模型会"回答→被提醒→再调一次"永不收尾（见报告），第 10 轮强停省额度。
-        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onChunk, onStep: ({ step }) => { if (step >= 10) agent.stop() } })
+        const answer = await agent.send('先用 add 计算 1+2，拿到结果后再用 add 把这个结果加 3。必须一步一步调用工具，不要心算，最后只回复最终数字。', { onEvent: event => { onEvent(event); if (event.type === 'step' && event.step >= 10) agent.stop() } })
         const values = parts(agent.history, 'tool-result').map((part: any) => part.output.value)
         expect([values[0], values.includes(6)]).toEqual([3, true])                       // 真的一步步算了（模型偶尔重复调用；最终回答可能被提醒轮覆盖成空）
         expect(joined('text')).not.toContain('<tool_call')                             // 调用文字不推给宿主
@@ -195,8 +195,8 @@ for (const m of MODELS) describe(`${m.model}（${m.protocol}）`, () => {
 
 for (const m of CROSS) describe(`交叉：${m.model} 走 ${m.protocol}`, () => {
     test('text-stream', async () => {
-        const { onChunk, joined } = collect()
-        const reply = await Agent.LLM.ask(request(m, 'text-stream', { maxTokens: 1000, messages: user('只回复两个字：你好') }), onChunk)
+        const { onEvent, joined } = collect()
+        const reply = await Agent.LLM.ask(request(m, 'text-stream', { maxTokens: 1000, messages: user('只回复两个字：你好') }), onEvent)
         expect(reply.text.length).toBeGreaterThan(0)
         expect(joined('text')).toBe(reply.text)
         for (const value of Object.values(reply.usage)) expect(typeof value).toBe('number')  // glm 走 anthropic 时中转站把用量全报成 0

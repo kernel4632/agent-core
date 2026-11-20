@@ -47,7 +47,7 @@ describe('宿主改状态，下一轮生效', () => {
         const two = tools({ 'b.ts': tool('b', 'return 2') })
         const { model, calls } = script([{ calls: [{ name: 'a' }] }, { calls: [{ name: 'b' }] }, { text: '好了' }])
         const agent: Agent = Agent.create({ model, tools: [one], stream: false, noToolRounds: 1 })
-        await agent.send('hi', { onStep: ({ step }) => { if (step === 1) agent.tools = [two] } }) // 关掉插件 one，打开插件 two
+        await agent.send('hi', { onEvent: event => { if (event.type === 'step' && event.step === 1) agent.tools = [two] } }) // 关掉插件 one，打开插件 two
         expect(toolNames(calls[0])).toEqual(['a'])
         expect(toolNames(calls[1])).toEqual(['b'])
         expect(results(agent.history).map(part => part.output.value)).toEqual([1, 2])
@@ -59,7 +59,8 @@ describe('宿主改状态，下一轮生效', () => {
         const second = script([{ text: '换过了' }])
         const agent: Agent = Agent.create({ model: first.model, tools: [dir], stream: false, system: '旧提示' })
         const answer = await agent.send('hi', {
-            onStep: () => {
+            onEvent: event => {
+                if (event.type !== 'step') return
                 agent.config = { ...agent.config, model: second.model, system: '新提示' }
                 agent.history.push({ id: 'host', role: 'user', content: '宿主补充的一句' })
             },
@@ -99,32 +100,52 @@ describe('工具执行', () => {
         expect(results(agent.history)[0].output.type).toBe('error-text')
     })
 
-    test('流式：onChunk 收到 text / tool-call / tool-result / finish，返回值与回调一致', async () => {
+    test('流式：事件按真实顺序各发一次（请求开始 → 片段 → 请求结束 → 工具 → step），返回值与事件一致', async () => {
         const dir = tools({ 'a.ts': tool('a', 'return 1') })
         const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好的' }])
-        const chunks: string[] = []
+        const types: string[] = []
         let text = ''
-        const answer = await Agent.create({ model, tools: [dir], noToolRounds: 1 }).send('hi', { onChunk: chunk => { chunks.push(chunk.type); if (chunk.type === 'text') text += chunk.text } })
-        expect(chunks).toContain('tool-call')
-        expect(chunks).toContain('tool-result')
-        expect(chunks).toContain('finish')
+        const answer = await Agent.create({ model, tools: [dir], noToolRounds: 1 }).send('hi', { onEvent: event => { types.push(event.type); if (event.type === 'text') text += event.text } })
+        const first = types.slice(0, types.indexOf('step') + 1)
+        expect(first).toEqual(['request-start', 'request-end', 'tool-call', 'tool-result', 'step'])   // 调用只发一次，由 loop 在开跑前发
+        expect(types.filter(type => type === 'request-start')).toHaveLength(2)
+        expect(types.filter(type => type === 'request-end')).toHaveLength(2)
+        expect(types.at(-1)).toBe('step')
         expect(text).toBe(answer.text)
+    })
+
+    test('非流式也有 request-start / request-end：每次请求恰好一对，字段和 history 里的请求记录一致', async () => {
+        const { model } = script([{ text: '好' }])
+        const events: any[] = []
+        const agent = Agent.create({ model, stream: false })
+        await agent.send('hi', { onEvent: event => { events.push(event) } })
+        expect(events.map(event => event.type)).toEqual(['request-start', 'request-end', 'step'])
+        expect(events[0]).toMatchObject({ model: 'mock-model', attempt: 1 })
+        expect(events[1].request).toEqual((agent.history.at(-1) as any).request)
+        expect(events[0].start).toBe(events[1].request.start)
+        expect(JSON.parse(JSON.stringify(events.slice(0, 2)))).toEqual(events.slice(0, 2))            // 纯数据，可原样经 SSE 转发
     })
 })
 
 describe('模型错误', () => {
     const error = (statusCode: number, message: string) => new APICallError({ message, url: 'http://x', requestBodyValues: {}, statusCode, responseBody: message })
 
-    test('5xx 按配置重试，onRetry 收到通知；maxTries 用尽后抛带 kind 的错误', async () => {
+    test('5xx 按配置重试：每次尝试一个 request-start，失败的带 retry 收尾；maxTries 用尽后最后一条不带 retry，抛带 kind 的错误', async () => {
         let fails = 2
         const { model } = script([() => { if (fails-- > 0) throw error(503, '忙'); return { text: '好' } }])
-        const retries: number[] = []
-        const answer = await Agent.create({ model, stream: false, retryBaseDelay: 0 }).send('hi', { onRetry: info => retries.push(info.attempt) })
+        const events: any[] = []
+        const answer = await Agent.create({ model, stream: false, retryBaseDelay: 0 }).send('hi', { onEvent: event => { events.push(event) } })
         expect(answer.text).toBe('好')
-        expect(retries).toEqual([1, 2])
+        expect(events.map(event => `${event.type}:${event.attempt ?? ''}`)).toEqual(['request-start:1', 'request-error:1', 'request-start:2', 'request-error:2', 'request-start:3', 'request-end:', 'step:'])
+        expect(events[1]).toMatchObject({ error: { kind: 'server', statusCode: 503 }, retry: { delay: 0 } })
+        expect(events[1].retry.maxTries).toBeUndefined()                                               // 不限次数：省略，保证可序列化
+        expect(events[1].error.message).toStartWith('模型请求出错（服务端出错，HTTP 503）')                // 和 history 里 role:'error' 同一份正文
         const broken = script([() => { throw error(503, '忙') }])
-        const failure = await Agent.create({ model: broken.model, stream: false, retryMaxTries: 0 }).send('hi').catch(e => e)
+        const last: any[] = []
+        const failure = await Agent.create({ model: broken.model, stream: false, retryMaxTries: 0 }).send('hi', { onEvent: event => { last.push(event) } }).catch(e => e)
         expect(failure.kind).toBe('server')
+        expect(last.map(event => event.type)).toEqual(['request-start', 'request-error'])
+        expect(last[1].retry).toBeUndefined()
     })
 
     test('requestTimeout 到点贴 kind timeout', async () => {
@@ -137,8 +158,11 @@ describe('模型错误', () => {
     test('上下文超长：强制压缩一次再重发', async () => {
         const { model, calls } = script([() => { throw error(400, 'maximum context length exceeded') }, { text: '总结内容' }, { text: '压缩后答复' }])
         const agent = Agent.create({ model, stream: false })
-        const answer = await agent.send('hi')
+        const types: string[] = []
+        const answer = await agent.send('hi', { onEvent: event => { types.push(`${event.type}${'compact' in event && event.compact === true ? '*' : ''}`) } })
         expect(answer.text).toBe('压缩后答复')
+        // 超长：这次请求以不带 retry 的 request-error 收尾，压缩自己的请求带 compact，再重发一次新请求
+        expect(types).toEqual(['request-start', 'request-error', 'compact-start', 'request-start*', 'request-end*', 'compact-end', 'request-start', 'request-end', 'step'])
         expect(agent.history.some(message => message.role === 'compact')).toBe(true)
         expect(JSON.stringify(calls.at(-1).prompt)).toContain('总结内容')    // 总结折进了 system
         expect(agent.history.map(one => one.role)).toEqual(['user', 'error', 'compact', 'assistant']) // 超长也记一条错误
@@ -151,7 +175,7 @@ describe('压缩与估算', () => {
         const history: Message[] = [{ id: 'u0', role: 'user', content: '很长的开场'.repeat(1000) }, { id: 'a0', role: 'assistant', content: [{ type: 'text', text: '好' }] }]
         const compacts: string[] = []
         const agent = Agent.create({ model, history, stream: false, maxContextTokens: 1000, context: { head: 0, beforeSummary: 0 } })
-        await agent.send('下一步', { onCompact: info => compacts.push(info.reason) })
+        await agent.send('下一步', { onEvent: event => { if (event.type === 'compact-end') compacts.push(event.reason) } })
         expect(compacts).toEqual(['auto'])
         expect(history.at(-2)).toMatchObject({ role: 'compact', content: '这是总结' })
         const prompt = JSON.stringify(calls[1].prompt)
@@ -160,19 +184,19 @@ describe('压缩与估算', () => {
         expect(prompt).toContain('下一步')                                 // 本次输入落在总结之前，也始终保留
     })
 
-    test('压缩流式推送：compact-start 之后压缩模型的思考 / 正文 / finish 都带 compact: true，onCompact 照常给最终结果', async () => {
+    test('压缩流式推送：compact-start 之后压缩请求的事件都带 compact: true，compact-end 给最终结果', async () => {
         const { model } = script([{ reasoning: '想想', text: '总结' }])
         const agent = Agent.create({ model, history: [{ id: 'u', role: 'user', content: '你好' }] })   // 默认流式
-        const chunks: any[] = []
-        const finals: any[] = []
-        expect(await agent.compact({ onChunk: chunk => chunks.push(chunk), onCompact: info => finals.push(info) })).toBe('总结')
-        expect(chunks[0]).toEqual({ type: 'compact-start', reason: 'manual', compact: true })
-        expect(chunks.every(chunk => chunk.compact === true)).toBe(true)
-        expect(chunks.filter(chunk => chunk.type === 'reasoning').map(chunk => chunk.text).join('')).toBe('想想')
-        expect(chunks.filter(chunk => chunk.type === 'text').map(chunk => chunk.text).join('')).toBe('总结')
-        expect(chunks.at(-1).type).toBe('finish')
-        expect(finals).toHaveLength(1)
-        expect(finals[0]).toMatchObject({ reason: 'manual', usage: { inputTokens: 100 } })
+        const events: any[] = []
+        expect(await agent.compact({ onEvent: event => { events.push(event) } })).toBe('总结')
+        expect(events[0]).toEqual({ type: 'compact-start', reason: 'manual' })
+        const inner = events.slice(1, -1)
+        expect(inner.every(event => event.compact === true)).toBe(true)
+        expect(inner[0]).toMatchObject({ type: 'request-start', attempt: 1, compact: true })
+        expect(inner.filter(event => event.type === 'reasoning').map(event => event.text).join('')).toBe('想想')
+        expect(inner.filter(event => event.type === 'text').map(event => event.text).join('')).toBe('总结')
+        expect(inner.at(-1).type).toBe('request-end')
+        expect(events.at(-1)).toMatchObject({ type: 'compact-end', reason: 'manual', summary: '总结', usage: { inputTokens: 100 } })
     })
 
     test('agent.compact() 强制压缩一次，返回总结文字', async () => {
@@ -253,16 +277,18 @@ describe('Agent.LLM.ask', () => {
 })
 
 describe('回调与诊断', () => {
-    test('回调抛错或返回被拒绝的 Promise 都不打断循环；onToolCall / onStep 会被等待；返回 steps', async () => {
+    test('onEvent 抛错或返回被拒绝的 Promise 都不打断循环；tool-call / step 会被等待；返回 steps', async () => {
         const dir = tools({ 'a.ts': tool('a', 'return 1') })
         const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好' }])
-        const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })          // 流式：onChunk 也是高频回调
+        const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })          // 流式：片段事件是高频回调
         const order: string[] = []
-        const reject = async () => { throw new Error('宿主回调坏了') }
         const answer = await agent.send('hi', {
-            onChunk: reject, onToolResult: async () => { order.push('result'); throw new Error('坏') }, onWarning: reject,
-            onToolCall: async () => { await Bun.sleep(50); order.push('call') },
-            onStep: async ({ step }) => { await Bun.sleep(50); order.push(`step${step}`) },
+            onEvent: async event => {
+                if (event.type === 'tool-result') order.push('result')
+                if (event.type === 'tool-call') { await Bun.sleep(50); order.push('call') }
+                if (event.type === 'step') { await Bun.sleep(50); order.push(`step${event.step}`) }
+                throw new Error('宿主回调坏了')
+            },
         })
         expect(answer).toMatchObject({ reason: 'no-tool', text: '好', steps: 2 })
         expect(order).toEqual(['call', 'result', 'step1', 'step2'])
@@ -274,7 +300,7 @@ describe('回调与诊断', () => {
         const agent = Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 })
         const asked: string[] = []
         const warnings: string[] = []
-        await agent.send('hi', { onPermission: call => { asked.push(call.toolName); return 'yes' as any }, onWarning: warning => { warnings.push(warning.message) } })
+        await agent.send('hi', { onPermission: call => { asked.push(call.toolName); return 'yes' as any }, onEvent: event => { if (event.type === 'warning') warnings.push(event.message) } })
         expect(asked).toEqual(['a', 'a'])
         const [ghost, first] = results(agent.history)
         expect(ghost.output).toMatchObject({ type: 'error-text', value: expect.stringContaining('工具调用无效') })
@@ -305,12 +331,12 @@ describe('回调与诊断', () => {
         expect(JSON.stringify(agent.history)).not.toContain('二')
     })
 
-    test('onInject 拿到阈值和比例来源；onCompact 带 reason、总结正文和诊断；超长重发的 reason 是 overflow', async () => {
+    test('onInject 拿到阈值和比例来源；compact-end 带 reason、总结正文和诊断；超长重发的 reason 是 overflow', async () => {
         const { model } = script([{ text: '这是总结' }, { text: '继续' }])
         const history: Message[] = [{ id: 'u0', role: 'user', content: '很长的开场'.repeat(1000) }, { id: 'a0', role: 'assistant', content: [{ type: 'text', text: '好' }] }]
         const infos: any[] = []
         const injects: any[] = []
-        await Agent.create({ model, history, stream: false, maxContextTokens: 1000 }).send('下一步', { onCompact: info => { infos.push(info) }, onInject: info => { injects.push(info); return undefined } })
+        await Agent.create({ model, history, stream: false, maxContextTokens: 1000 }).send('下一步', { onEvent: event => { if (event.type === 'compact-end') infos.push(event) }, onInject: info => { injects.push(info); return undefined } })
         expect(infos[0]).toMatchObject({ reason: 'auto', summary: '这是总结', budget: 1000, compactThreshold: 0.8, ratioSource: 'default' })
         expect(infos[0].before).toBeGreaterThan(infos[0].after)
         expect(injects[0]).toMatchObject({ budget: 1000, compactThreshold: 0.8, ratioSource: 'default' })
@@ -318,7 +344,7 @@ describe('回调与诊断', () => {
         let first = true
         const overflow = script([() => { if (first) { first = false; throw new APICallError({ message: 'maximum context length exceeded', url: 'http://x', requestBodyValues: {}, statusCode: 400 }) } return { text: '总结' } }, { text: '答' }])
         const reasons: string[] = []
-        await Agent.create({ model: overflow.model, stream: false }).send('hi', { onCompact: info => { reasons.push(info.reason) } })
+        await Agent.create({ model: overflow.model, stream: false }).send('hi', { onEvent: event => { if (event.type === 'compact-end') reasons.push(event.reason) } })
         expect(reasons).toEqual(['overflow'])
     })
 
@@ -337,7 +363,7 @@ describe('回调与诊断', () => {
         const { model } = script([{ text: '我来算<tool_call>{"name": "add", "arguments": {"x": 41}}</tool_call>' }, { text: '答案 <b>42</b>' }], 'plain-chat')
         const agent = Agent.create({ model, tools: [dir], textTools: true, noToolRounds: 1 })
         let text = ''
-        await agent.send('41+1', { onChunk: chunk => { if (chunk.type === 'text') text += chunk.text } })
+        await agent.send('41+1', { onEvent: event => { if (event.type === 'text') text += event.text } })
         expect(text).toBe('我来算答案 <b>42</b>')
         expect(results(agent.history)[0].output.value).toBe(42)
     })

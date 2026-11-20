@@ -8,8 +8,8 @@
 1. 配置（Config 及其子项）——宿主随时可改，下一轮生效；
 2. 历史消息（Message）——AI SDK 标准消息 + id（assistant 和 compact 另带请求记录 RequestRecord），外加 compact / error 两种自定义 role；
 3. 工具（ToolDefinition 工具文件契约、ToolMeta 元数据、MCPServer 连接配置、调用与结果）；
-4. 问模型（AskRequest / Reply / Chunk）——Agent.LLM.ask 的公开契约；
-5. 回调与返回值（Callbacks / Answer）；
+4. 问模型（AskRequest / Reply）——Agent.LLM.ask 的公开契约；
+5. 回调与返回值（Callbacks / Event / Answer）；
 6. 运行时状态（State / Internal）——loop 通过参数拿到它，从不导入 agent。
 */
 
@@ -169,29 +169,13 @@ export interface AskRequest {
     output?: unknown
     retry?: RetryOptions
     signal?: AbortSignal
-    onRetry?: (info: RetryInfo) => unknown
 }
-
-// 一次重试通知：第几次重试、最多几次（Infinity = 不限）、这次的错误、等多久（毫秒）。
-export interface RetryInfo { attempt: number; maxTries: number; error: Error; delay: number }
 
 // 为什么压缩：auto = 估算到阈值；overflow = 模型报上下文超长后强制压缩再重发；manual = 宿主调 agent.compact()。
 export type CompactReason = 'auto' | 'overflow' | 'manual'
 
 // 估算比例的来源：usage = 真实用量学到的；host = 宿主给的冷启动 contextRatio；default = 默认 0.6。
 export type RatioSource = 'usage' | 'host' | 'default'
-
-// 流式片段：简化后的形状，不暴露 AI SDK 原始事件。tool-result 由 loop 在执行完工具后补发。
-// 压缩期间：先发一条 compact-start，之后压缩模型的 reasoning / text / finish 片段都带 compact: true，
-// 宿主用同一个 onChunk 就能实时展示"正在压缩：模型在想什么、总结正文是什么"，又不会和正式回答混在一起。
-export type Chunk = (
-    | { type: 'text'; text: string }
-    | { type: 'reasoning'; text: string }
-    | { type: 'tool-call'; call: ToolCall }
-    | { type: 'tool-result'; result: ToolResult }
-    | { type: 'finish'; usage: Usage }
-    | { type: 'compact-start'; reason: CompactReason }
-) & { compact?: true }
 
 // 用量：五个字段都给数字，缺的补 0，方便宿主累加。
 export interface Usage { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
@@ -240,19 +224,37 @@ export interface MCP {
 // decide 的判断结果：继续、挂一条临时提醒后继续、或结束并给出原因。
 export type Decision = { action: 'continue' } | { action: 'remind'; reminder: string } | { action: 'end'; reason: Reason }
 
-// 每次 send 传入的回调；全部可选，没传的跳过。渲染 / 钩子由宿主按 ToolResult.path 分发到插件。
+// 每次 send 传入的回调，全部可选。只分两类：onEvent 是"告诉宿主发生了什么"（全部通知走这一个入口），
+// onPermission / onInject 是"问宿主要一个答案"。渲染 / 钩子由宿主按 path 分发到插件。
 export interface Callbacks {
-    onChunk?: (chunk: Chunk) => unknown
+    onEvent?: (event: Event) => unknown                                                  // 返回 Promise 时，只有 tool-call / step 会被等待
     onPermission?: (call: ToolCall & { path?: string }) => boolean | Promise<boolean>   // 必须严格返回布尔值，非 true 一律拒绝
     onInject?: (info: { tokens: number; budget: number; compactThreshold: number; ratio: number; ratioSource: RatioSource }) => string | undefined | Promise<string | undefined>
-    onToolCall?: (call: ToolCall & { path?: string }) => unknown        // 会被等待：工具开跑前宿主先把调用显示出来
-    onToolOutput?: (output: { toolCallId: string; stream: 'stdout' | 'stderr'; data: string }) => unknown
-    onToolResult?: (result: ToolResult) => unknown
-    onStep?: (step: { step: number; reply: Reply; results: ToolResult[] }) => unknown   // 会被等待：这一轮已写进 history，宿主可在这里安全持久化
-    onCompact?: (info: CompactInfo) => unknown
-    onRetry?: (info: RetryInfo) => unknown
-    onWarning?: (warning: { path?: string; message: string }) => unknown   // 坏工具文件被跳过、history 里有发不出去的消息等
 }
+
+// 一次模型请求失败的说明：纯数据（宿主可原样序列化），message 就是写进 history 那条 role:'error' 的正文。
+export interface RequestError { kind: ErrorKind; message: string; statusCode?: number }
+
+/*
+事件：核心发生的每一件事恰好一条，按 type 区分；全是纯数据，宿主可以原样经 SSE 转给前端。
+一次模型请求（每次尝试）：request-start →（text / reasoning 流式片段）→ request-end 或 request-error，必有一个收尾；
+request-error 带 retry 表示等 delay 毫秒后重试（接着是新的 request-start），不带就是这次请求放弃了
+（最终失败、或上下文超长转去压缩）。用户 stop() 不发 request-error（那是操作，不是故障）。
+压缩：compact-start → 压缩模型自己的请求事件（都带 compact: true）→ compact-end（带诊断）；压缩失败时没有 compact-end。
+*/
+export type Event =
+    | { type: 'request-start'; model: string; start: number; attempt: number; compact?: true }   // 请求真正发出：模型名、开始时间（同 RequestRecord）、第几次尝试
+    | { type: 'text'; text: string; compact?: true }                                              // 正文片段（只在流式时有）
+    | { type: 'reasoning'; text: string; compact?: true }                                         // 思考片段（只在流式时有）
+    | { type: 'request-end'; usage: Usage; request: RequestRecord; compact?: true }               // 请求成功收尾：补齐的用量 + 请求记录
+    | { type: 'request-error'; attempt: number; error: RequestError; retry?: { delay: number; maxTries?: number }; compact?: true } // 这次尝试失败；maxTries 省略 = 不限
+    | { type: 'tool-call'; call: ToolCall & { path?: string } }                                   // 会被等待：工具开跑（问权限）前宿主先把调用显示出来
+    | { type: 'tool-output'; toolCallId: string; stream: 'stdout' | 'stderr'; data: string }      // 工具子进程的实时输出
+    | { type: 'tool-result'; result: ToolResult }                                                 // 工具结果（已写进 history）
+    | { type: 'step'; step: number; reply: Reply; results: ToolResult[] }                         // 会被等待：这一轮已写进 history，宿主可在这里安全持久化
+    | { type: 'compact-start'; reason: CompactReason }                                            // 开始压缩
+    | ({ type: 'compact-end' } & CompactInfo)                                                     // 压缩完成：总结已写进 history
+    | { type: 'warning'; path?: string; message: string }                                         // 坏工具文件被跳过、history 里有发不出去的消息等
 
 // 压缩完成的通知：为什么压、总结正文、压缩前后的估算，以及估算是怎么来的（排查"为什么压"用）。
 export interface CompactInfo {

@@ -3,7 +3,7 @@ Agent：唯一的状态持有者。宿主能直接读写的状态都是实例上
 
 调用示例：
     const agent = Agent.create({ model: 'gpt-4o', baseURL, apiKey, system: '你是一个助手。', tools: ['/plugins/a/tool.ts', '/plugins/b/'] })
-    const { reason, text, usage, output } = await agent.send('帮我做件事', { onChunk: c => render(c) })
+    const { reason, text, usage, output } = await agent.send('帮我做件事', { onEvent: e => render(e) })
     agent.tools = agent.tools.filter(p => !p.startsWith('/plugins/a/'))   // 关掉插件 a：下一次请求就没有它的工具
     agent.config = { ...agent.config, model: 'claude-sonnet-4' }          // 中途换模型：下一轮生效
     const { stopped, killed } = await agent.stop()                         // 立即杀掉本实例的工具子进程，等它们退出、循环收尾后才返回
@@ -32,7 +32,7 @@ import { ask } from './model/ask.ts'
 import { cancelled } from './utils/errors.ts'
 
 export class Agent {
-    // 问模型的公开封装：Agent.LLM.ask(request, onChunk)，独立于任何实例。
+    // 问模型的公开封装：Agent.LLM.ask(request, onEvent)，独立于任何实例。
     static readonly LLM = { ask }
 
     id: string                          // 实例 id：给宿主区分自己建的多个 Agent（例如持久化时当文件名），核心不使用

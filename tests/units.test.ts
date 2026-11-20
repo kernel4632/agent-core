@@ -136,8 +136,8 @@ describe('context/build', () => {
         ]
         const warnings: string[] = []
         const state = stateOf(history)
-        const built = build(state, {}, warning => { warnings.push(warning.message) })
-        build(state, {}, warning => { warnings.push(warning.message) })                 // 第二轮不再重复提醒
+        const built = build(state, {}, event => { if (event.type === 'warning') warnings.push(event.message) })
+        build(state, {}, event => { if (event.type === 'warning') warnings.push(event.message) }) // 第二轮不再重复提醒
         expect(warnings).toHaveLength(2)
         expect(warnings[0]).toContain('config.system')
         expect(built.messages.map(message => message.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
