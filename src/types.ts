@@ -227,7 +227,7 @@ export type Decision = { action: 'continue' } | { action: 'remind'; reminder: st
 // 每次 send 传入的回调，全部可选。只分两类：onEvent 是"告诉宿主发生了什么"（全部通知走这一个入口），
 // onPermission / onInject 是"问宿主要一个答案"。渲染 / 钩子由宿主按 path 分发到插件。
 export interface Callbacks {
-    onEvent?: (event: Event) => unknown                                                  // 返回 Promise 时，只有 tool-run / step 会被等待
+    onEvent?: (event: Event) => unknown                                                  // 返回 Promise 时，只有 message / tool-run / step 会被等待
     onPermission?: (call: ToolCall & { path?: string }) => boolean | Promise<boolean>   // 必须严格返回布尔值，非 true 一律拒绝
     onInject?: (info: { tokens: number; budget: number; compactThreshold: number; ratio: number; ratioSource: RatioSource }) => string | undefined | Promise<string | undefined>
 }
@@ -239,6 +239,7 @@ export interface RequestError { kind: ErrorKind; message: string; statusCode?: n
 事件：核心发生的每一件事恰好一条，按 type 区分；全是纯数据，宿主可以原样经 SSE 转给前端。
 一次模型请求（每次尝试）：request-start →（text / reasoning / tool-input-start / tool-input 流式片段、tool-call）→ request-end 或 request-error，必有一个收尾；
 失败的尝试里已经冒出来的片段和调用作废（不会写进 history），宿主按 request-error 丢掉即可。
+每追加一条 history（用户输入、模型回复、工具结果、错误记录、压缩总结）就发一条会被等待的 message，带真实 id 的完整消息；重复的 error 不追加也不发。
 一次工具调用：tool-input-start → tool-input…（模型边写参数边推，供应商不分段时没有）→ tool-call（调用写完）
 → tool-run（放行、马上执行，会被等待；拒绝 / 无效的调用没有）→ tool-output… → tool-result。
 request-error 带 retry 表示等 delay 毫秒后重试（接着是新的 request-start），不带就是这次请求放弃了
@@ -256,7 +257,8 @@ export type Event =
     | { type: 'tool-call'; call: ToolCall }                                                       // 调用写完：完整参数；invalid 有值 = 调用本身无效（不会执行）
     | { type: 'tool-run'; toolCallId: string; toolName: string; path?: string }                   // 会被等待：权限已放行，工具马上开始执行
     | { type: 'tool-output'; toolCallId: string; stream: 'stdout' | 'stderr'; data: string }      // 工具子进程的实时输出
-    | { type: 'tool-result'; result: ToolResult }                                                 // 工具结果（已写进 history）
+    | { type: 'message'; message: Message }                                                       // 会被等待：刚写进 history 的完整消息（含真实 id）；重复的 error 不发
+    | { type: 'tool-result'; result: ToolResult }                                                 // 工具结果（已写进 history；紧跟对应的 message）
     | { type: 'step'; step: number; reply: Reply; results: ToolResult[] }                         // 会被等待：这一轮已写进 history，宿主可在这里安全持久化
     | { type: 'compact-start'; reason: CompactReason }                                            // 开始压缩
     | ({ type: 'compact-end' } & CompactInfo)                                                     // 压缩完成：总结已写进 history

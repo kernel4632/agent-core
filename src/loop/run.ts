@@ -37,7 +37,7 @@ import { ask } from '../model/ask.ts'
 import { load } from '../tools/load.ts'
 import { connect } from '../tools/mcp.ts'
 import { run as execute } from '../tools/run.ts'
-import { append, unanswered } from '../history.ts'
+import { record, unanswered } from '../history.ts'
 import { calibrate } from '../utils/tokens.ts'
 import { cancelled, classify, tell } from '../utils/errors.ts'
 import { options } from '../utils/retry.ts'
@@ -99,10 +99,11 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
             // --- 4. 问模型；模型说"窗口放不下"时强制压缩再重发，最多 OVERFLOW_RETRIES 次；每个错误都记进 history ---
             const name = typeof config.model === 'string' ? config.model : (config.model as { modelId?: string }).modelId
             // 请求事件原样转给宿主；request-error 先记进 history（重试的记 attempt，放弃的记 final），再通知宿主。
+            // request-error 必须在这个同步回合里转给宿主（ask 不等待 onEvent）。若这里 await record，compact-start 会插到 request-error 前面。
             const relay = (event: Event) => {
                 if (event.type === 'request-error' && !signal.aborted) {
                     const { message, ...error } = event.error
-                    append(state.history, { role: 'error', content: message, request: { ...error, model: name, protocol: config.protocol ?? 'chat', ...(event.retry ? { attempt: event.attempt } : { final: true }) } })
+                    void record(state.history, { role: 'error', content: message, request: { ...error, model: name, protocol: config.protocol ?? 'chat', ...(event.retry ? { attempt: event.attempt } : { final: true }) } }, callbacks.onEvent)
                 }
                 return emit(event)
             }
@@ -132,7 +133,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
 
             // --- 5. 回复写进 history：请求记录挂在最后一条 assistant 上（一次请求 = 一条 assistant，纯调工具也是）---
             const last = reply.messages.findLastIndex(message => message.role === 'assistant')
-            reply.messages.forEach((message, index) => append(state.history, index === last ? { ...message, request: reply.request } as Draft : message))
+            for (const [index, message] of reply.messages.entries()) await record(state.history, index === last ? { ...message, request: reply.request } as Draft : message, callbacks.onEvent)
 
             // --- 6. 权限：逐个问宿主（并行问），等待期间 stop() 一到就不再等（宿主钩子可能永远不返回）---
             // verdict：true 放行；false 拒绝；'invalid' 调用本身无效（不问权限、不执行）。
@@ -164,7 +165,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
                 : signal.aborted ? { ...call, output: { type: 'error-text', value: '工具执行已取消' }, error: '工具执行已取消', cancelled: true }
                 : { ...call, output: { type: 'execution-denied', reason: '工具执行被用户拒绝' }, path: locate(call.toolName) })
             for (const result of results) {
-                append(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: result.toolCallId, toolName: result.toolName, output: result.output as any }] })
+                await record(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: result.toolCallId, toolName: result.toolName, output: result.output as any }] }, callbacks.onEvent)
                 void emit({ type: 'tool-result', result })
             }
             await emit({ type: 'step', step, reply, results })
@@ -179,7 +180,7 @@ export async function run(state: State, callbacks: Callbacks = {}): Promise<Answ
     } finally {
         // 兜底：任何出口都不留悬空的工具调用（例如权限钩子抛错时，回复已写入但结果还没写）。
         for (const call of unanswered(state.history)) {
-            append(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: call.toolCallId, toolName: call.toolName, output: { type: 'error-text', value: '工具执行已取消' } }] })
+            await record(state.history, { role: 'tool', content: [{ type: 'tool-result', toolCallId: call.toolCallId, toolName: call.toolName, output: { type: 'error-text', value: '工具执行已取消' } }] }, callbacks.onEvent)
         }
     }
 }

@@ -12,11 +12,13 @@ history 的形状（issue #30 Q1）：AI SDK 标准消息 + id，外加两种自
 - 'error'：失败记录（loop 记下的模型请求错误，或宿主自己写的），只存不发；和上一条内容相同的错误不重复追加。
 
 谁能调用 append：只有 loop（项目里唯一写 history 的地方）和 agent.send（把用户输入放进去后立刻交给 loop）。
+真正写入时请走 record：它调用 append，并在确实追加后发一条 message 事件（会被等待）。重复的 error 不发。
 本文件没有模块级可变状态：id 用 nanoid 现生成。
 */
 
 import { nanoid } from 'nanoid'
-import type { Draft, Message } from './types.ts'
+import type { Draft, Event, Message } from './types.ts'
+import { tell } from './utils/errors.ts'
 
 // history 允许的 role：AI SDK 的三种对话 role，加两种自定义 role。system 不进 history（它在 config.system 里）。
 const ROLES = new Set(['user', 'assistant', 'tool', 'compact', 'error'])
@@ -55,6 +57,17 @@ export function append(history: Message[], draft: Draft): Message {
     if (typeof id !== 'string' || !id.trim()) throw new TypeError('history message id must be a non-empty string')
     const message = { ...draft, id } as Message                          // 浅拷一份：之后调用方改草稿不会改到 history。
     history.push(message)                                                // 原地追加：宿主手里的数组就是这一个。
+    return message
+}
+
+/*
+record：追加一条历史并通知宿主。只有确实写入时才发 message（重复的 error 只返回已有那条，不发事件）。
+message 事件会被等待：宿主可以在这里按真实 id 落盘，再让循环继续。回调出错不影响写入结果。
+*/
+export async function record(history: Message[], draft: Draft, onEvent?: (event: Event) => unknown): Promise<Message> {
+    const length = history.length
+    const message = append(history, draft)
+    if (history.length > length) await tell(onEvent, { type: 'message', message })
     return message
 }
 

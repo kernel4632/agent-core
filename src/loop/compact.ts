@@ -36,7 +36,7 @@ reason：'manual' 来自宿主的 agent.compact()；'auto' 来自 run 的阈值�
 import type { Callbacks, CompactReason, Event, State, Usage } from '../types.ts'
 import { build } from '../context/build.ts'
 import { ask } from '../model/ask.ts'
-import { append } from '../history.ts'
+import { record } from '../history.ts'
 import { tell } from '../utils/errors.ts'
 import { options } from '../utils/retry.ts'
 
@@ -58,10 +58,11 @@ export async function compact(state: State, callbacks: Callbacks = {}, reason: C
     const system = ['你在压缩一段你自己参与过的工作记录。只输出总结内容本身。', before.system && `下面是这段工作的背景设定和此前的压缩记录，新总结必须保留其中仍然有效的事实：\n\n${before.system}`].filter(Boolean).join('\n\n')
     const name = typeof merged.model === 'string' ? merged.model : (merged.model as { modelId?: string }).modelId
     // 压缩请求的事件带上 compact: true 转给宿主；request-error 先记进 history（和 run 同一条规则）。
+    // 与 run 相同：不能在转发 request-error 之前 await，否则后续事件会插到它前面。
     const relay = (event: Event) => {
         if (event.type === 'request-error' && !signal?.aborted) {
             const { message, ...error } = event.error
-            append(state.history, { role: 'error', content: message, request: { ...error, model: name, protocol: merged.protocol ?? 'chat', compact: true, ...(event.retry ? { attempt: event.attempt } : { final: true }) } })
+            void record(state.history, { role: 'error', content: message, request: { ...error, model: name, protocol: merged.protocol ?? 'chat', compact: true, ...(event.retry ? { attempt: event.attempt } : { final: true }) } }, callbacks.onEvent)
         }
         return tell(callbacks.onEvent, { ...event, compact: true } as Event)
     }
@@ -76,7 +77,7 @@ export async function compact(state: State, callbacks: Callbacks = {}, reason: C
     }, relay)
     const summary = typeof reply.text === 'string' ? reply.text.trim() : ''
     if (!summary) throw new Error('压缩失败：模型返回空总结')
-    append(state.history, { role: 'compact', content: summary, request: reply.request }) // 压缩请求的记录挂在总结上。
+    await record(state.history, { role: 'compact', content: summary, request: reply.request }, callbacks.onEvent) // 压缩请求的记录挂在总结上。
     const { budget, threshold: compactThreshold, ratio, ratioSource, chars, media } = before
     void tell(callbacks.onEvent, { type: 'compact-end', reason, summary, before: before.tokens, after: build(state, {}).tokens, budget, compactThreshold, ratio, ratioSource, chars, media, usage: reply.usage })
     return { summary, usage: reply.usage }

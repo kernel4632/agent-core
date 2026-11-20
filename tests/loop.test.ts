@@ -109,7 +109,7 @@ describe('工具执行', () => {
         const answer = await Agent.create({ model, tools: [dir], noToolRounds: 1 }).send('hi', { onEvent: event => { types.push(event.type); events.push(event); if (event.type === 'text') text += event.text } })
         const first = types.slice(0, types.indexOf('step') + 1)
         // 调用在请求进行中就冒出来（request-end 之前）；放行后 tool-run 是另一件事：马上执行
-        expect(first).toEqual(['request-start', 'tool-input-start', 'tool-input', 'tool-input', 'tool-call', 'request-end', 'tool-run', 'tool-result', 'step'])
+        expect(first).toEqual(['message', 'request-start', 'tool-input-start', 'tool-input', 'tool-input', 'tool-call', 'request-end', 'message', 'tool-run', 'message', 'tool-result', 'step'])
         expect(events.filter(event => event.type === 'tool-input').map(event => event.delta).join('')).toBe('{"x":1}')
         expect(events.find(event => event.type === 'tool-call').call).toEqual({ toolCallId: 'c1', toolName: 'a', input: { x: 1 } })
         expect(events.find(event => event.type === 'tool-run')).toMatchObject({ toolCallId: 'c1', toolName: 'a', path: expect.stringContaining('a.ts') })
@@ -125,7 +125,7 @@ describe('工具执行', () => {
         const types: string[] = []
         const events: any[] = []
         await Agent.create({ model, tools: [dir], stream: false, noToolRounds: 1 }).send('hi', { onPermission: call => call.toolCallId === 'ok', onEvent: event => { events.push(event); types.push(event.type) } })
-        expect(types.slice(0, types.indexOf('step') + 1)).toEqual(['request-start', 'tool-call', 'tool-call', 'tool-call', 'request-end', 'tool-run', 'tool-result', 'tool-result', 'tool-result', 'step'])
+        expect(types.slice(0, types.indexOf('step') + 1)).toEqual(['message', 'request-start', 'tool-call', 'tool-call', 'tool-call', 'request-end', 'message', 'tool-run', 'message', 'tool-result', 'message', 'tool-result', 'message', 'tool-result', 'step'])
         expect(events.filter(event => event.type === 'tool-run').map(event => event.toolCallId)).toEqual(['ok'])
         expect(events.find(event => event.type === 'tool-call' && event.call.toolCallId === 'bad').call.invalid).toBeString()
     })
@@ -135,11 +135,14 @@ describe('工具执行', () => {
         const events: any[] = []
         const agent = Agent.create({ model, stream: false })
         await agent.send('hi', { onEvent: event => { events.push(event) } })
-        expect(events.map(event => event.type)).toEqual(['request-start', 'request-end', 'step'])
-        expect(events[0]).toMatchObject({ model: 'mock-model', attempt: 1 })
-        expect(events[1].request).toEqual((agent.history.at(-1) as any).request)
-        expect(events[0].start).toBe(events[1].request.start)
-        expect(JSON.parse(JSON.stringify(events.slice(0, 2)))).toEqual(events.slice(0, 2))            // 纯数据，可原样经 SSE 转发
+        expect(events.map(event => event.type)).toEqual(['message', 'request-start', 'request-end', 'message', 'step'])
+        expect(events[1]).toMatchObject({ model: 'mock-model', attempt: 1 })
+        expect(events[2].request).toEqual((agent.history.at(-1) as any).request)
+        expect(events[1].start).toBe(events[2].request.start)
+        expect(events[0].message).toMatchObject({ role: 'user', content: 'hi' })
+        expect(events[0].message.id).toBe(agent.history[0].id)
+        expect(events[3].message).toBe(agent.history.at(-1))
+        expect(JSON.parse(JSON.stringify(events.slice(1, 3)))).toEqual(events.slice(1, 3))            // 纯数据，可原样经 SSE 转发
     })
 })
 
@@ -152,16 +155,17 @@ describe('模型错误', () => {
         const events: any[] = []
         const answer = await Agent.create({ model, stream: false, retryBaseDelay: 0 }).send('hi', { onEvent: event => { events.push(event) } })
         expect(answer.text).toBe('好')
-        expect(events.map(event => `${event.type}:${event.attempt ?? ''}`)).toEqual(['request-start:1', 'request-error:1', 'request-start:2', 'request-error:2', 'request-start:3', 'request-end:', 'step:'])
-        expect(events[1]).toMatchObject({ error: { kind: 'server', statusCode: 503 }, retry: { delay: 0 } })
-        expect(events[1].retry.maxTries).toBeUndefined()                                               // 不限次数：省略，保证可序列化
-        expect(events[1].error.message).toStartWith('模型请求出错（服务端出错，HTTP 503）')                // 和 history 里 role:'error' 同一份正文
+        expect(events.map(event => `${event.type}:${event.attempt ?? ''}`)).toEqual(['message:', 'request-start:1', 'message:', 'request-error:1', 'request-start:2', 'request-error:2', 'request-start:3', 'request-end:', 'message:', 'step:'])
+        expect(events[3]).toMatchObject({ error: { kind: 'server', statusCode: 503 }, retry: { delay: 0 } })
+        expect(events[3].retry.maxTries).toBeUndefined()                                               // 不限次数：省略，保证可序列化
+        expect(events[3].error.message).toStartWith('模型请求出错（服务端出错，HTTP 503）')                // 和 history 里 role:'error' 同一份正文
+        expect(events.filter(event => event.type === 'message' && event.message.role === 'error')).toHaveLength(1) // 相同错误不重复写入、不重复发
         const broken = script([() => { throw error(503, '忙') }])
         const last: any[] = []
         const failure = await Agent.create({ model: broken.model, stream: false, retryMaxTries: 0 }).send('hi', { onEvent: event => { last.push(event) } }).catch(e => e)
         expect(failure.kind).toBe('server')
-        expect(last.map(event => event.type)).toEqual(['request-start', 'request-error'])
-        expect(last[1].retry).toBeUndefined()
+        expect(last.map(event => event.type)).toEqual(['message', 'request-start', 'message', 'request-error'])
+        expect(last[3].retry).toBeUndefined()
     })
 
     test('requestTimeout 到点贴 kind timeout', async () => {
@@ -178,7 +182,7 @@ describe('模型错误', () => {
         const answer = await agent.send('hi', { onEvent: event => { types.push(`${event.type}${'compact' in event && event.compact === true ? '*' : ''}`) } })
         expect(answer.text).toBe('压缩后答复')
         // 超长：这次请求以不带 retry 的 request-error 收尾，压缩自己的请求带 compact，再重发一次新请求
-        expect(types).toEqual(['request-start', 'request-error', 'compact-start', 'request-start*', 'request-end*', 'compact-end', 'request-start', 'request-end', 'step'])
+        expect(types).toEqual(['message', 'request-start', 'message', 'request-error', 'compact-start', 'request-start*', 'request-end*', 'message', 'compact-end', 'request-start', 'request-end', 'message', 'step'])
         expect(agent.history.some(message => message.role === 'compact')).toBe(true)
         expect(JSON.stringify(calls.at(-1).prompt)).toContain('总结内容')    // 总结折进了 system
         expect(agent.history.map(one => one.role)).toEqual(['user', 'error', 'compact', 'assistant']) // 超长也记一条错误
@@ -206,12 +210,15 @@ describe('压缩与估算', () => {
         const events: any[] = []
         expect(await agent.compact({ onEvent: event => { events.push(event) } })).toBe('总结')
         expect(events[0]).toEqual({ type: 'compact-start', reason: 'manual' })
-        const inner = events.slice(1, -1)
+        const end = events.findLastIndex(event => event.type === 'request-end')
+        const inner = events.slice(1, end + 1)
         expect(inner.every(event => event.compact === true)).toBe(true)
         expect(inner[0]).toMatchObject({ type: 'request-start', attempt: 1, compact: true })
         expect(inner.filter(event => event.type === 'reasoning').map(event => event.text).join('')).toBe('想想')
         expect(inner.filter(event => event.type === 'text').map(event => event.text).join('')).toBe('总结')
         expect(inner.at(-1).type).toBe('request-end')
+        expect(events[end + 1]).toMatchObject({ type: 'message', message: { role: 'compact', content: '总结' } })
+        expect(events[end + 1].message.id).toBe(agent.history.at(-1)!.id)
         expect(events.at(-1)).toMatchObject({ type: 'compact-end', reason: 'manual', summary: '总结', usage: { inputTokens: 100 } })
     })
 
@@ -293,13 +300,14 @@ describe('Agent.LLM.ask', () => {
 })
 
 describe('回调与诊断', () => {
-    test('onEvent 抛错或返回被拒绝的 Promise 都不打断循环；tool-run / step 会被等待；返回 steps', async () => {
+    test('onEvent 抛错或返回被拒绝的 Promise 都不打断循环；message / tool-run / step 会被等待；返回 steps', async () => {
         const dir = tools({ 'a.ts': tool('a', 'return 1') })
         const { model } = script([{ calls: [{ name: 'a' }] }, { text: '好' }])
         const agent = Agent.create({ model, tools: [dir], noToolRounds: 1 })          // 流式：片段事件是高频回调
         const order: string[] = []
         const answer = await agent.send('hi', {
             onEvent: async event => {
+                if (event.type === 'message') { await Bun.sleep(50); order.push(`message:${event.message.role}`) }
                 if (event.type === 'tool-result') order.push('result')
                 if (event.type === 'tool-run') { await Bun.sleep(50); order.push('run') }
                 if (event.type === 'step') { await Bun.sleep(50); order.push(`step${event.step}`) }
@@ -307,7 +315,8 @@ describe('回调与诊断', () => {
             },
         })
         expect(answer).toMatchObject({ reason: 'no-tool', text: '好', steps: 2 })
-        expect(order).toEqual(['run', 'result', 'step1', 'step2'])
+        // message 被等待：assistant 写入后才 tool-run，tool 写入后才 tool-result
+        expect(order).toEqual(['message:user', 'message:assistant', 'run', 'message:tool', 'result', 'step1', 'message:assistant', 'step2'])
     })
 
     test('无效调用（工具不存在）不问权限、不执行，写"调用无效"结果；onPermission 返回非布尔值按拒绝、只警告一次', async () => {

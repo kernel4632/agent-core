@@ -27,7 +27,7 @@ import { run } from './loop/run.ts'
 import { compact } from './loop/compact.ts'
 import { kill } from './tools/spawn.ts'
 import { close as disconnect, connect } from './tools/mcp.ts'
-import { append } from './history.ts'
+import { record } from './history.ts'
 import { ask } from './model/ask.ts'
 import { cancelled } from './utils/errors.ts'
 
@@ -119,8 +119,8 @@ export class Agent {
     async send(input?: Input, callbacks: Callbacks = {}): Promise<Answer> {
         // 先查输入再动任何状态：注定失败的调用不该把还在跑的上一次挤掉。
         if (input !== undefined && (typeof input === 'string' ? !input.trim() : !Array.isArray(input) || !input.length)) throw new TypeError('input must be a non-empty string or a non-empty content array')
-        return this.#start(() => {
-            if (input !== undefined) append(this.history, { role: 'user', content: input })
+        return this.#start(async () => {
+            if (input !== undefined) await record(this.history, { role: 'user', content: input }, callbacks.onEvent)
             return run(this.#state(), callbacks)
         })
     }
